@@ -16,3 +16,8 @@ rpassword = "7.5.4"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.2.0"
 ureq = { version = "3.5.1", features = ["json"] }
+
+[dev-dependencies]
+axum = "0.8.9"
+crablink-server = { path = "../server" }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "net"] }

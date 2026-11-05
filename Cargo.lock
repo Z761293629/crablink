@@ -369,11 +369,14 @@ name = "crablink-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "chrono",
  "clap",
  "crablink-api",
+ "crablink-server",
  "rpassword",
  "serde",
+ "tokio",
  "toml",
  "ureq",
 ]
