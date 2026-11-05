@@ -53,6 +53,23 @@ pub struct Error {
     pub error: String,
 }
 
+/// Query of `GET /api/links`. `limit` defaults to 50 and must be 1-200.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ListLinks {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    /// Opaque: pass back the previous page's `next_cursor`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+/// Response of `GET /api/links`: newest first; `next_cursor` is `None` on the last page.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkPage {
+    pub links: Vec<Link>,
+    pub next_cursor: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
