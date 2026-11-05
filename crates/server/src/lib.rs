@@ -4,8 +4,8 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::rejection::JsonRejection;
-use axum::extract::{Path, Request, State};
+use axum::extract::rejection::{JsonRejection, QueryRejection};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -65,8 +65,11 @@ pub fn app(pool: SqlitePool, codes: CodeGenerator, token: &str, base_url: &str) 
         base_url: base_url.trim_end_matches('/').into(),
     };
     let api = Router::new()
-        .route("/links", post(create_link))
-        .route("/links/{code}", get(get_link).delete(delete_link))
+        .route("/links", post(create_link).get(list_links))
+        .route(
+            "/links/{code}",
+            get(get_link).patch(update_link).delete(delete_link),
+        )
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
         .nest("/api", api)
@@ -102,6 +105,13 @@ impl IntoResponse for ApiError {
 /// A body that doesn't match the DTO (e.g. a malformed `expires_at`) is a 400, not axum's 422.
 impl From<JsonRejection> for ApiError {
     fn from(e: JsonRejection) -> Self {
+        ApiError(StatusCode::BAD_REQUEST, e.body_text())
+    }
+}
+
+/// A malformed query string (e.g. `limit=x`) is a JSON 400 like any other API error.
+impl From<QueryRejection> for ApiError {
+    fn from(e: QueryRejection) -> Self {
         ApiError(StatusCode::BAD_REQUEST, e.body_text())
     }
 }
@@ -245,6 +255,89 @@ async fn get_link(
     .await?
     .map(|row| Json(row.into_dto(&s.base_url)))
     .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "link not found".into()))
+}
+
+/// `PATCH /api/links/{code}`: changes Target and/or Expiry, never the Code;
+/// 404 if missing or deleted.
+async fn update_link(
+    State(s): State<AppState>,
+    Path(code): Path<String>,
+    req: Result<Json<crablink_api::UpdateLink>, JsonRejection>,
+) -> Result<Json<crablink_api::Link>, ApiError> {
+    let Json(req) = req?;
+    if let Some(target) = &req.target {
+        validate_target(target, &s.base_url)?;
+    }
+    sqlx::query_as::<_, LinkRow>(concat!(
+        "UPDATE links SET target = COALESCE(?, target), \
+         expires_at = CASE WHEN ? THEN ? ELSE expires_at END, updated_at = ? \
+         WHERE code = ? AND deleted_at IS NULL RETURNING ",
+        link_columns!()
+    ))
+    .bind(&req.target)
+    .bind(req.expires_at.is_some())
+    .bind(req.expires_at.flatten())
+    .bind(Utc::now())
+    .bind(&code)
+    .fetch_optional(&s.pool)
+    .await?
+    .map(|row| Json(row.into_dto(&s.base_url)))
+    .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "link not found".into()))
+}
+
+const DEFAULT_PAGE: u32 = 50;
+const MAX_PAGE: u32 = 200;
+
+#[derive(sqlx::FromRow)]
+struct ListRow {
+    id: i64,
+    #[sqlx(flatten)]
+    link: LinkRow,
+}
+
+/// `GET /api/links`: live and expired Links, newest (highest id) first. The cursor
+/// is the id of the previous page's last Link, so each page is an index range scan.
+async fn list_links(
+    State(s): State<AppState>,
+    query: Result<Query<crablink_api::ListLinks>, QueryRejection>,
+) -> Result<Json<crablink_api::LinkPage>, ApiError> {
+    let Query(q) = query?;
+    let limit = q.limit.unwrap_or(DEFAULT_PAGE);
+    if !(1..=MAX_PAGE).contains(&limit) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            format!("limit must be between 1 and {MAX_PAGE}"),
+        ));
+    }
+    let before = match q.cursor {
+        None => i64::MAX,
+        Some(c) => c
+            .parse()
+            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid cursor".into()))?,
+    };
+    // Fetch one extra row to learn whether another page follows.
+    let mut rows = sqlx::query_as::<_, ListRow>(concat!(
+        "SELECT id, ",
+        link_columns!(),
+        " FROM links WHERE deleted_at IS NULL AND id < ? ORDER BY id DESC LIMIT ?"
+    ))
+    .bind(before)
+    .bind(limit + 1)
+    .fetch_all(&s.pool)
+    .await?;
+    let next_cursor = if rows.len() > limit as usize {
+        rows.truncate(limit as usize);
+        rows.last().map(|r| r.id.to_string())
+    } else {
+        None
+    };
+    Ok(Json(crablink_api::LinkPage {
+        links: rows
+            .into_iter()
+            .map(|r| r.link.into_dto(&s.base_url))
+            .collect(),
+        next_cursor,
+    }))
 }
 
 /// `DELETE /api/links/{code}`: marks the Link deleted (ADR-0002). The row stays so
