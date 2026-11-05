@@ -70,3 +70,43 @@ async fn targets_are_not_fetched_so_unresolvable_hosts_are_accepted() {
     app.create(json!({ "target": "https://does-not-exist.invalid/x" }))
         .await;
 }
+
+/// The URL parser silently strips these, so they would be stored raw and break the redirect.
+const WHITESPACE_OR_CONTROL: &[&str] = &[
+    "https://example.com/a\nb",
+    "https://example.com/a\tb",
+    "https://example.com/a\rb",
+    " https://example.com/a",
+    "https://example.com/a ",
+    "https://example.com/a b",
+    "https://example.com/a\u{7f}b",
+    "https://example.com/a\u{0}b",
+];
+
+#[tokio::test]
+async fn targets_with_whitespace_or_control_characters_are_rejected_on_create() {
+    let app = app().await;
+    for target in WHITESPACE_OR_CONTROL {
+        assert_rejected(&app, target).await;
+    }
+}
+
+#[tokio::test]
+async fn targets_with_whitespace_or_control_characters_are_rejected_on_edit() {
+    let app = app().await;
+    let link = app
+        .create(json!({ "target": "https://example.com/ok" }))
+        .await;
+    let path = format!("/api/links/{}", link["code"].as_str().unwrap());
+    for target in WHITESPACE_OR_CONTROL {
+        let res = app
+            .api("PATCH", &path, Some(json!({ "target": target })))
+            .await;
+        assert_eq!(res.status, StatusCode::BAD_REQUEST, "{target:?}");
+    }
+    // The Link still redirects to its original Target.
+    let res = app
+        .get(&format!("/{}", link["code"].as_str().unwrap()))
+        .await;
+    assert_eq!(res.header("location"), "https://example.com/ok");
+}
