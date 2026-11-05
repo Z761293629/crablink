@@ -14,7 +14,11 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
 ## Branches
 
-Push to GitHub only on `fix/<slug>` (bug fixes) or `feature/<slug>` (everything else); `<slug>` is a short kebab-case name for the change. A worktree session starts on a `claude/*` branch, which stays local: rename it before the first push with `git branch -m feature/<slug>`.
+Branches pushed to GitHub follow [Conventional Branch 1.1.0](https://conventionalbranch.org/): `type/description`.
+
+- Types: `feature/` (new behaviour), `fix/` (bug fixes), `hotfix/` (urgent fixes), `release/` (release prep, e.g. `release/v1.2.0`), `chore/` (docs, dependencies, CI, other non-code work).
+- Description: lowercase `a-z0-9`, words joined by single hyphens, dots only inside version numbers. An issue it addresses leads: `feature/issue-27-delete-link`.
+- A worktree session starts on a `claude/*` branch, which stays local: rename it before the first push, e.g. `git branch -m chore/<description>`.
 
 ## Commits
 
