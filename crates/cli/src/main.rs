@@ -33,6 +33,24 @@ enum Cmd {
         #[arg(long)]
         expires: Option<String>,
     },
+    /// List all Links, newest first: Code, Click Count, Expiry, Target.
+    Ls,
+    /// Show one Link in detail.
+    Get { code: String },
+    /// Change a Link's Target and/or Expiry.
+    Edit {
+        code: String,
+        #[arg(long)]
+        target: Option<String>,
+        /// RFC 3339 timestamp, or a duration from now like 30m, 12h, 7d.
+        #[arg(long, conflicts_with = "no_expires")]
+        expires: Option<String>,
+        /// Remove the Expiry.
+        #[arg(long)]
+        no_expires: bool,
+    },
+    /// Delete a Link (its Code is never reused).
+    Rm { code: String },
 }
 
 /// Server and token. Flags beat env vars (clap), which beat the config file (`or`).
@@ -99,7 +117,7 @@ fn save_config(creds: &Creds) -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
-/// Authenticated HTTP client for `/api`. Add `patch`/`delete` alongside `get`/`post`.
+/// Authenticated HTTP client for `/api`.
 struct Api {
     server: String,
     token: String,
@@ -123,6 +141,14 @@ impl Api {
 
     fn post(&self, path: &str) -> RequestBuilder<WithBody> {
         self.auth(Self::agent().post(format!("{}{path}", self.server)))
+    }
+
+    fn patch(&self, path: &str) -> RequestBuilder<WithBody> {
+        self.auth(Self::agent().patch(format!("{}{path}", self.server)))
+    }
+
+    fn delete(&self, path: &str) -> RequestBuilder<WithoutBody> {
+        self.auth(Self::agent().delete(format!("{}{path}", self.server)))
     }
 
     /// Fails with the server's `{ "error" }` message on a non-2xx response.
@@ -169,7 +195,99 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             println!("{}", link.short_url);
             Ok(())
         }
+        Cmd::Ls => {
+            let api = cli.creds.or(load_config()?).api()?;
+            let now = Utc::now();
+            let mut cursor = None;
+            loop {
+                let mut req = api.get("/api/links");
+                if let Some(c) = &cursor {
+                    req = req.query("cursor", c);
+                }
+                let page: crablink_api::LinkPage = api.check(req.call())?.body_mut().read_json()?;
+                for l in &page.links {
+                    let expiry = match l.expires_at {
+                        None => "never".to_string(),
+                        Some(t) if t <= now => format!("{} (expired)", t.format("%Y-%m-%d %H:%M")),
+                        Some(t) => t.format("%Y-%m-%d %H:%M").to_string(),
+                    };
+                    println!(
+                        "{:<20} {:>7}  {:<26}  {}",
+                        l.code, l.click_count, expiry, l.target
+                    );
+                }
+                cursor = page.next_cursor;
+                if cursor.is_none() {
+                    return Ok(());
+                }
+            }
+        }
+        Cmd::Get { code } => {
+            let api = cli.creds.or(load_config()?).api()?;
+            let link = api
+                .check(api.get(&link_path(&code)?).call())?
+                .body_mut()
+                .read_json()?;
+            print_link(&link);
+            Ok(())
+        }
+        Cmd::Edit {
+            code,
+            target,
+            expires,
+            no_expires,
+        } => {
+            let body = update_link(target, expires, no_expires, Utc::now())?;
+            let api = cli.creds.or(load_config()?).api()?;
+            let link = api
+                .check(api.patch(&link_path(&code)?).send_json(&body))?
+                .body_mut()
+                .read_json()?;
+            print_link(&link);
+            Ok(())
+        }
+        Cmd::Rm { code } => {
+            let api = cli.creds.or(load_config()?).api()?;
+            api.check(api.delete(&link_path(&code)?).call())?;
+            eprintln!("Deleted {code}");
+            Ok(())
+        }
     }
+}
+
+/// Refuses characters no Code can contain, so e.g. `rm 'a?x'` cannot hit Link `a`.
+fn link_path(code: &str) -> anyhow::Result<String> {
+    let ok = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'-';
+    if code.is_empty() || !code.bytes().all(ok) {
+        bail!("invalid code {code:?}");
+    }
+    Ok(format!("/api/links/{code}"))
+}
+
+/// `edit` flags to a PATCH body; clap already rejects `--expires` with `--no-expires`.
+fn update_link(
+    target: Option<String>,
+    expires: Option<String>,
+    no_expires: bool,
+    now: DateTime<Utc>,
+) -> anyhow::Result<crablink_api::UpdateLink> {
+    let expires_at = match expires {
+        Some(e) => Some(Some(parse_expires(&e, now)?)),
+        None if no_expires => Some(None),
+        None => None,
+    };
+    Ok(crablink_api::UpdateLink { target, expires_at })
+}
+
+fn print_link(l: &crablink_api::Link) {
+    let ts = |t: DateTime<Utc>| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    println!("Code:      {}", l.code);
+    println!("Short URL: {}", l.short_url);
+    println!("Target:    {}", l.target);
+    println!("Expiry:    {}", l.expires_at.map_or("never".into(), ts));
+    println!("Clicks:    {}", l.click_count);
+    println!("Created:   {}", ts(l.created_at));
+    println!("Updated:   {}", ts(l.updated_at));
 }
 
 fn login(server: Option<String>) -> anyhow::Result<()> {
@@ -278,6 +396,27 @@ mod tests {
             parse_expires("2027-01-01T09:00:00+01:00", now).unwrap(),
             at("2027-01-01T08:00:00Z")
         );
+    }
+
+    #[test]
+    fn edit_rejects_expires_together_with_no_expires() {
+        let err = Cli::try_parse_from(["crablink", "edit", "c", "--expires", "7d", "--no-expires"])
+            .err()
+            .unwrap();
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn edit_maps_expiry_flags_to_three_state_field() {
+        let now = at("2026-11-05T10:00:00Z");
+        let body = |e: Option<&str>, none| update_link(None, e.map(Into::into), none, now).unwrap();
+        assert_eq!(body(None, false).expires_at, None);
+        assert_eq!(body(None, true).expires_at, Some(None));
+        assert_eq!(
+            body(Some("7d"), false).expires_at,
+            Some(Some(at("2026-11-12T10:00:00Z")))
+        );
+        assert!(update_link(None, Some("soon".into()), false, now).is_err());
     }
 
     #[test]
