@@ -1,7 +1,7 @@
 mod common;
 
 use common::*;
-use crablink_api::CreateLink;
+use crablink_api::{CreateLink, UpdateLink};
 
 #[test]
 fn lists_every_link_newest_first_across_pages() {
@@ -139,4 +139,193 @@ fn q_and_esc_quit() {
     let mut tui = srv.tui();
     tui.key(KeyCode::Esc);
     assert!(tui.app.quit());
+}
+
+/// The screen line containing `label`, e.g. the detail pane's "Short URL" row.
+fn line_with<'a>(screen: &'a str, label: &str) -> &'a str {
+    screen
+        .lines()
+        .find(|l| l.contains(label))
+        .unwrap_or_else(|| panic!("no {label:?} line:\n{screen}"))
+}
+
+#[test]
+fn arrows_and_jk_move_the_selection_and_the_detail_pane_follows() {
+    let srv = server();
+    srv.create("aaa", "https://example.com/a");
+    srv.create("bbb", "https://example.com/b");
+    let mut tui = srv.tui();
+    let shows = |tui: &mut Tui, code: &str| {
+        let screen = tui.screen();
+        let short = line_with(&screen, "Short URL");
+        assert!(short.contains(&format!("{}/{code}", srv.url)), "{screen}");
+        // The selected row is highlighted with a bar in front of it.
+        assert!(
+            line_with(&screen, &format!("{code} ")).contains('▌'),
+            "{screen}"
+        );
+    };
+
+    shows(&mut tui, "bbb");
+    tui.keys("j");
+    shows(&mut tui, "aaa");
+    tui.keys("j"); // already at the bottom
+    shows(&mut tui, "aaa");
+    tui.keys("k");
+    shows(&mut tui, "bbb");
+    tui.key(KeyCode::Down);
+    shows(&mut tui, "aaa");
+    tui.key(KeyCode::Up);
+    shows(&mut tui, "bbb");
+}
+
+#[test]
+fn the_detail_pane_shows_the_whole_link_and_the_list_truncates_long_targets() {
+    let srv = server();
+    let target = "https://example.com/a/rather/long/path/that/never/fits/in/a/row";
+    let link = srv
+        .api()
+        .create(&CreateLink {
+            target: target.into(),
+            code: Some("long".into()),
+            expires_at: Some("2099-01-02T03:04:05Z".parse().unwrap()),
+        })
+        .unwrap();
+
+    let screen = srv.tui().screen();
+
+    let row = line_with(&screen, "long ");
+    assert!(row.contains("https://example.com/a/"), "{screen}");
+    assert!(
+        !row.contains(target),
+        "not truncated in the list:\n{screen}"
+    );
+    let short = format!("{}/long", srv.url);
+    assert!(line_with(&screen, "Short URL").contains(&short), "{screen}");
+    line_with(&screen, "Target");
+    // Only the detail pane can hold the whole Target (it wraps there if needed).
+    assert!(screen.contains(target), "{screen}");
+    assert!(line_with(&screen, "Click Count").contains('0'), "{screen}");
+    let expiry = line_with(&screen, "2099-01-02T03:04:05Z");
+    assert!(expiry.contains("Expiry"), "{screen}");
+    let created = link.created_at.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    assert!(line_with(&screen, "Created").contains(&created), "{screen}");
+}
+
+#[test]
+fn slash_filters_by_code_or_target_case_insensitively() {
+    let srv = server();
+    srv.create("alpha", "https://one.example/");
+    srv.create("beta", "https://TWO.example/");
+    srv.create("gamma", "https://three.example/AlphaBet");
+    let mut tui = srv.tui();
+    // The Codes in the list, top to bottom.
+    let codes = |tui: &mut Tui| {
+        let screen = tui.screen();
+        screen
+            .lines()
+            .filter_map(|l| {
+                ["alpha ", "beta ", "gamma "]
+                    .into_iter()
+                    .find(|c| l.contains(c))
+            })
+            .map(str::trim)
+            .collect::<Vec<_>>()
+    };
+
+    tui.keys("/ALPH");
+    assert_eq!(codes(&mut tui), ["gamma", "alpha"]);
+    assert!(tui.screen().contains("/ALPH"));
+    tui.key(KeyCode::Backspace);
+    tui.keys("H");
+    assert_eq!(codes(&mut tui), ["gamma", "alpha"]);
+
+    // While filtering, letters are typed into the filter, not taken as keys.
+    for _ in 0..4 {
+        tui.key(KeyCode::Backspace);
+    }
+    tui.keys("two");
+    assert_eq!(codes(&mut tui), ["beta"]);
+    assert!(!tui.app.quit());
+
+    // Enter keeps the filter and returns the keys to the list.
+    tui.key(KeyCode::Enter);
+    tui.keys("k");
+    assert_eq!(codes(&mut tui), ["beta"]);
+
+    // Clearing the filter brings every Link back.
+    tui.keys("/");
+    for _ in 0..3 {
+        tui.key(KeyCode::Backspace);
+    }
+    assert_eq!(codes(&mut tui), ["gamma", "beta", "alpha"]);
+
+    // Esc while filtering clears the filter instead of quitting.
+    tui.keys("zzz");
+    assert!(tui.screen().contains("no Links match"), "{}", tui.screen());
+    tui.key(KeyCode::Esc);
+    assert!(!tui.app.quit());
+    assert_eq!(codes(&mut tui), ["gamma", "beta", "alpha"]);
+}
+
+#[test]
+fn r_picks_up_links_created_and_changed_on_the_server() {
+    let srv = server();
+    srv.create("aaa", "https://example.com/before");
+    let mut tui = srv.tui();
+    assert!(tui.screen().contains("1 Link"));
+
+    srv.create("bbb", "https://example.com/new");
+    let patch = UpdateLink {
+        target: Some("https://example.com/after".into()),
+        ..Default::default()
+    };
+    srv.api().update("aaa", &patch).unwrap();
+    let screen = tui.screen();
+    assert!(!screen.contains("bbb"), "{screen}");
+
+    tui.keys("r");
+    let screen = tui.screen();
+    assert!(screen.contains("2 Links"), "{screen}");
+    assert!(
+        line_with(&screen, "bbb ").contains("example.com/new"),
+        "{screen}"
+    );
+    assert!(
+        line_with(&screen, "aaa ").contains("example.com/after"),
+        "{screen}"
+    );
+    // The selection stays on the same Link, though a newer one now sits above it.
+    let short = format!("{}/aaa", srv.url);
+    assert!(line_with(&screen, "Short URL").contains(&short), "{screen}");
+}
+
+#[test]
+fn question_mark_shows_every_key_and_the_version() {
+    let srv = server();
+    srv.create("abc", "https://example.com/");
+    let mut tui = srv.tui();
+    tui.resize(79, 30); // no sidebar, so the hints on screen come from the help panel
+    assert!(!tui.screen().contains("refresh"));
+
+    tui.keys("?");
+    let screen = tui.screen();
+    let version = format!("crablink {}", env!("CARGO_PKG_VERSION"));
+    assert!(screen.contains(&version), "{screen}");
+    for key in [
+        "↑↓",
+        "jk move",
+        "/ filter",
+        "r refresh",
+        "? help",
+        "q quit",
+        "Esc",
+    ] {
+        assert!(screen.contains(key), "missing {key:?}:\n{screen}");
+    }
+
+    // Any key closes the help, without acting on the list.
+    tui.keys("q");
+    assert!(!tui.app.quit());
+    assert!(!tui.screen().contains("refresh"), "{}", tui.screen());
 }
