@@ -79,8 +79,12 @@ pub struct Tui {
 
 impl Tui {
     pub fn new(api: Api) -> Tui {
+        Tui::with_caps(api, Caps::default())
+    }
+
+    pub fn with_caps(api: Api, caps: Caps) -> Tui {
         Tui {
-            app: App::new(api, Caps::default()),
+            app: App::new(api, caps),
             term: Terminal::new(TestBackend::new(100, 30)).unwrap(),
         }
     }
