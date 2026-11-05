@@ -12,7 +12,19 @@ anyhow = "1.0.104"
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
 clap = { version = "4.6.7", features = ["derive", "env"] }
 crablink-api = { path = "../api" }
+image = { version = "0.25", default-features = false, features = ["png"] }
+ratatui = "0.30"
+ratatui-image = { version = "11.1.0", default-features = false, features = ["crossterm"] }
 rpassword = "7.5.4"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.2.0"
 ureq = { version = "3.5.1", features = ["json"] }
+
+# Re-asks the terminal for its background mid-TUI; already in the tree via ratatui-image.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "0.38", features = ["event", "stdio"] }
+
+[dev-dependencies]
+axum = "0.8.9"
+crablink-server = { path = "../server" }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "net"] }
