@@ -2,7 +2,7 @@
 //! (key events in, [`App::render`] onto any `Frame`); only [`run`] touches the real terminal.
 
 use chrono::{DateTime, Utc};
-use crablink_api::{CreateLink, Link};
+use crablink_api::{CreateLink, Link, UpdateLink};
 use ratatui::Frame;
 use ratatui::crossterm::event::{self, KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -23,6 +23,7 @@ const KEYS: &[(&str, &str)] = &[
     ("jk", "move ↑↓"),
     ("/", "filter"),
     ("n", "new"),
+    ("e", "edit"),
     ("r", "refresh"),
     ("d", "delete"),
     ("?", "help"),
@@ -160,7 +161,8 @@ enum Mode {
     Delete,
 }
 
-/// The Link form: Target, Code, Expiry. `n` opens it empty to create a Link. Errors
+/// The Link form: Target, Code, Expiry. `n` opens it empty to create a Link; `e`
+/// pre-filled to edit the selected one. Errors
 /// (the server's, or a bad Expiry) are shown in it and leave the input as typed.
 #[derive(Default)]
 struct Form {
@@ -187,17 +189,41 @@ impl Form {
         }
     }
 
-    /// Creates the Link as typed; returns its Code. Empty Code and Expiry mean none.
-    fn create(&self, api: &Api) -> anyhow::Result<String> {
+    /// The form for editing `l`, its Expiry as an RFC 3339 timestamp.
+    fn edit(l: &Link) -> Form {
+        Form {
+            values: [
+                l.target.clone(),
+                l.code.clone(),
+                l.expires_at.map(crate::timestamp).unwrap_or_default(),
+            ],
+            edit: true,
+            ..Form::default()
+        }
+    }
+
+    /// Creates or updates the Link as typed; returns its Code. An empty Code means a
+    /// generated one; an empty Expiry means none (clearing it when editing).
+    fn save(&self, api: &Api) -> anyhow::Result<String> {
         let [target, code, expires] = &self.values;
         let expires_at = (!expires.is_empty())
             .then(|| crate::parse_expires(expires, Utc::now()))
             .transpose()?;
-        let link = api.create(&CreateLink {
-            target: target.clone(),
-            code: (!code.is_empty()).then(|| code.clone()),
-            expires_at,
-        })?;
+        let link = if self.edit {
+            api.update(
+                code,
+                &UpdateLink {
+                    target: Some(target.clone()),
+                    expires_at: Some(expires_at),
+                },
+            )?
+        } else {
+            api.create(&CreateLink {
+                target: target.clone(),
+                code: (!code.is_empty()).then(|| code.clone()),
+                expires_at,
+            })?
+        };
         Ok(link.code)
     }
 }
@@ -289,6 +315,11 @@ impl App {
             (Mode::List, KeyCode::Char('n')) => self.mode = Mode::Form(Form::default()),
             (Mode::List, KeyCode::Char('r')) => self.load(),
             (Mode::List, KeyCode::Char('?')) => self.mode = Mode::Help,
+            (Mode::List, KeyCode::Char('e')) => {
+                if let Some(form) = self.selected().map(Form::edit) {
+                    self.mode = Mode::Form(form);
+                }
+            }
             (Mode::List, KeyCode::Char('d')) if has_selection => self.mode = Mode::Delete,
             (Mode::Filter, KeyCode::Enter) => self.mode = Mode::List,
             (Mode::Filter, KeyCode::Esc) => {
@@ -305,15 +336,15 @@ impl App {
         }
     }
 
-    /// Creates the Link in the form and selects it, or shows the error in the form.
+    /// Saves the Link in the form and selects it, or shows the error in the form.
     fn submit(&mut self) {
         let Mode::Form(form) = &mut self.mode else {
             return;
         };
-        match form.create(&self.api) {
+        match form.save(&self.api) {
             Ok(code) => {
                 self.mode = Mode::List;
-                // The new Link may not match the filter, and only a visible Link can be selected.
+                // The saved Link may not match the filter, and only a visible Link can be selected.
                 self.filter.clear();
                 self.load();
                 self.select_code(&code);
