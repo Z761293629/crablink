@@ -222,7 +222,7 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
         if !std::io::stdout().is_terminal() {
             return Ok(Cli::command().print_help()?);
         }
-        return tui::run(cli.creds.resolve()?, tui::Caps::default());
+        return tui::run(cli.creds.resolve()?, tui::Caps::detect());
     };
     if let Cmd::Login = cmd {
         // A broken config must not stop `login` from replacing it.
