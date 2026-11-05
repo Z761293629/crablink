@@ -33,7 +33,7 @@ docker run -d --name crablink --restart unless-stopped \
 curl http://localhost:8080/health   # → ok
 ```
 
-镜像公开发布在 `ghcr.io/z761293629/crablink-server`（仅 `linux/amd64`），无需登录即可拉取。`latest` 跟随最新稳定版；生产环境建议钉住版本号，如 `ghcr.io/z761293629/crablink-server:0.1.0`，回滚只需换回旧版本号。也可以从源码构建：`docker build -t crablink-server .`。
+镜像公开发布在 `ghcr.io/z761293629/crablink-server`（`linux/amd64` 与 `linux/arm64`，Apple 芯片 Mac 原生运行），无需登录即可拉取。`latest` 跟随最新稳定版；生产环境建议钉住版本号，如 `ghcr.io/z761293629/crablink-server:0.1.0`，回滚只需换回旧版本号。也可以从源码构建：`docker build -t crablink-server .`。
 
 镜像以非 root 用户运行 `crablink-server`，数据库在卷 `/data/crablink.db` 里，删掉或重建容器数据都还在。镜像自带 `HEALTHCHECK`（每 30 秒请求 `/health`），`docker ps` 能看到 `healthy`。缺少 `CRABLINK_BASE_URL` 或 `CRABLINK_TOKEN` 时容器会打印 `crablink-server: CRABLINK_TOKEN must be set and non-empty` 并以退出码 2 退出（`docker logs crablink` 查看）。
 
