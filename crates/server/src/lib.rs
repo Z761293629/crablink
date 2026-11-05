@@ -65,7 +65,7 @@ pub fn app(pool: SqlitePool, codes: CodeGenerator, token: &str, base_url: &str) 
     };
     let api = Router::new()
         .route("/links", post(create_link))
-        .route("/links/{code}", get(get_link))
+        .route("/links/{code}", get(get_link).delete(delete_link))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
         .nest("/api", api)
@@ -237,31 +237,58 @@ async fn get_link(
     .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "link not found".into()))
 }
 
+/// `DELETE /api/links/{code}`: marks the Link deleted (ADR-0002). The row stays so
+/// its Code is never reused; 404 if missing or already deleted.
+async fn delete_link(
+    State(s): State<AppState>,
+    Path(code): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let done = sqlx::query("UPDATE links SET deleted_at = ? WHERE code = ? AND deleted_at IS NULL")
+        .bind(Utc::now())
+        .bind(&code)
+        .execute(&s.pool)
+        .await?;
+    if done.rows_affected() == 0 {
+        return Err(ApiError(StatusCode::NOT_FOUND, "link not found".into()));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// `GET /{code}`: 302 to the Target. Never 301/308, which browsers cache forever.
 /// Counts the click in the same statement that finds the Target.
 async fn redirect(State(s): State<AppState>, Path(code): Path<String>) -> Response {
+    let internal = |e: sqlx::Error| {
+        eprintln!("database error: {e}");
+        (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+    };
     let target: Option<String> = match sqlx::query_scalar(
-        "UPDATE links SET click_count = click_count + 1 WHERE code = ? RETURNING target",
+        "UPDATE links SET click_count = click_count + 1 WHERE code = ? AND deleted_at IS NULL RETURNING target",
     )
     .bind(&code)
     .fetch_optional(&s.pool)
     .await
     {
         Ok(t) => t,
-        Err(e) => {
-            eprintln!("database error: {e}");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
-        }
+        Err(e) => return internal(e),
     };
-    match target {
-        Some(target) => (
+    if let Some(target) = target {
+        return (
             StatusCode::FOUND,
             [
                 (header::LOCATION, target),
                 (header::CACHE_CONTROL, "private, max-age=0".into()),
             ],
         )
-            .into_response(),
-        None => (StatusCode::NOT_FOUND, "not found").into_response(),
+            .into_response();
+    }
+    // No live Link: a row that still exists is a Deleted Link (410), else 404.
+    match sqlx::query_scalar::<_, i64>("SELECT 1 FROM links WHERE code = ?")
+        .bind(&code)
+        .fetch_optional(&s.pool)
+        .await
+    {
+        Ok(Some(_)) => (StatusCode::GONE, "gone").into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, "not found").into_response(),
+        Err(e) => internal(e),
     }
 }
