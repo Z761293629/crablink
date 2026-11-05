@@ -305,7 +305,7 @@ fn edit_body(
     Ok(UpdateLink { target, expires_at })
 }
 
-fn timestamp(t: DateTime<Utc>) -> String {
+pub(crate) fn timestamp(t: DateTime<Utc>) -> String {
     t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
