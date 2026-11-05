@@ -96,5 +96,3 @@ mod tests {
         }
     }
 }
-
-fn  fmt_violation( ) {}
