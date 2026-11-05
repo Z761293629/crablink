@@ -66,7 +66,10 @@ pub fn app(pool: SqlitePool, codes: CodeGenerator, token: &str, base_url: &str) 
     };
     let api = Router::new()
         .route("/links", post(create_link).get(list_links))
-        .route("/links/{code}", get(get_link).delete(delete_link))
+        .route(
+            "/links/{code}",
+            get(get_link).patch(update_link).delete(delete_link),
+        )
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
         .nest("/api", api)
@@ -247,6 +250,34 @@ async fn get_link(
         link_columns!(),
         " FROM links WHERE code = ? AND deleted_at IS NULL"
     ))
+    .bind(&code)
+    .fetch_optional(&s.pool)
+    .await?
+    .map(|row| Json(row.into_dto(&s.base_url)))
+    .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "link not found".into()))
+}
+
+/// `PATCH /api/links/{code}`: changes Target and/or Expiry, never the Code;
+/// 404 if missing or deleted.
+async fn update_link(
+    State(s): State<AppState>,
+    Path(code): Path<String>,
+    req: Result<Json<crablink_api::UpdateLink>, JsonRejection>,
+) -> Result<Json<crablink_api::Link>, ApiError> {
+    let Json(req) = req?;
+    if let Some(target) = &req.target {
+        validate_target(target, &s.base_url)?;
+    }
+    sqlx::query_as::<_, LinkRow>(concat!(
+        "UPDATE links SET target = COALESCE(?, target), \
+         expires_at = CASE WHEN ? THEN ? ELSE expires_at END, updated_at = ? \
+         WHERE code = ? AND deleted_at IS NULL RETURNING ",
+        link_columns!()
+    ))
+    .bind(&req.target)
+    .bind(req.expires_at.is_some())
+    .bind(req.expires_at.flatten())
+    .bind(Utc::now())
     .bind(&code)
     .fetch_optional(&s.pool)
     .await?
