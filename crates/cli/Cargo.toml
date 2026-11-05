@@ -1,0 +1,11 @@
+[package]
+name = "crablink-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "crablink"
+path = "src/main.rs"
+
+[dependencies]
+crablink-api = { path = "../api" }
