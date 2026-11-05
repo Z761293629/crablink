@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/z761293629/crablink-server
+
+jobs:
+  # Every other job needs this one, so a mismatched tag builds and publishes nothing.
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: scripts/check-release-tag.sh "$GITHUB_REF_NAME"
+      - id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  image:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          platforms: linux/amd64
+          push: true
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          # Pre-releases get only their version tag; `latest` follows stable releases.
+          tags: |
+            ${{ env.IMAGE }}:${{ needs.check.outputs.version }}
+            ${{ needs.check.outputs.prerelease == 'false' && format('{0}:latest', env.IMAGE) || '' }}
+
+  # Jobs that attach assets to the Release (e.g. CLI binaries) should `needs: release`.
+  release:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --generate-notes --prerelease="$PRERELEASE"
