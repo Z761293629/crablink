@@ -12,7 +12,11 @@ use ureq::http::{Method, Request, Response};
 use ureq::{Body, SendBody};
 
 #[derive(Parser)]
-#[command(version, about = "Manage Links on a crablink server")]
+#[command(
+    name = "crablink",
+    version,
+    about = "Manage Links on a crablink server"
+)]
 struct Cli {
     #[command(flatten)]
     creds: Creds,
@@ -402,6 +406,19 @@ mod tests {
         assert_eq!(
             parse_expires("2027-01-01T09:00:00+01:00", now).unwrap(),
             at("2027-01-01T08:00:00Z")
+        );
+    }
+
+    #[test]
+    fn version_flag_reports_workspace_version() {
+        let err = Cli::try_parse_from(["crablink", "--version"])
+            .err()
+            .unwrap();
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayVersion);
+        // The release check pins the workspace version to the tag, so this is the tag's version.
+        assert_eq!(
+            err.to_string(),
+            format!("crablink {}\n", env!("CARGO_PKG_VERSION"))
         );
     }
 
