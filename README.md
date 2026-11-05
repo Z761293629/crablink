@@ -22,22 +22,36 @@
 
 ## 快速开始
 
-### Server
+### Server（Docker）
 
 ```bash
-docker run -d -p 8080:8080 -v crablink:/data \
+docker build -t crablink-server .
+docker run -d --name crablink --restart unless-stopped \
+  -p 8080:8080 -v crablink:/data \
   -e CRABLINK_BASE_URL=https://crab.link \
   -e CRABLINK_TOKEN=change-me \
-  -e CRABLINK_DATABASE_URL=sqlite:///data/crablink.db \
   crablink-server
+curl http://localhost:8080/health   # → ok
 ```
+
+镜像以非 root 用户运行 `crablink-server`，数据库在卷 `/data/crablink.db` 里，删掉或重建容器数据都还在。镜像自带 `HEALTHCHECK`（每 30 秒请求 `/health`），`docker ps` 能看到 `healthy`。缺少 `CRABLINK_BASE_URL` 或 `CRABLINK_TOKEN` 时容器会打印 `crablink-server: CRABLINK_TOKEN must be set and non-empty` 并以退出码 2 退出（`docker logs crablink` 查看）。
 
 | 环境变量 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
 | `CRABLINK_BASE_URL` | 是 | — | 对外域名，用于拼 Short URL |
 | `CRABLINK_TOKEN` | 是 | — | 管理 API 的 Bearer token |
-| `CRABLINK_DATABASE_URL` | 否 | 当前目录 `crablink.db` | SQLite 路径 |
-| `CRABLINK_LISTEN` | 否 | `0.0.0.0:8080` | 监听地址 |
+| `CRABLINK_DATABASE_URL` | 否 | 镜像内 `sqlite:///data/crablink.db`；直接运行二进制时为当前目录 `sqlite:crablink.db` | SQLite 路径，不存在会自动创建 |
+| `CRABLINK_LISTEN` | 否 | `0.0.0.0:8080` | 监听地址（改端口的话 `-p` 和健康检查端口要一起改） |
+
+**备份**：数据库开启了 WAL，最近的写入可能还在 `crablink.db-wal` 里。先停容器，再把 `crablink.db*` 一起复制出来：
+
+```bash
+docker stop crablink
+docker run --rm -v crablink:/data -v "$PWD/backup":/backup alpine sh -c 'cp /data/crablink.db* /backup/'
+docker start crablink
+```
+
+恢复时停掉容器，把这些文件复制回卷里再启动。
 
 ### CLI
 
