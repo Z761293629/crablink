@@ -4,6 +4,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
+use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
@@ -98,6 +99,13 @@ impl IntoResponse for ApiError {
     }
 }
 
+/// A body that doesn't match the DTO (e.g. a malformed `expires_at`) is a 400, not axum's 422.
+impl From<JsonRejection> for ApiError {
+    fn from(e: JsonRejection) -> Self {
+        ApiError(StatusCode::BAD_REQUEST, e.body_text())
+    }
+}
+
 impl From<sqlx::Error> for ApiError {
     fn from(e: sqlx::Error) -> Self {
         eprintln!("database error: {e}");
@@ -185,8 +193,9 @@ fn validate_custom_code(code: &str) -> Result<(), ApiError> {
 
 async fn create_link(
     State(s): State<AppState>,
-    Json(req): Json<crablink_api::CreateLink>,
+    req: Result<Json<crablink_api::CreateLink>, JsonRejection>,
 ) -> Result<(StatusCode, Json<crablink_api::Link>), ApiError> {
+    let Json(req) = req?;
     validate_target(&req.target, &s.base_url)?;
     if let Some(code) = &req.code {
         validate_custom_code(code)?;
@@ -195,13 +204,14 @@ async fn create_link(
     // Insert and let the unique constraint reject a taken Code; never check first (ADR-0003).
     for _ in 0..MAX_CODE_ATTEMPTS {
         let inserted = sqlx::query_as::<_, LinkRow>(concat!(
-            "INSERT INTO links (code, target, created_at, updated_at) VALUES (?, ?, ?, ?) RETURNING ",
+            "INSERT INTO links (code, target, created_at, updated_at, expires_at) VALUES (?, ?, ?, ?, ?) RETURNING ",
             link_columns!()
         ))
         .bind(req.code.clone().unwrap_or_else(|| (s.codes)()))
         .bind(&req.target)
         .bind(now)
         .bind(now)
+        .bind(req.expires_at)
         .fetch_one(&s.pool)
         .await;
         match inserted {
@@ -238,23 +248,11 @@ async fn get_link(
 }
 
 /// `GET /{code}`: 302 to the Target. Never 301/308, which browsers cache forever.
-/// Counts the click in the same statement that finds the Target.
+/// Checks liveness and counts the click in one statement; only when that misses
+/// does a lookup tell a Link that never existed (404) from a dead one (410).
 async fn redirect(State(s): State<AppState>, Path(code): Path<String>) -> Response {
-    let target: Option<String> = match sqlx::query_scalar(
-        "UPDATE links SET click_count = click_count + 1 WHERE code = ? RETURNING target",
-    )
-    .bind(&code)
-    .fetch_optional(&s.pool)
-    .await
-    {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("database error: {e}");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
-        }
-    };
-    match target {
-        Some(target) => (
+    match follow(&s.pool, &code).await {
+        Ok(Some(target)) => (
             StatusCode::FOUND,
             [
                 (header::LOCATION, target),
@@ -262,6 +260,33 @@ async fn redirect(State(s): State<AppState>, Path(code): Path<String>) -> Respon
             ],
         )
             .into_response(),
-        None => (StatusCode::NOT_FOUND, "not found").into_response(),
+        Ok(None) => match sqlx::query("SELECT 1 FROM links WHERE code = ?")
+            .bind(&code)
+            .fetch_optional(&s.pool)
+            .await
+        {
+            Ok(Some(_)) => (StatusCode::GONE, "gone").into_response(),
+            Ok(None) => (StatusCode::NOT_FOUND, "not found").into_response(),
+            Err(e) => db_error(e),
+        },
+        Err(e) => db_error(e),
     }
+}
+
+/// The Target of a live (not deleted, not expired) Link, counting the click.
+async fn follow(pool: &SqlitePool, code: &str) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "UPDATE links SET click_count = click_count + 1 \
+         WHERE code = ? AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > ?) \
+         RETURNING target",
+    )
+    .bind(code)
+    .bind(Utc::now())
+    .fetch_optional(pool)
+    .await
+}
+
+fn db_error(e: sqlx::Error) -> Response {
+    eprintln!("database error: {e}");
+    (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
 }

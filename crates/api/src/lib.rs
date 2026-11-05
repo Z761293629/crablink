@@ -10,6 +10,9 @@ pub struct CreateLink {
     /// Custom Code; a Generated Code is used when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+    /// Expiry; a past value means "expired now".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 /// A Link as returned by the management API.
