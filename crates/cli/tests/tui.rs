@@ -316,6 +316,7 @@ fn question_mark_shows_every_key_and_the_version() {
         "↑↓",
         "jk move",
         "/ filter",
+        "e edit",
         "r refresh",
         "d delete",
         "? help",
@@ -542,4 +543,117 @@ fn after_deleting_the_selection_lands_on_a_neighbour() {
     assert!(tui.screen().contains("0 Links"));
     tui.keys("d");
     assert!(!tui.screen().contains("never be reused"));
+}
+
+/// The open form's rows, from its title down; the list header above also says "Target".
+fn form_rows(screen: &str) -> &str {
+    &screen[screen.find("edit Link").expect(screen)..]
+}
+
+#[test]
+fn e_edits_the_selected_links_target_with_the_code_read_only() {
+    let srv = server();
+    srv.api()
+        .create(&CreateLink {
+            target: "https://example.com/before".into(),
+            code: Some("abc".into()),
+            expires_at: Some("2099-01-02T03:04:05Z".parse().unwrap()),
+        })
+        .unwrap();
+    let mut tui = srv.tui();
+
+    tui.keys("e");
+    let screen = tui.screen();
+    let form = form_rows(&screen);
+    assert!(line_with(form, "Target").contains("https://example.com/before"));
+    assert!(line_with(form, "Code").contains("abc"));
+    assert!(line_with(form, "Expiry").contains("2099-01-02T03:04:05Z"));
+
+    // Typing goes to the Target; Tab skips the Code and goes to the Expiry.
+    for _ in 0.."before".len() {
+        tui.key(KeyCode::Backspace);
+    }
+    tui.keys("after");
+    tui.key(KeyCode::Tab);
+    tui.keys("x");
+    let screen = tui.screen();
+    let form = form_rows(&screen);
+    assert!(line_with(form, "Expiry").contains("05Zx"), "{screen}");
+    assert!(!line_with(form, "Code").contains("abcx"), "{screen}");
+    tui.key(KeyCode::Backspace);
+    tui.key(KeyCode::Enter);
+
+    let link = srv.api().get("abc").unwrap();
+    assert_eq!(link.target, "https://example.com/after");
+    assert_eq!(
+        link.expires_at,
+        Some("2099-01-02T03:04:05Z".parse().unwrap())
+    );
+    let screen = tui.screen();
+    assert!(!screen.contains("edit Link"), "form still open:\n{screen}");
+    assert!(
+        screen.contains("example.com/after"),
+        "detail pane not updated:\n{screen}"
+    );
+    assert_eq!(server_links(&srv).len(), 1);
+}
+
+#[test]
+fn e_sets_an_expiry_and_clearing_it_removes_it() {
+    let srv = server();
+    srv.create("abc", "https://example.com/");
+    let mut tui = srv.tui();
+    let to_expiry = |tui: &mut Tui| {
+        tui.keys("e");
+        tui.key(KeyCode::Tab);
+    };
+
+    let before = chrono::Utc::now();
+    to_expiry(&mut tui);
+    tui.keys("12h");
+    tui.key(KeyCode::Enter);
+    let in_12h = srv.api().get("abc").unwrap().expires_at.unwrap() - before;
+    let half_day = chrono::TimeDelta::hours(12);
+    assert!(
+        in_12h >= half_day && in_12h < half_day + chrono::TimeDelta::minutes(1),
+        "{in_12h}"
+    );
+
+    // The Expiry is pre-filled as a timestamp; erase it all.
+    to_expiry(&mut tui);
+    for _ in 0.."2026-01-01T00:00:00Z".len() {
+        tui.key(KeyCode::Backspace);
+    }
+    tui.key(KeyCode::Enter);
+    assert_eq!(srv.api().get("abc").unwrap().expires_at, None);
+    let screen = tui.screen();
+    // The detail pane's row, not the list header's "Expiry".
+    assert!(screen.contains("Expiry      never"), "{screen}");
+}
+
+#[test]
+fn an_invalid_target_shows_the_servers_error_and_esc_leaves_the_link_unchanged() {
+    let srv = server();
+    srv.create("abc", "https://example.com/kept");
+    let mut tui = srv.tui();
+
+    tui.keys("e");
+    tui.keys(" not a url");
+    tui.key(KeyCode::Enter);
+    let screen = tui.screen();
+    let form = form_rows(&screen);
+    assert!(
+        form.contains("target must not contain whitespace"),
+        "{screen}"
+    );
+    assert!(
+        line_with(form, "Target").contains("https://example.com/kept not a url"),
+        "{screen}"
+    );
+
+    tui.key(KeyCode::Esc);
+    assert!(!tui.app.quit());
+    assert!(!tui.screen().contains("edit Link"), "{}", tui.screen());
+    let link = srv.api().get("abc").unwrap();
+    assert_eq!(link.target, "https://example.com/kept");
 }
