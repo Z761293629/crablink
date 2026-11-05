@@ -23,6 +23,7 @@ const KEYS: &[(&str, &str)] = &[
     ("jk", "move ↑↓"),
     ("/", "filter"),
     ("r", "refresh"),
+    ("d", "delete"),
     ("?", "help"),
     ("q", "quit (Esc)"),
 ];
@@ -153,6 +154,8 @@ enum Mode {
     Filter,
     /// The `?` help over the list; any key closes it.
     Help,
+    /// Asking to delete the selected Link; only `y` confirms.
+    Delete,
 }
 
 impl App {
@@ -219,6 +222,11 @@ impl App {
     pub fn handle_key(&mut self, k: KeyEvent) {
         match (&self.mode, k.code) {
             (Mode::Help, _) => self.mode = Mode::List,
+            (Mode::Delete, KeyCode::Char('y')) => {
+                self.mode = Mode::List;
+                self.delete_selected();
+            }
+            (Mode::Delete, _) => self.mode = Mode::List,
             (_, KeyCode::Down) => self.move_selection(1),
             (_, KeyCode::Up) => self.move_selection(-1),
             (Mode::List, KeyCode::Char('q') | KeyCode::Esc) => self.quit = true,
@@ -227,6 +235,9 @@ impl App {
             (Mode::List, KeyCode::Char('/')) => self.mode = Mode::Filter,
             (Mode::List, KeyCode::Char('r')) => self.load(),
             (Mode::List, KeyCode::Char('?')) => self.mode = Mode::Help,
+            (Mode::List, KeyCode::Char('d')) if self.selected().is_some() => {
+                self.mode = Mode::Delete
+            }
             (Mode::Filter, KeyCode::Enter) => self.mode = Mode::List,
             (Mode::Filter, KeyCode::Esc) => {
                 self.mode = Mode::List;
@@ -239,6 +250,18 @@ impl App {
             }
             (Mode::Filter, KeyCode::Char(c)) => self.set_filter(format!("{}{c}", self.filter)),
             _ => {}
+        }
+    }
+
+    /// Deletes the selected Link and reloads; the selection keeps its row, so it lands
+    /// on a neighbour.
+    fn delete_selected(&mut self) {
+        let Some(code) = self.selected().map(|l| l.code.clone()) else {
+            return;
+        };
+        match self.api.delete(&code) {
+            Ok(()) => self.load(),
+            Err(e) => self.links = Err(format!("{e:#}")),
         }
     }
 
@@ -313,6 +336,9 @@ impl App {
         if self.mode == Mode::Help {
             render_help(f, main);
         }
+        if let (Mode::Delete, Some(l)) = (&self.mode, self.selected()) {
+            render_delete(f, main, &l.code);
+        }
     }
 }
 
@@ -346,6 +372,38 @@ fn render_help(f: &mut Frame, area: Rect) {
             Block::bordered()
                 .title(" help ")
                 .dim()
+                .padding(Padding::horizontal(1)),
+        ),
+        area,
+    );
+}
+
+/// The delete confirmation, centred over `area`.
+fn render_delete(f: &mut Frame, area: Rect, code: &str) {
+    let text = vec![
+        Line::from(vec![
+            Span::from("Delete "),
+            Span::from(code).bold(),
+            Span::from("?"),
+        ]),
+        Line::from("Its Code will never be reused."),
+        Line::from(""),
+        Line::from(vec![
+            Span::from("y").fg(CRAB_RED).bold(),
+            Span::from(" deletes, any other key cancels").dim(),
+        ]),
+    ];
+    // Wide enough for a 64-character Custom Code: "Delete " + Code + "?" + border and padding.
+    let width = (code.chars().count() as u16 + 12).max(40);
+    let area = area.centered(
+        Constraint::Length(width),
+        Constraint::Length(text.len() as u16 + 2),
+    );
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Paragraph::new(text).block(
+            Block::bordered()
+                .title(" delete ")
                 .padding(Padding::horizontal(1)),
         ),
         area,
