@@ -64,6 +64,7 @@ pub fn app(pool: SqlitePool, codes: CodeGenerator, token: &str, base_url: &str) 
     };
     let api = Router::new()
         .route("/links", post(create_link))
+        .route("/links/{code}", get(get_link))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
         .nest("/api", api)
@@ -194,12 +195,32 @@ async fn create_link(
     ))
 }
 
+/// `GET /api/links/{code}`: one Link; 404 if missing or deleted.
+async fn get_link(
+    State(s): State<AppState>,
+    Path(code): Path<String>,
+) -> Result<Json<crablink_api::Link>, ApiError> {
+    sqlx::query_as::<_, LinkRow>(concat!(
+        "SELECT ",
+        link_columns!(),
+        " FROM links WHERE code = ? AND deleted_at IS NULL"
+    ))
+    .bind(&code)
+    .fetch_optional(&s.pool)
+    .await?
+    .map(|row| Json(row.into_dto(&s.base_url)))
+    .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "link not found".into()))
+}
+
 /// `GET /{code}`: 302 to the Target. Never 301/308, which browsers cache forever.
+/// Counts the click in the same statement that finds the Target.
 async fn redirect(State(s): State<AppState>, Path(code): Path<String>) -> Response {
-    let target: Option<String> = match sqlx::query_scalar("SELECT target FROM links WHERE code = ?")
-        .bind(&code)
-        .fetch_optional(&s.pool)
-        .await
+    let target: Option<String> = match sqlx::query_scalar(
+        "UPDATE links SET click_count = click_count + 1 WHERE code = ? RETURNING target",
+    )
+    .bind(&code)
+    .fetch_optional(&s.pool)
+    .await
     {
         Ok(t) => t,
         Err(e) => {
