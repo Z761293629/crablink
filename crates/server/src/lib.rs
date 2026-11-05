@@ -66,7 +66,7 @@ pub fn app(pool: SqlitePool, codes: CodeGenerator, token: &str, base_url: &str) 
     };
     let api = Router::new()
         .route("/links", post(create_link))
-        .route("/links/{code}", get(get_link))
+        .route("/links/{code}", get(get_link).delete(delete_link))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
         .nest("/api", api)
@@ -245,6 +245,23 @@ async fn get_link(
     .await?
     .map(|row| Json(row.into_dto(&s.base_url)))
     .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "link not found".into()))
+}
+
+/// `DELETE /api/links/{code}`: marks the Link deleted (ADR-0002). The row stays so
+/// its Code is never reused; 404 if missing or already deleted.
+async fn delete_link(
+    State(s): State<AppState>,
+    Path(code): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let done = sqlx::query("UPDATE links SET deleted_at = ? WHERE code = ? AND deleted_at IS NULL")
+        .bind(Utc::now())
+        .bind(&code)
+        .execute(&s.pool)
+        .await?;
+    if done.rows_affected() == 0 {
+        return Err(ApiError(StatusCode::NOT_FOUND, "link not found".into()));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `GET /{code}`: 302 to the Target. Never 301/308, which browsers cache forever.
