@@ -237,7 +237,7 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
             code,
             expires,
         } => {
-            let expires_at = expires.map(|e| parse_expires(&e, now)).transpose()?;
+            let expires_at = expires.map(|e| expires_flag(&e, now)).transpose()?;
             let link = api.create(&CreateLink {
                 target,
                 code,
@@ -298,7 +298,7 @@ fn edit_body(
     now: DateTime<Utc>,
 ) -> anyhow::Result<UpdateLink> {
     let expires_at = match expires {
-        Some(e) => Some(Some(parse_expires(&e, now)?)),
+        Some(e) => Some(Some(expires_flag(&e, now)?)),
         None if no_expires => Some(None),
         None => None,
     };
@@ -310,12 +310,17 @@ pub(crate) fn timestamp(t: DateTime<Utc>) -> String {
 }
 
 /// The Expiry as every command shows it: `never`, a timestamp, or a timestamp marked `(expired)`.
-pub fn expiry(l: &Link, now: DateTime<Utc>) -> String {
+pub(crate) fn expiry(l: &Link, now: DateTime<Utc>) -> String {
     match l.expires_at {
         None => "never".into(),
-        Some(t) if t <= now => format!("{} (expired)", timestamp(t)),
+        Some(t) if expired(l, now) => format!("{} (expired)", timestamp(t)),
         Some(t) => timestamp(t),
     }
+}
+
+/// Whether the Link's Expiry has passed.
+pub(crate) fn expired(l: &Link, now: DateTime<Utc>) -> bool {
+    l.expires_at.is_some_and(|t| t <= now)
 }
 
 fn print_link(l: &Link, now: DateTime<Utc>) {
@@ -362,12 +367,18 @@ fn read_token() -> anyhow::Result<String> {
     Ok(token)
 }
 
-/// `--expires`: an RFC 3339 timestamp, or a duration from `now` like `30m`, `12h`, `7d`.
-pub fn parse_expires(s: &str, now: DateTime<Utc>) -> anyhow::Result<DateTime<Utc>> {
+/// `--expires`, with an error naming the flag.
+fn expires_flag(s: &str, now: DateTime<Utc>) -> anyhow::Result<DateTime<Utc>> {
+    parse_expires(s, now).with_context(|| format!("invalid --expires {s:?}"))
+}
+
+/// An Expiry as typed: an RFC 3339 timestamp, or a duration from `now` like `30m`, `12h`, `7d`.
+/// The error only says what's accepted; callers name what was invalid.
+pub(crate) fn parse_expires(s: &str, now: DateTime<Utc>) -> anyhow::Result<DateTime<Utc>> {
     if let Ok(t) = DateTime::parse_from_rfc3339(s) {
         return Ok(t.into());
     }
-    let bad = || anyhow!("invalid --expires {s:?}: use an RFC 3339 timestamp or e.g. 30m, 12h, 7d");
+    let bad = || anyhow!("use an RFC 3339 timestamp or e.g. 30m, 12h, 7d");
     let unit = s.chars().last().ok_or_else(bad)?;
     let n: i64 = s[..s.len() - unit.len_utf8()].parse().map_err(|_| bad())?;
     let delta = match unit {

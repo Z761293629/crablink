@@ -12,8 +12,9 @@ fn lists_every_link_newest_first_across_pages() {
 
     let screen = srv.tui().screen();
 
-    for col in ["Code", "Clicks", "Expiry", "Target"] {
-        assert!(screen.contains(col), "missing {col}:\n{screen}");
+    let header = line_with(&screen, "Code");
+    for col in ["Code", "Click Count", "Expiry", "Target"] {
+        assert!(header.contains(col), "missing {col}:\n{screen}");
     }
     assert!(screen.contains("https://example.com/50"), "{screen}");
     assert!(screen.contains("never"), "{screen}");
@@ -59,6 +60,25 @@ fn no_arguments_without_a_terminal_prints_help() {
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert!(stdout.contains("Usage: crablink"), "{stdout}");
     assert!(stdout.contains("login"), "{stdout}");
+}
+
+#[test]
+fn missing_credentials_point_at_login() {
+    // The TUI resolves credentials as every subcommand does, but needs a terminal to
+    // start, so `ls` stands in for it here. No saved config under this HOME.
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_crablink"))
+        .arg("ls")
+        .env("HOME", "/nonexistent/crablink-test-home")
+        .env_remove("CRABLINK_URL")
+        .env_remove("CRABLINK_TOKEN")
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "{out:?}");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        stderr.contains("no server configured: run `crablink login --server <url>`"),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -206,8 +226,11 @@ fn the_detail_pane_shows_the_whole_link_and_the_list_truncates_long_targets() {
     // Only the detail pane can hold the whole Target (it wraps there if needed).
     assert!(screen.contains(target), "{screen}");
     assert!(line_with(&screen, "Click Count").contains('0'), "{screen}");
-    let expiry = line_with(&screen, "2099-01-02T03:04:05Z");
-    assert!(expiry.contains("Expiry"), "{screen}");
+    // The detail pane's row; the list shows the same Expiry, as `crablink ls` does.
+    assert!(
+        screen.contains("Expiry       2099-01-02T03:04:05Z"),
+        "{screen}"
+    );
     let created = link.created_at.format("%Y-%m-%dT%H:%M:%SZ").to_string();
     assert!(line_with(&screen, "Created").contains(&created), "{screen}");
 }
@@ -628,7 +651,7 @@ fn e_sets_an_expiry_and_clearing_it_removes_it() {
     assert_eq!(srv.api().get("abc").unwrap().expires_at, None);
     let screen = tui.screen();
     // The detail pane's row, not the list header's "Expiry".
-    assert!(screen.contains("Expiry      never"), "{screen}");
+    assert!(screen.contains("Expiry       never"), "{screen}");
 }
 
 #[test]
@@ -656,4 +679,78 @@ fn an_invalid_target_shows_the_servers_error_and_esc_leaves_the_link_unchanged()
     assert!(!tui.screen().contains("edit Link"), "{}", tui.screen());
     let link = srv.api().get("abc").unwrap();
     assert_eq!(link.target, "https://example.com/kept");
+}
+
+#[test]
+fn long_custom_codes_stay_whole_in_the_list_and_the_target_is_truncated() {
+    let srv = server();
+    let (a, b) = ("campaign-2026-autumn-email", "campaign-2026-autumn-print");
+    srv.create(a, "https://example.com/a/rather/long/path/that/never/fits");
+    srv.create(b, "https://example.com/b/rather/long/path/that/never/fits");
+
+    let screen = srv.tui().screen();
+
+    for code in [a, b] {
+        let row = line_with(&screen, &format!("{code} "));
+        assert!(row.contains("https://example.com/"), "{screen}");
+        assert!(!row.contains("never/fits"), "{screen}");
+    }
+}
+
+#[test]
+fn a_failed_delete_keeps_the_list_and_shows_the_servers_error() {
+    let srv = server();
+    srv.create("keep", "https://example.com/keep");
+    srv.create("gone", "https://example.com/gone");
+    let mut tui = srv.tui();
+    srv.api().delete("gone").unwrap(); // out of band, so the TUI's delete fails
+
+    tui.keys("dy");
+
+    let screen = tui.screen();
+    assert!(screen.contains("link not found (404"), "{screen}");
+    assert!(line_with(&screen, "keep ").contains("example.com/keep"));
+    assert!(line_with(&screen, "gone ").contains("example.com/gone"));
+}
+
+#[test]
+fn a_bad_expiry_is_explained_in_the_form_without_cli_flags() {
+    let srv = server();
+    let mut tui = srv.tui();
+
+    tui.keys("n");
+    tui.keys("https://example.com/");
+    tui.key(KeyCode::Tab);
+    tui.key(KeyCode::Tab);
+    tui.keys("soon");
+    tui.key(KeyCode::Enter);
+
+    let screen = tui.screen();
+    assert!(screen.contains("invalid Expiry \"soon\""), "{screen}");
+    assert!(!screen.contains("--expires"), "{screen}");
+    assert!(server_links(&srv).is_empty());
+}
+
+#[test]
+fn editing_only_the_target_leaves_a_sub_second_expiry_unchanged() {
+    let srv = server();
+    // A relative Expiry, as `crablink create --expires 7d` sends it: not on a whole second.
+    let expires_at = chrono::Utc::now() + chrono::TimeDelta::days(7);
+    srv.api()
+        .create(&CreateLink {
+            target: "https://example.com/before".into(),
+            code: Some("abc".into()),
+            expires_at: Some(expires_at),
+        })
+        .unwrap();
+    let before = srv.api().get("abc").unwrap().expires_at;
+    let mut tui = srv.tui();
+
+    tui.keys("e");
+    tui.keys("/more");
+    tui.key(KeyCode::Enter);
+
+    let link = srv.api().get("abc").unwrap();
+    assert_eq!(link.target, "https://example.com/before/more");
+    assert_eq!(link.expires_at, before);
 }

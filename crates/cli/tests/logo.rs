@@ -57,7 +57,7 @@ fn an_image_protocol_puts_the_logo_above_the_server() {
 
     let screen = tui.screen();
 
-    // 800x662 px, 20 cols of 10x20 px cells: 9 rows. 1 margin + 9 logo + 2 clear space.
+    // 800x661 px, 20 cols of 10x20 px cells: 9 rows. 1 margin + 9 logo + 2 clear space.
     let row = screen
         .lines()
         .position(|l| l.contains(host))
