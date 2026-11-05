@@ -527,6 +527,7 @@ dependencies = [
  "ratatui",
  "ratatui-image",
  "rpassword",
+ "rustix 0.38.44",
  "serde",
  "tokio",
  "toml",

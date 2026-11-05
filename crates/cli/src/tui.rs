@@ -1,6 +1,8 @@
 //! The full-screen TUI `crablink` opens with no subcommand. [`App`] is backend-free
 //! (key events in, [`App::render`] onto any `Frame`); only [`run`] touches the real terminal.
 
+use std::time::Duration;
+
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use crablink_api::{CreateLink, Link, UpdateLink};
@@ -32,7 +34,7 @@ const KEYS: &[(&str, &str)] = &[
 ];
 
 /// Which stacked lockup suits the terminal background (logo/GUIDELINES.md §7).
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Lockup {
     /// Shell Ink wordmark, for light backgrounds.
     Standard,
@@ -61,10 +63,38 @@ pub struct Caps {
 /// The stacked lockup, ready to draw through the terminal's image protocol.
 struct Logo {
     img: StatefulProtocol,
+    lockup: Lockup,
     /// Image size in pixels.
     px: (u32, u32),
     /// Cell size in pixels.
     font: FontSize,
+    /// Kept to re-encode the image when the background changes.
+    picker: Picker,
+    /// The terminal answered the background query at startup, so it's worth asking
+    /// again while the TUI runs.
+    follow: bool,
+}
+
+impl Logo {
+    fn new(picker: &Picker, lockup: Lockup, follow: bool) -> Logo {
+        let png: &[u8] = match lockup {
+            Lockup::Standard => {
+                include_bytes!("../../../logo/export/stacked/crablink-stacked-800.png")
+            }
+            Lockup::Reversed => {
+                include_bytes!("../../../logo/export/stacked/crablink-stacked-reversed-800.png")
+            }
+        };
+        let img = image::load_from_memory(png).expect("bundled PNG decodes");
+        Logo {
+            px: (img.width(), img.height()),
+            font: picker.font_size(),
+            img: picker.new_resize_protocol(img),
+            lockup,
+            picker: picker.clone(),
+            follow,
+        }
+    }
 }
 
 impl Caps {
@@ -89,23 +119,76 @@ impl Caps {
             Capability::Background(r, g, b) => Some((r, g, b)),
             _ => None,
         });
-        let png: &[u8] = match lockup(bg) {
-            Lockup::Standard => {
-                include_bytes!("../../../logo/export/stacked/crablink-stacked-800.png")
-            }
-            Lockup::Reversed => {
-                include_bytes!("../../../logo/export/stacked/crablink-stacked-reversed-800.png")
-            }
-        };
-        let img = image::load_from_memory(png).expect("bundled PNG decodes");
+        // ponytail: no re-query inside tmux, it needs passthrough-wrapped escapes.
+        let follow = bg.is_some() && !picker.tmux_detected();
         Caps {
-            logo: Some(Logo {
-                px: (img.width(), img.height()),
-                font: picker.font_size(),
-                img: picker.new_resize_protocol(img),
-            }),
+            logo: Some(Logo::new(picker, lockup(bg), follow)),
         }
     }
+
+    /// The lockup the sidebar shows, `None` when there's no logo.
+    pub fn lockup(&self) -> Option<Lockup> {
+        self.logo.as_ref().map(|l| l.lockup)
+    }
+
+    /// Switches the lockup when the terminal background has changed sides.
+    pub fn set_background(&mut self, bg: Option<(u8, u8, u8)>) {
+        if let Some(logo) = &mut self.logo
+            && logo.lockup != lockup(bg)
+        {
+            *logo = Logo::new(&logo.picker, lockup(bg), logo.follow);
+        }
+    }
+}
+
+/// Reads a reply to `ESC ] 11 ; ? ESC \ ESC [ 5 n` from `bytes`: the background, if the
+/// terminal answered OSC 11, once the status report (`ESC [ 0 n`) that ends the reply
+/// arrives. `None` if `bytes` runs out first. Stops right after the status report.
+fn background_reply(bytes: impl IntoIterator<Item = u8>) -> Option<Option<(u8, u8, u8)>> {
+    use ratatui_image::picker::cap_parser::{Parser, Response};
+    let mut parser = Parser::new();
+    let mut bg = None;
+    for b in bytes {
+        for r in parser.push(b as char) {
+            match r {
+                Response::Background(r, g, b) => bg = Some((r, g, b)),
+                Response::Status => return Some(bg),
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+/// Asks the terminal for its background again, mid-TUI. `None` when it didn't answer
+/// within the timeout.
+#[cfg(unix)]
+fn query_background() -> Option<Option<(u8, u8, u8)>> {
+    use rustix::event::{PollFd, PollFlags, poll};
+    use std::io::Write;
+    use std::time::Instant;
+
+    let mut out = std::io::stdout();
+    out.write_all(b"\x1b]11;?\x1b\\\x1b[5n").ok()?;
+    out.flush().ok()?;
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let stdin = rustix::stdio::stdin();
+    // One byte at a time, unbuffered, so nothing after the reply is taken from crossterm.
+    // ponytail: a key pressed in the ~1 ms the reply takes is swallowed.
+    background_reply(std::iter::from_fn(|| {
+        let left = deadline.checked_duration_since(Instant::now())?;
+        let mut fds = [PollFd::new(&stdin, PollFlags::IN)];
+        if poll(&mut fds, left.as_millis() as i32).ok()? == 0 {
+            return None;
+        }
+        let mut b = [0u8];
+        (rustix::io::read(stdin, &mut b).ok()? == 1).then_some(b[0])
+    }))
+}
+
+#[cfg(not(unix))]
+fn query_background() -> Option<Option<(u8, u8, u8)>> {
+    None
 }
 
 /// Logo width in columns, centred in the sidebar.
@@ -147,6 +230,8 @@ pub struct App {
     mode: Mode,
     /// The last failed action's error, shown under the list until the next key.
     error: Option<String>,
+    /// `r` was pressed: [`run`] asks the terminal for its background again.
+    redetect: bool,
     quit: bool,
 }
 
@@ -268,6 +353,7 @@ impl App {
             filter: String::new(),
             mode: Mode::List,
             error: None,
+            redetect: false,
             quit: false,
         };
         app.load();
@@ -344,7 +430,10 @@ impl App {
             (Mode::List, KeyCode::Char('k')) => self.move_selection(-1),
             (Mode::List, KeyCode::Char('/')) => self.mode = Mode::Filter,
             (Mode::List, KeyCode::Char('n')) => self.mode = Mode::Form(Form::default()),
-            (Mode::List, KeyCode::Char('r')) => self.load(),
+            (Mode::List, KeyCode::Char('r')) => {
+                self.load();
+                self.redetect = true;
+            }
             (Mode::List, KeyCode::Char('?')) => self.mode = Mode::Help,
             (Mode::List, KeyCode::Char('e')) => {
                 if let Some(form) = self.selected().map(Form::edit) {
@@ -713,12 +802,53 @@ pub fn run(api: Api, caps: Caps) -> anyhow::Result<()> {
     let res = (|| -> std::io::Result<()> {
         while !app.quit() {
             term.draw(|f| app.render(f))?;
-            if let Some(k) = event::read()?.as_key_press_event() {
+            // Idle for a second, or `r`: follow a terminal theme change. Only between
+            // event reads, so crossterm isn't reading stdin at the same time.
+            let idle = !event::poll(Duration::from_secs(1))?;
+            if !idle && let Some(k) = event::read()?.as_key_press_event() {
                 app.handle_key(k);
+            }
+            let asked = std::mem::take(&mut app.redetect);
+            if (idle || asked) && app.caps.logo.as_ref().is_some_and(|l| l.follow) {
+                match query_background() {
+                    Some(bg) => app.caps.set_background(bg),
+                    // No answer in time: a late one would reach crossterm as keys, so stop asking.
+                    None => app.caps.logo.iter_mut().for_each(|l| l.follow = false),
+                }
             }
         }
         Ok(())
     })();
     ratatui::restore();
     Ok(res?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::background_reply;
+
+    #[test]
+    fn reads_the_background_up_to_the_status_report() {
+        let mut bytes = b"\x1b]11;rgb:ffff/f1f1/e7e7\x1b\\\x1b[0nj".iter().copied();
+        assert_eq!(background_reply(&mut bytes), Some(Some((255, 241, 231))));
+        // Stops at the status report: a key typed after it is left for crossterm.
+        assert_eq!(bytes.next(), Some(b'j'));
+    }
+
+    #[test]
+    fn a_bel_terminated_answer_counts_too() {
+        let bytes = b"\x1b]11;rgb:0000/0000/0000\x07\x1b[0n".iter().copied();
+        assert_eq!(background_reply(bytes), Some(Some((0, 0, 0))));
+    }
+
+    #[test]
+    fn no_background_answer_before_the_status_report_is_unknown() {
+        assert_eq!(background_reply(b"\x1b[0n".iter().copied()), Some(None));
+    }
+
+    #[test]
+    fn no_status_report_means_no_reply() {
+        let bytes = b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\".iter().copied();
+        assert_eq!(background_reply(bytes), None);
+    }
 }

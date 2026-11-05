@@ -80,7 +80,7 @@ crablink rm rust-meetup
 
 服务器地址和 token 按字段逐个取，优先级从高到低：`--server` / `--token` 参数 > 环境变量 `CRABLINK_URL` / `CRABLINK_TOKEN` > `~/.config/crablink/config.toml`。`login` 先用 token 请求一次服务器，通过后才写配置文件，权限为 `0600`（仅本人可读写）。非终端环境下 `login` 从 stdin 读 token：`echo "$TOKEN" | crablink login --server https://crab.link`。
 
-不带参数运行 `crablink` 会在终端里打开全屏 TUI 浏览 Link（stdout 不是终端时只打印帮助）。左侧边栏顶部通过终端图像协议显示 crablink logo，并按终端背景自动选浅色/深色版本：Ghostty、kitty、WezTerm、iTerm2 及其他支持 kitty / iTerm2 / sixel 图像协议的终端会显示；macOS Terminal.app 等不支持图像协议的终端不显示 logo，其余照常可用。
+不带参数运行 `crablink` 会在终端里打开全屏 TUI 浏览 Link（stdout 不是终端时只打印帮助）。左侧边栏顶部通过终端图像协议显示 crablink logo，并按终端背景自动选浅色/深色版本：Ghostty、kitty、WezTerm、iTerm2 及其他支持 kitty / iTerm2 / sixel 图像协议的终端会显示；macOS Terminal.app 等不支持图像协议的终端不显示 logo，其余照常可用。TUI 运行中切换终端主题，logo 约 1 秒内跟着换版本，按 `r` 可立即重新检测（tmux 内不跟随）。
 
 ### HTTP API
 

@@ -20,6 +20,10 @@ serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.2.0"
 ureq = { version = "3.5.1", features = ["json"] }
 
+# Re-asks the terminal for its background mid-TUI; already in the tree via ratatui-image.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "0.38", features = ["event", "stdio"] }
+
 [dev-dependencies]
 axum = "0.8.9"
 crablink-server = { path = "../server" }

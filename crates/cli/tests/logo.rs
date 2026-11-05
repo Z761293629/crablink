@@ -76,3 +76,23 @@ fn a_short_terminal_clamps_the_logo() {
         tui.screen(); // drawing outside the buffer panics
     }
 }
+
+#[test]
+fn a_background_change_swaps_the_lockup() {
+    // No OSC 11 answer at startup: reversed.
+    let mut caps = Caps::from_picker(&picker(ProtocolType::Kitty));
+    assert_eq!(caps.lockup(), Some(Lockup::Reversed));
+
+    caps.set_background(Some((255, 255, 255)));
+    assert_eq!(caps.lockup(), Some(Lockup::Standard));
+
+    caps.set_background(Some((0, 0, 0)));
+    assert_eq!(caps.lockup(), Some(Lockup::Reversed));
+}
+
+#[test]
+fn a_background_change_never_adds_a_logo_without_an_image_protocol() {
+    let mut caps = Caps::from_picker(&picker(ProtocolType::Halfblocks));
+    caps.set_background(Some((255, 255, 255)));
+    assert_eq!(caps.lockup(), None);
+}
