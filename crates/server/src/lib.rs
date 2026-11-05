@@ -48,6 +48,18 @@ pub async fn connect(url: &str) -> Result<SqlitePool, sqlx::Error> {
     Ok(pool)
 }
 
+/// Copies the WAL into the database and truncates it to zero bytes. SQLite's own
+/// automatic checkpoints can only restart the WAL when no connection is reading it,
+/// which under steady redirect traffic is almost never, so without this the WAL file
+/// grows by a page per click and never shrinks. Briefly holds back writers; readers
+/// carry on.
+pub async fn checkpoint(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 #[derive(Clone)]
 struct AppState {
     pool: SqlitePool,

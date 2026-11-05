@@ -23,6 +23,17 @@ async fn main() {
         eprintln!("crablink-server: cannot open database {db_url}: {e}");
         exit(1);
     });
+    // ponytail: fixed 10 s; at the ~7k clicks/s a laptop sustains that caps the WAL near 300 MB.
+    let checkpoints = pool.clone();
+    tokio::spawn(async move {
+        let mut every = tokio::time::interval(std::time::Duration::from_secs(10));
+        loop {
+            every.tick().await;
+            if let Err(e) = crablink_server::checkpoint(&checkpoints).await {
+                eprintln!("crablink-server: WAL checkpoint failed: {e}");
+            }
+        }
+    });
     let app = crablink_server::app(
         pool,
         Arc::new(crablink_server::random_code),
