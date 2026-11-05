@@ -2,7 +2,7 @@
 //! (key events in, [`App::render`] onto any `Frame`); only [`run`] touches the real terminal.
 
 use chrono::{DateTime, Utc};
-use crablink_api::Link;
+use crablink_api::{CreateLink, Link};
 use ratatui::Frame;
 use ratatui::crossterm::event::{self, KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -22,6 +22,7 @@ const CRAB_RED: Color = Color::Rgb(0xE0, 0x41, 0x2A);
 const KEYS: &[(&str, &str)] = &[
     ("jk", "move ↑↓"),
     ("/", "filter"),
+    ("n", "new"),
     ("r", "refresh"),
     ("d", "delete"),
     ("?", "help"),
@@ -146,7 +147,6 @@ pub struct App {
 }
 
 /// Where key presses go.
-#[derive(PartialEq)]
 enum Mode {
     /// Moving through the list.
     List,
@@ -154,8 +154,52 @@ enum Mode {
     Filter,
     /// The `?` help over the list; any key closes it.
     Help,
+    /// The Link form over the list.
+    Form(Form),
     /// Asking to delete the selected Link; only `y` confirms.
     Delete,
+}
+
+/// The Link form: Target, Code, Expiry. `n` opens it empty to create a Link. Errors
+/// (the server's, or a bad Expiry) are shown in it and leave the input as typed.
+#[derive(Default)]
+struct Form {
+    /// Target, Code, Expiry, as typed.
+    values: [String; 3],
+    /// Index into `values` of the field being typed in.
+    focus: usize,
+    /// Editing an existing Link: the Code is shown, but can't be focused or changed.
+    edit: bool,
+    error: Option<String>,
+}
+
+/// The Code's index in [`Form::values`].
+const CODE: usize = 1;
+
+impl Form {
+    /// Moves the focus `by` fields forward, wrapping, skipping a read-only Code.
+    fn move_focus(&mut self, by: usize) {
+        loop {
+            self.focus = (self.focus + by) % self.values.len();
+            if !(self.edit && self.focus == CODE) {
+                return;
+            }
+        }
+    }
+
+    /// Creates the Link as typed; returns its Code. Empty Code and Expiry mean none.
+    fn create(&self, api: &Api) -> anyhow::Result<String> {
+        let [target, code, expires] = &self.values;
+        let expires_at = (!expires.is_empty())
+            .then(|| crate::parse_expires(expires, Utc::now()))
+            .transpose()?;
+        let link = api.create(&CreateLink {
+            target: target.clone(),
+            code: (!code.is_empty()).then(|| code.clone()),
+            expires_at,
+        })?;
+        Ok(link.code)
+    }
 }
 
 impl App {
@@ -220,8 +264,17 @@ impl App {
     }
 
     pub fn handle_key(&mut self, k: KeyEvent) {
-        match (&self.mode, k.code) {
+        // Before the match, which borrows the mode mutably for the form's arms.
+        let has_selection = self.selected().is_some();
+        match (&mut self.mode, k.code) {
             (Mode::Help, _) => self.mode = Mode::List,
+            (Mode::Form(_), KeyCode::Esc) => self.mode = Mode::List,
+            (Mode::Form(_), KeyCode::Enter) => self.submit(),
+            (Mode::Form(f), KeyCode::Tab | KeyCode::Down) => f.move_focus(1),
+            (Mode::Form(f), KeyCode::BackTab | KeyCode::Up) => f.move_focus(f.values.len() - 1),
+            (Mode::Form(f), KeyCode::Backspace) => drop(f.values[f.focus].pop()),
+            (Mode::Form(f), KeyCode::Char(c)) => f.values[f.focus].push(c),
+            (Mode::Form(_), _) => {}
             (Mode::Delete, KeyCode::Char('y')) => {
                 self.mode = Mode::List;
                 self.delete_selected();
@@ -233,11 +286,10 @@ impl App {
             (Mode::List, KeyCode::Char('j')) => self.move_selection(1),
             (Mode::List, KeyCode::Char('k')) => self.move_selection(-1),
             (Mode::List, KeyCode::Char('/')) => self.mode = Mode::Filter,
+            (Mode::List, KeyCode::Char('n')) => self.mode = Mode::Form(Form::default()),
             (Mode::List, KeyCode::Char('r')) => self.load(),
             (Mode::List, KeyCode::Char('?')) => self.mode = Mode::Help,
-            (Mode::List, KeyCode::Char('d')) if self.selected().is_some() => {
-                self.mode = Mode::Delete
-            }
+            (Mode::List, KeyCode::Char('d')) if has_selection => self.mode = Mode::Delete,
             (Mode::Filter, KeyCode::Enter) => self.mode = Mode::List,
             (Mode::Filter, KeyCode::Esc) => {
                 self.mode = Mode::List;
@@ -250,6 +302,23 @@ impl App {
             }
             (Mode::Filter, KeyCode::Char(c)) => self.set_filter(format!("{}{c}", self.filter)),
             _ => {}
+        }
+    }
+
+    /// Creates the Link in the form and selects it, or shows the error in the form.
+    fn submit(&mut self) {
+        let Mode::Form(form) = &mut self.mode else {
+            return;
+        };
+        match form.create(&self.api) {
+            Ok(code) => {
+                self.mode = Mode::List;
+                // The new Link may not match the filter, and only a visible Link can be selected.
+                self.filter.clear();
+                self.load();
+                self.select_code(&code);
+            }
+            Err(e) => form.error = Some(format!("{e:#}")),
         }
     }
 
@@ -305,11 +374,12 @@ impl App {
         let [list, detail] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(8)]).areas(main);
         let mut list = pad(list, 1);
-        if self.mode == Mode::Filter || !self.filter.is_empty() {
+        let filtering = matches!(self.mode, Mode::Filter);
+        if filtering || !self.filter.is_empty() {
             let [line, rest] =
                 Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(list);
             f.render_widget(Line::from(format!("/{}", self.filter)), line);
-            if self.mode == Mode::Filter {
+            if filtering {
                 f.set_cursor_position((line.x + 1 + self.filter.chars().count() as u16, line.y));
             }
             list = rest;
@@ -333,11 +403,15 @@ impl App {
         if let Some(l) = self.selected() {
             render_detail(f, detail, l, now);
         }
-        if self.mode == Mode::Help {
-            render_help(f, main);
-        }
-        if let (Mode::Delete, Some(l)) = (&self.mode, self.selected()) {
-            render_delete(f, main, &l.code);
+        match &self.mode {
+            Mode::Help => render_help(f, main),
+            Mode::Form(form) => render_form(f, main, form),
+            Mode::Delete => {
+                if let Some(l) = self.selected() {
+                    render_delete(f, main, &l.code);
+                }
+            }
+            Mode::List | Mode::Filter => {}
         }
     }
 }
@@ -376,6 +450,54 @@ fn render_help(f: &mut Frame, area: Rect) {
         ),
         area,
     );
+}
+
+/// The Link form, centred over `area`, with the cursor in the focused field.
+fn render_form(f: &mut Frame, area: Rect, form: &Form) {
+    const LABEL: u16 = 13;
+    let code = if form.edit { "Code" } else { "Custom Code" };
+    let fields = [
+        ("Target", ""),
+        (code, "generated"),
+        ("Expiry", "never, or 30m, 12h, 7d, RFC 3339"),
+    ];
+    let area = area.centered(Constraint::Length(64), Constraint::Length(8));
+    let block = Block::bordered()
+        .title(if form.edit {
+            " edit Link "
+        } else {
+            " new Link "
+        })
+        .padding(Padding::horizontal(1));
+    let inner = block.inner(area);
+    // Columns left for a value after its label, keeping one for the cursor.
+    let room = inner.width.saturating_sub(LABEL + 1) as usize;
+    let mut text: Vec<Line> = fields
+        .iter()
+        .zip(&form.values)
+        .enumerate()
+        .map(|(i, ((label, placeholder), v))| {
+            let value = match v.as_str() {
+                "" => Span::from(*placeholder).dim(),
+                v if form.edit && i == CODE => Span::from(v).dim(),
+                v => Span::from(tail(v, room)),
+            };
+            Line::from(vec![Span::from(format!("{label:<13}")).dim(), value])
+        })
+        .collect();
+    text.push(Line::from(""));
+    text.push(Line::from(form.error.as_deref().unwrap_or_default()).fg(CRAB_RED));
+    text.push(Line::from("Tab next field · Enter save · Esc cancel").dim());
+    f.render_widget(Clear, area);
+    f.render_widget(Paragraph::new(text).block(block), area);
+    let typed = tail(&form.values[form.focus], room).chars().count() as u16;
+    f.set_cursor_position((inner.x + LABEL + typed, inner.y + form.focus as u16));
+}
+
+/// The last `n` characters of `s`, so the end of a long value stays in view while typing.
+fn tail(s: &str, n: usize) -> &str {
+    let skip = s.chars().count().saturating_sub(n);
+    s.char_indices().nth(skip).map_or("", |(i, _)| &s[i..])
 }
 
 /// The delete confirmation, centred over `area`.

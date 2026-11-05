@@ -331,6 +331,141 @@ fn question_mark_shows_every_key_and_the_version() {
     assert!(!tui.screen().contains("refresh"), "{}", tui.screen());
 }
 
+/// Every Link on the server, newest first.
+fn server_links(srv: &TestServer) -> Vec<crablink_api::Link> {
+    let mut links = Vec::new();
+    srv.api().list(|page| links.extend(page)).unwrap();
+    links
+}
+
+#[test]
+fn n_creates_a_link_with_a_generated_code_and_selects_it() {
+    let srv = server();
+    srv.create("older", "https://example.com/older");
+    let mut tui = srv.tui();
+    tui.keys("j"); // move off the top, so selecting the new Link is the form's doing
+
+    tui.keys("n");
+    assert!(tui.screen().contains("Custom Code"), "{}", tui.screen());
+    tui.keys("https://example.com/new");
+    tui.key(KeyCode::Enter);
+
+    let links = server_links(&srv);
+    assert_eq!(links.len(), 2);
+    let new = &links[0];
+    assert_eq!(new.target, "https://example.com/new");
+    assert_eq!(new.expires_at, None);
+    let screen = tui.screen();
+    assert!(
+        !screen.contains("Custom Code"),
+        "form still open:\n{screen}"
+    );
+    assert!(screen.contains("2 Links"), "{screen}");
+    assert!(
+        line_with(&screen, "Short URL").contains(&new.short_url),
+        "{screen}"
+    );
+}
+
+#[test]
+fn the_form_takes_a_custom_code_and_either_expiry_format() {
+    let srv = server();
+    let mut tui = srv.tui();
+    // Fill the form: Target, then Tab to Custom Code, Tab to Expiry.
+    let create = |tui: &mut Tui, target: &str, code: &str, expires: &str| {
+        tui.keys("n");
+        tui.keys(target);
+        tui.key(KeyCode::Tab);
+        tui.keys(code);
+        tui.key(KeyCode::Tab);
+        tui.keys(expires);
+        tui.key(KeyCode::Enter);
+    };
+
+    let before = chrono::Utc::now();
+    create(&mut tui, "https://example.com/rel", "rel", "7d");
+    create(
+        &mut tui,
+        "https://example.com/abs",
+        "abs",
+        "2099-01-02T03:04:05Z",
+    );
+
+    let rel = srv.api().get("rel").unwrap();
+    assert_eq!(rel.target, "https://example.com/rel");
+    let in_7d = rel.expires_at.unwrap() - before;
+    let week = chrono::TimeDelta::days(7);
+    assert!(
+        in_7d >= week && in_7d < week + chrono::TimeDelta::minutes(1),
+        "{in_7d}"
+    );
+    let abs = srv.api().get("abs").unwrap();
+    assert_eq!(
+        abs.expires_at,
+        Some("2099-01-02T03:04:05Z".parse().unwrap())
+    );
+    let screen = tui.screen();
+    assert!(
+        line_with(&screen, "Short URL").contains(&abs.short_url),
+        "{screen}"
+    );
+}
+
+#[test]
+fn a_taken_code_shows_the_servers_error_and_keeps_the_input() {
+    let srv = server();
+    srv.create("taken", "https://example.com/first");
+    let mut tui = srv.tui();
+
+    tui.keys("n");
+    tui.keys("https://example.com/second");
+    tui.key(KeyCode::Tab);
+    tui.keys("taken");
+    tui.key(KeyCode::Tab);
+    tui.keys("12h");
+    tui.key(KeyCode::Enter);
+
+    let screen = tui.screen();
+    assert!(screen.contains("code already taken (409"), "{screen}");
+    // The form's rows: from its title down.
+    let form = &screen[screen.find("new Link").expect(&screen)..];
+    let field = |label| line_with(form, label);
+    assert!(field("Target").contains("https://example.com/second"));
+    assert!(field("Custom Code").contains("taken"));
+    assert!(field("Expiry").contains("12h"));
+    assert_eq!(server_links(&srv).len(), 1);
+
+    // Still open and editable: back to the Code, fix it, and save.
+    tui.key(KeyCode::BackTab);
+    tui.keys("2");
+    tui.key(KeyCode::Enter);
+    let link = srv.api().get("taken2").unwrap();
+    assert_eq!(link.target, "https://example.com/second");
+    assert!(!tui.screen().contains("Custom Code"), "{}", tui.screen());
+}
+
+#[test]
+fn esc_cancels_the_form_without_creating_anything() {
+    let srv = server();
+    let mut tui = srv.tui();
+
+    tui.keys("n");
+    tui.keys("https://example.com/q"); // `q` is typed, not taken as quit
+    tui.key(KeyCode::Esc);
+
+    assert!(!tui.app.quit());
+    let screen = tui.screen();
+    assert!(!screen.contains("Custom Code"), "{screen}");
+    assert!(
+        screen.contains("press n to create your first Link"),
+        "{screen}"
+    );
+    assert!(server_links(&srv).is_empty());
+    // A new form starts empty.
+    tui.keys("n");
+    assert!(!tui.screen().contains("example.com/q"), "{}", tui.screen());
+}
+
 #[test]
 fn d_then_y_deletes_the_selected_link_after_naming_its_code() {
     let srv = server();
