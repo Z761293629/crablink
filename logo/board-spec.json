@@ -1,0 +1,34 @@
+{
+  "brand": "crablink",
+  "tagline": "用 Rust 写的短链服务",
+  "brief": "一个用 Rust 写的开源短链服务，面向开发者。Logo 要同时带出“螃蟹”（Rust 社区）和“短链”两层意思，16px 下也要认得出。",
+  "adjectives": ["快", "小", "可靠", "有点俏皮"],
+  "criteria": "成功标准：既有螃蟹又有短链，16px 可辨认，单色可用，跟同类短链工具的链环 / 剪刀 / 箭头拉开距离。",
+  "industry": "software",
+  "nav": ["Docs", "API", "GitHub"],
+  "brand_color": "#E0412A",
+  "tile_color": "#17181C",
+  "greyscale": false,
+  "final": true,
+  "designer": "Claude",
+  "concepts": [
+    {
+      "name": "链环蟹壳",
+      "symbol": "masters/crablink-symbol.svg",
+      "lockup": "masters/crablink-horizontal.svg",
+      "stacked": "masters/crablink-stacked.svg",
+      "symbol_on_tile": "masters/crablink-symbol.svg",
+      "stacked_on_tile": "masters/crablink-stacked-reversed.svg",
+      "symbol_on_dark": "masters/crablink-symbol.svg",
+      "lockup_on_dark": "masters/crablink-horizontal-reversed.svg",
+      "stacked_on_dark": "masters/crablink-stacked-reversed.svg",
+      "idea": "蟹壳就是一节短链环：一眼是螃蟹，再看是链接。",
+      "rationale": [
+        "链环做蟹壳，螃蟹和短链落在同一个形状上",
+        "两侧的腿像 = 号，带点代码感；16px 下正是这对腿保住了螃蟹的轮廓",
+        "字标是几何构造的，c 的开口和蟹钳缺口都是 60° 径向切口"
+      ]
+    }
+  ],
+  "recommendation": "定稿：蟹红 #E0412A + 壳墨 #17181C。"
+}
