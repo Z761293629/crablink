@@ -167,12 +167,39 @@ fn validate_target(target: &str, base_url: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// Custom Codes that would shadow the service's own routes (compared case-insensitively).
+const RESERVED_CODES: &[&str] = &["api", "admin", "health"];
+
+/// A Custom Code matches `[A-Za-z0-9_-]{3,64}` and is not reserved.
+fn validate_custom_code(code: &str) -> Result<(), ApiError> {
+    let well_formed = (3..=64).contains(&code.len())
+        && code
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if !well_formed {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "code must be 3-64 characters of A-Z, a-z, 0-9, _ or -".into(),
+        ));
+    }
+    if RESERVED_CODES.iter().any(|r| r.eq_ignore_ascii_case(code)) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            format!("code {code:?} is reserved"),
+        ));
+    }
+    Ok(())
+}
+
 async fn create_link(
     State(s): State<AppState>,
     req: Result<Json<crablink_api::CreateLink>, JsonRejection>,
 ) -> Result<(StatusCode, Json<crablink_api::Link>), ApiError> {
     let Json(req) = req?;
     validate_target(&req.target, &s.base_url)?;
+    if let Some(code) = &req.code {
+        validate_custom_code(code)?;
+    }
     let now = Utc::now();
     // Insert and let the unique constraint reject a taken Code; never check first (ADR-0003).
     for _ in 0..MAX_CODE_ATTEMPTS {
@@ -180,7 +207,7 @@ async fn create_link(
             "INSERT INTO links (code, target, created_at, updated_at, expires_at) VALUES (?, ?, ?, ?, ?) RETURNING ",
             link_columns!()
         ))
-        .bind((s.codes)())
+        .bind(req.code.clone().unwrap_or_else(|| (s.codes)()))
         .bind(&req.target)
         .bind(now)
         .bind(now)
@@ -189,6 +216,10 @@ async fn create_link(
         .await;
         match inserted {
             Ok(row) => return Ok((StatusCode::CREATED, Json(row.into_dto(&s.base_url)))),
+            // A taken Custom Code is the caller's to fix: never overwrite, never retry.
+            Err(sqlx::Error::Database(e)) if e.is_unique_violation() && req.code.is_some() => {
+                return Err(ApiError(StatusCode::CONFLICT, "code already taken".into()));
+            }
             Err(sqlx::Error::Database(e)) if e.is_unique_violation() => continue,
             Err(e) => return Err(e.into()),
         }
