@@ -317,6 +317,7 @@ fn question_mark_shows_every_key_and_the_version() {
         "jk move",
         "/ filter",
         "r refresh",
+        "d delete",
         "? help",
         "q quit",
         "Esc",
@@ -463,4 +464,82 @@ fn esc_cancels_the_form_without_creating_anything() {
     // A new form starts empty.
     tui.keys("n");
     assert!(!tui.screen().contains("example.com/q"), "{}", tui.screen());
+}
+
+#[test]
+fn d_then_y_deletes_the_selected_link_after_naming_its_code() {
+    let srv = server();
+    srv.create("keep", "https://example.com/keep");
+    srv.create("doomed", "https://example.com/doomed");
+    let mut tui = srv.tui();
+
+    tui.keys("d");
+    let screen = tui.screen();
+    assert!(line_with(&screen, "Delete").contains("doomed"), "{screen}");
+    assert!(screen.contains("never be reused"), "{screen}");
+    assert!(srv.api().get("doomed").is_ok());
+
+    tui.keys("y");
+    let screen = tui.screen();
+    assert!(srv.api().get("doomed").is_err());
+    assert!(!screen.contains("doomed"), "{screen}");
+    assert!(!screen.contains("never be reused"), "{screen}");
+    assert!(screen.contains("1 Link"), "{screen}");
+}
+
+#[test]
+fn any_key_but_y_cancels_the_delete() {
+    let srv = server();
+    srv.create("safe", "https://example.com/safe");
+    let mut tui = srv.tui();
+
+    for key in [
+        KeyCode::Char('n'),
+        KeyCode::Char('q'),
+        KeyCode::Esc,
+        KeyCode::Enter,
+        KeyCode::Down,
+    ] {
+        tui.keys("d");
+        assert!(tui.screen().contains("never be reused"));
+        tui.key(key);
+        let screen = tui.screen();
+        assert!(!screen.contains("never be reused"), "{key:?}:\n{screen}");
+        assert!(!tui.app.quit(), "{key:?}");
+        assert!(srv.api().get("safe").is_ok(), "{key:?}");
+        assert!(screen.contains("safe "), "{key:?}:\n{screen}");
+    }
+}
+
+#[test]
+fn after_deleting_the_selection_lands_on_a_neighbour() {
+    let srv = server();
+    for code in ["ccc", "bbb", "aaa"] {
+        srv.create(code, &format!("https://example.com/{code}"));
+    }
+    let mut tui = srv.tui();
+    let selected = |tui: &mut Tui| {
+        let screen = tui.screen();
+        let short = line_with(&screen, "Short URL").to_owned();
+        let row = line_with(&screen, "▌").to_owned();
+        (short, row)
+    };
+
+    // List is aaa, bbb, ccc. Deleting the middle row selects the one below it.
+    tui.keys("jdy");
+    let (short, row) = selected(&mut tui);
+    assert!(short.contains(&format!("{}/ccc", srv.url)), "{short}");
+    assert!(row.contains("ccc"), "{row}");
+
+    // Deleting the last row selects the one above it.
+    tui.keys("dy");
+    let (short, row) = selected(&mut tui);
+    assert!(short.contains(&format!("{}/aaa", srv.url)), "{short}");
+    assert!(row.contains("aaa"), "{row}");
+
+    // Deleting the only Link leaves an empty list, and d then does nothing.
+    tui.keys("dy");
+    assert!(tui.screen().contains("0 Links"));
+    tui.keys("d");
+    assert!(!tui.screen().contains("never be reused"));
 }

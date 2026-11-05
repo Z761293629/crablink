@@ -24,6 +24,7 @@ const KEYS: &[(&str, &str)] = &[
     ("/", "filter"),
     ("n", "new"),
     ("r", "refresh"),
+    ("d", "delete"),
     ("?", "help"),
     ("q", "quit (Esc)"),
 ];
@@ -155,6 +156,8 @@ enum Mode {
     Help,
     /// The Link form over the list.
     Form(Form),
+    /// Asking to delete the selected Link; only `y` confirms.
+    Delete,
 }
 
 /// The Link form: Target, Code, Expiry. `n` opens it empty to create a Link. Errors
@@ -261,6 +264,8 @@ impl App {
     }
 
     pub fn handle_key(&mut self, k: KeyEvent) {
+        // Before the match, which borrows the mode mutably for the form's arms.
+        let has_selection = self.selected().is_some();
         match (&mut self.mode, k.code) {
             (Mode::Help, _) => self.mode = Mode::List,
             (Mode::Form(_), KeyCode::Esc) => self.mode = Mode::List,
@@ -270,6 +275,11 @@ impl App {
             (Mode::Form(f), KeyCode::Backspace) => drop(f.values[f.focus].pop()),
             (Mode::Form(f), KeyCode::Char(c)) => f.values[f.focus].push(c),
             (Mode::Form(_), _) => {}
+            (Mode::Delete, KeyCode::Char('y')) => {
+                self.mode = Mode::List;
+                self.delete_selected();
+            }
+            (Mode::Delete, _) => self.mode = Mode::List,
             (_, KeyCode::Down) => self.move_selection(1),
             (_, KeyCode::Up) => self.move_selection(-1),
             (Mode::List, KeyCode::Char('q') | KeyCode::Esc) => self.quit = true,
@@ -279,6 +289,7 @@ impl App {
             (Mode::List, KeyCode::Char('n')) => self.mode = Mode::Form(Form::default()),
             (Mode::List, KeyCode::Char('r')) => self.load(),
             (Mode::List, KeyCode::Char('?')) => self.mode = Mode::Help,
+            (Mode::List, KeyCode::Char('d')) if has_selection => self.mode = Mode::Delete,
             (Mode::Filter, KeyCode::Enter) => self.mode = Mode::List,
             (Mode::Filter, KeyCode::Esc) => {
                 self.mode = Mode::List;
@@ -308,6 +319,18 @@ impl App {
                 self.select_code(&code);
             }
             Err(e) => form.error = Some(format!("{e:#}")),
+        }
+    }
+
+    /// Deletes the selected Link and reloads; the selection keeps its row, so it lands
+    /// on a neighbour.
+    fn delete_selected(&mut self) {
+        let Some(code) = self.selected().map(|l| l.code.clone()) else {
+            return;
+        };
+        match self.api.delete(&code) {
+            Ok(()) => self.load(),
+            Err(e) => self.links = Err(format!("{e:#}")),
         }
     }
 
@@ -383,6 +406,11 @@ impl App {
         match &self.mode {
             Mode::Help => render_help(f, main),
             Mode::Form(form) => render_form(f, main, form),
+            Mode::Delete => {
+                if let Some(l) = self.selected() {
+                    render_delete(f, main, &l.code);
+                }
+            }
             Mode::List | Mode::Filter => {}
         }
     }
@@ -470,6 +498,38 @@ fn render_form(f: &mut Frame, area: Rect, form: &Form) {
 fn tail(s: &str, n: usize) -> &str {
     let skip = s.chars().count().saturating_sub(n);
     s.char_indices().nth(skip).map_or("", |(i, _)| &s[i..])
+}
+
+/// The delete confirmation, centred over `area`.
+fn render_delete(f: &mut Frame, area: Rect, code: &str) {
+    let text = vec![
+        Line::from(vec![
+            Span::from("Delete "),
+            Span::from(code).bold(),
+            Span::from("?"),
+        ]),
+        Line::from("Its Code will never be reused."),
+        Line::from(""),
+        Line::from(vec![
+            Span::from("y").fg(CRAB_RED).bold(),
+            Span::from(" deletes, any other key cancels").dim(),
+        ]),
+    ];
+    // Wide enough for a 64-character Custom Code: "Delete " + Code + "?" + border and padding.
+    let width = (code.chars().count() as u16 + 12).max(40);
+    let area = area.centered(
+        Constraint::Length(width),
+        Constraint::Length(text.len() as u16 + 2),
+    );
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Paragraph::new(text).block(
+            Block::bordered()
+                .title(" delete ")
+                .padding(Padding::horizontal(1)),
+        ),
+        area,
+    );
 }
 
 /// The selected Link in full, under the list.
