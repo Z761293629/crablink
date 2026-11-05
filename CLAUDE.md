@@ -11,3 +11,11 @@ Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `
 ### Domain docs
 
 Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
+
+## Commits
+
+Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/): `type(scope): description`.
+
+- Types: `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `build`, `ci`, `chore`, `revert`.
+- Scope names the area touched: `api`, `cli`, `server` (the crates), `tui`, `brand`, `release`. Leave it out when a change spans several.
+- An issue the commit closes goes at the end of the description: `feat(tui): delete the selected Link after confirmation (#27)`.
