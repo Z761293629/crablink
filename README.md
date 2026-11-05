@@ -66,6 +66,8 @@ crablink edit rust-meetup --no-expires       # 或 --expires 30d / RFC 3339，�
 crablink rm rust-meetup
 ```
 
+服务器地址和 token 按字段逐个取，优先级从高到低：`--server` / `--token` 参数 > 环境变量 `CRABLINK_URL` / `CRABLINK_TOKEN` > `~/.config/crablink/config.toml`。`login` 先用 token 请求一次服务器，通过后才写配置文件，权限为 `0600`（仅本人可读写）。非终端环境下 `login` 从 stdin 读 token：`echo "$TOKEN" | crablink login --server https://crab.link`。
+
 ### HTTP API
 
 | 方法 | 路径 | 说明 |

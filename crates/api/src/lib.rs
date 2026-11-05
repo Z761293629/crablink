@@ -49,7 +49,7 @@ pub struct Link {
 
 /// Body of every management API error response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Error {
+pub struct ErrorBody {
     pub error: String,
 }
 

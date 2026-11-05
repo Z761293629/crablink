@@ -6,9 +6,10 @@ use std::path::PathBuf;
 use anyhow::{Context, anyhow, bail};
 use chrono::{DateTime, TimeDelta, Utc};
 use clap::{Args, Parser, Subcommand};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use ureq::http::Response;
-use ureq::{Body, RequestBuilder, typestate::WithBody, typestate::WithoutBody};
+use ureq::http::{Method, Request, Response};
+use ureq::{Body, SendBody};
 
 #[derive(Parser)]
 #[command(version, about = "Manage Links on a crablink server")]
@@ -100,19 +101,18 @@ fn load_config() -> anyhow::Result<Creds> {
     }
 }
 
-/// Writes the config readable only by the owner (`0600`), even if the file already existed.
+/// Writes the config readable only by the owner (`0600` on Unix), even if the file already existed.
 fn save_config(creds: &Creds) -> anyhow::Result<PathBuf> {
     use std::io::Write;
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let path = config_path()?;
     std::fs::create_dir_all(path.parent().unwrap())?;
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&path)?;
-    f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
+    let mut f = opts.open(&path)?;
+    #[cfg(unix)]
+    f.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
     f.write_all(toml::to_string(creds)?.as_bytes())?;
     Ok(path)
 }
@@ -124,44 +124,40 @@ struct Api {
 }
 
 impl Api {
-    fn agent() -> ureq::Agent {
-        ureq::Agent::config_builder()
+    /// Sends an authenticated request; fails with the server's `{ "error" }` message on a non-2xx response.
+    fn send(&self, method: Method, path: &str, body: SendBody) -> anyhow::Result<Response<Body>> {
+        let req = Request::builder()
+            .method(method)
+            .uri(format!("{}{path}", self.server))
+            .header("Authorization", format!("Bearer {}", self.token))
+            // `agent.run` ignores `SendBody::from_json`'s content type; every API body is JSON.
+            .header("Content-Type", "application/json")
+            .body(body)?;
+        let agent: ureq::Agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
             .build()
-            .new_agent()
-    }
-
-    fn auth<B>(&self, req: RequestBuilder<B>) -> RequestBuilder<B> {
-        req.header("Authorization", format!("Bearer {}", self.token))
-    }
-
-    fn get(&self, path: &str) -> RequestBuilder<WithoutBody> {
-        self.auth(Self::agent().get(format!("{}{path}", self.server)))
-    }
-
-    fn post(&self, path: &str) -> RequestBuilder<WithBody> {
-        self.auth(Self::agent().post(format!("{}{path}", self.server)))
-    }
-
-    fn patch(&self, path: &str) -> RequestBuilder<WithBody> {
-        self.auth(Self::agent().patch(format!("{}{path}", self.server)))
-    }
-
-    fn delete(&self, path: &str) -> RequestBuilder<WithoutBody> {
-        self.auth(Self::agent().delete(format!("{}{path}", self.server)))
-    }
-
-    /// Fails with the server's `{ "error" }` message on a non-2xx response.
-    fn check(&self, res: Result<Response<Body>, ureq::Error>) -> anyhow::Result<Response<Body>> {
-        let mut res = res.with_context(|| format!("cannot reach {}", self.server))?;
+            .into();
+        let mut res = agent
+            .run(req)
+            .with_context(|| format!("cannot reach {}", self.server))?;
         let status = res.status();
         if status.is_success() {
             return Ok(res);
         }
-        match res.body_mut().read_json::<crablink_api::Error>() {
+        match res.body_mut().read_json::<crablink_api::ErrorBody>() {
             Ok(e) => bail!("{} ({status})", e.error),
             Err(_) => bail!("server returned {status}"),
         }
+    }
+
+    /// `send`, then read the JSON response body.
+    fn json<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        body: SendBody,
+    ) -> anyhow::Result<T> {
+        Ok(self.send(method, path, body)?.body_mut().read_json()?)
     }
 }
 
@@ -173,63 +169,58 @@ fn main() {
 }
 
 fn run(cli: Cli) -> anyhow::Result<()> {
-    match cli.cmd {
+    if let Cmd::Login = cli.cmd {
         // A broken config must not stop `login` from replacing it.
-        Cmd::Login => login(cli.creds.or(load_config().unwrap_or_default()).server),
+        return login(cli.creds.or(load_config().unwrap_or_default()).server);
+    }
+    let api = cli.creds.or(load_config()?).api()?;
+    let now = Utc::now();
+    match cli.cmd {
+        Cmd::Login => unreachable!("handled above"),
         Cmd::Create {
             target,
             code,
             expires,
         } => {
-            let expires_at = expires.map(|e| parse_expires(&e, Utc::now())).transpose()?;
-            let api = cli.creds.or(load_config()?).api()?;
+            let expires_at = expires.map(|e| parse_expires(&e, now)).transpose()?;
             let body = crablink_api::CreateLink {
                 target,
                 code,
                 expires_at,
             };
-            let link: crablink_api::Link = api
-                .check(api.post("/api/links").send_json(&body))?
-                .body_mut()
-                .read_json()?;
+            let link: crablink_api::Link =
+                api.json(Method::POST, "/api/links", SendBody::from_json(&body)?)?;
             println!("{}", link.short_url);
-            Ok(())
         }
         Cmd::Ls => {
-            let api = cli.creds.or(load_config()?).api()?;
-            let now = Utc::now();
-            let mut cursor = None;
+            let mut cursor: Option<String> = None;
             loop {
-                let mut req = api.get("/api/links");
-                if let Some(c) = &cursor {
-                    req = req.query("cursor", c);
-                }
-                let page: crablink_api::LinkPage = api.check(req.call())?.body_mut().read_json()?;
+                let path = match &cursor {
+                    Some(c) => format!("/api/links?cursor={}", encode(c)),
+                    None => "/api/links".into(),
+                };
+                let page: crablink_api::LinkPage =
+                    api.json(Method::GET, &path, SendBody::none())?;
                 for l in &page.links {
-                    let expiry = match l.expires_at {
-                        None => "never".to_string(),
-                        Some(t) if t <= now => format!("{} (expired)", t.format("%Y-%m-%d %H:%M")),
-                        Some(t) => t.format("%Y-%m-%d %H:%M").to_string(),
-                    };
                     println!(
-                        "{:<20} {:>7}  {:<26}  {}",
-                        l.code, l.click_count, expiry, l.target
+                        "{:<20} {:>7}  {:<30}  {}",
+                        l.code,
+                        l.click_count,
+                        expiry(l, now),
+                        l.target
                     );
                 }
                 cursor = page.next_cursor;
                 if cursor.is_none() {
-                    return Ok(());
+                    break;
                 }
             }
         }
         Cmd::Get { code } => {
-            let api = cli.creds.or(load_config()?).api()?;
-            let link = api
-                .check(api.get(&link_path(&code)?).call())?
-                .body_mut()
-                .read_json()?;
-            print_link(&link);
-            Ok(())
+            print_link(
+                &api.json(Method::GET, &link_path(&code), SendBody::none())?,
+                now,
+            );
         }
         Cmd::Edit {
             code,
@@ -237,35 +228,39 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             expires,
             no_expires,
         } => {
-            let body = update_link(target, expires, no_expires, Utc::now())?;
-            let api = cli.creds.or(load_config()?).api()?;
-            let link = api
-                .check(api.patch(&link_path(&code)?).send_json(&body))?
-                .body_mut()
-                .read_json()?;
-            print_link(&link);
-            Ok(())
+            let body = edit_body(target, expires, no_expires, now)?;
+            let path = link_path(&code);
+            print_link(
+                &api.json(Method::PATCH, &path, SendBody::from_json(&body)?)?,
+                now,
+            );
         }
         Cmd::Rm { code } => {
-            let api = cli.creds.or(load_config()?).api()?;
-            api.check(api.delete(&link_path(&code)?).call())?;
+            api.send(Method::DELETE, &link_path(&code), SendBody::none())?;
             eprintln!("Deleted {code}");
-            Ok(())
         }
     }
+    Ok(())
 }
 
-/// Refuses characters no Code can contain, so e.g. `rm 'a?x'` cannot hit Link `a`.
-fn link_path(code: &str) -> anyhow::Result<String> {
-    let ok = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'-';
-    if code.is_empty() || !code.bytes().all(ok) {
-        bail!("invalid code {code:?}");
-    }
-    Ok(format!("/api/links/{code}"))
+/// The Code as one path segment, so e.g. `rm 'a?x'` cannot hit Link `a`.
+/// Whether the Code is valid is the server's call.
+fn link_path(code: &str) -> String {
+    format!("/api/links/{}", encode(code))
+}
+
+/// Percent-encodes every byte except `A-Z a-z 0-9 _ -`.
+fn encode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 /// `edit` flags to a PATCH body; clap already rejects `--expires` with `--no-expires`.
-fn update_link(
+fn edit_body(
     target: Option<String>,
     expires: Option<String>,
     no_expires: bool,
@@ -279,15 +274,27 @@ fn update_link(
     Ok(crablink_api::UpdateLink { target, expires_at })
 }
 
-fn print_link(l: &crablink_api::Link) {
-    let ts = |t: DateTime<Utc>| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-    println!("Code:      {}", l.code);
-    println!("Short URL: {}", l.short_url);
-    println!("Target:    {}", l.target);
-    println!("Expiry:    {}", l.expires_at.map_or("never".into(), ts));
-    println!("Clicks:    {}", l.click_count);
-    println!("Created:   {}", ts(l.created_at));
-    println!("Updated:   {}", ts(l.updated_at));
+fn timestamp(t: DateTime<Utc>) -> String {
+    t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+/// The Expiry as every command shows it: `never`, a timestamp, or a timestamp marked `(expired)`.
+fn expiry(l: &crablink_api::Link, now: DateTime<Utc>) -> String {
+    match l.expires_at {
+        None => "never".into(),
+        Some(t) if t <= now => format!("{} (expired)", timestamp(t)),
+        Some(t) => timestamp(t),
+    }
+}
+
+fn print_link(l: &crablink_api::Link, now: DateTime<Utc>) {
+    println!("Code:        {}", l.code);
+    println!("Short URL:   {}", l.short_url);
+    println!("Target:      {}", l.target);
+    println!("Expiry:      {}", expiry(l, now));
+    println!("Click Count: {}", l.click_count);
+    println!("Created:     {}", timestamp(l.created_at));
+    println!("Updated:     {}", timestamp(l.updated_at));
 }
 
 fn login(server: Option<String>) -> anyhow::Result<()> {
@@ -298,7 +305,7 @@ fn login(server: Option<String>) -> anyhow::Result<()> {
         token: Some(token),
     }
     .api()?;
-    api.check(api.get("/api/links?limit=1").call())
+    api.send(Method::GET, "/api/links?limit=1", SendBody::none())
         .context("login failed, nothing saved")?;
     let path = save_config(&Creds {
         server: Some(api.server),
@@ -409,14 +416,23 @@ mod tests {
     #[test]
     fn edit_maps_expiry_flags_to_three_state_field() {
         let now = at("2026-11-05T10:00:00Z");
-        let body = |e: Option<&str>, none| update_link(None, e.map(Into::into), none, now).unwrap();
+        let body = |e: Option<&str>, none| edit_body(None, e.map(Into::into), none, now).unwrap();
         assert_eq!(body(None, false).expires_at, None);
         assert_eq!(body(None, true).expires_at, Some(None));
         assert_eq!(
             body(Some("7d"), false).expires_at,
             Some(Some(at("2026-11-12T10:00:00Z")))
         );
-        assert!(update_link(None, Some("soon".into()), false, now).is_err());
+        assert!(edit_body(None, Some("soon".into()), false, now).is_err());
+    }
+
+    #[test]
+    fn codes_are_sent_as_one_encoded_path_segment() {
+        assert_eq!(link_path("Ab_-9"), "/api/links/Ab_-9");
+        assert_eq!(link_path("a?x"), "/api/links/a%3Fx");
+        assert_eq!(link_path("a/b#c"), "/api/links/a%2Fb%23c");
+        assert_eq!(link_path(".."), "/api/links/%2E%2E");
+        assert_eq!(link_path("é"), "/api/links/%C3%A9");
     }
 
     #[test]

@@ -70,16 +70,23 @@ pub fn app(pool: SqlitePool, codes: CodeGenerator, token: &str, base_url: &str) 
             "/links/{code}",
             get(get_link).patch(update_link).delete(delete_link),
         )
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
+        .fallback(|| async { ApiError(StatusCode::NOT_FOUND, "not found".into()) });
     Router::new()
         .nest("/api", api)
         .route("/health", get(|| async { "ok" }))
         .route("/{code}", get(redirect))
+        .fallback(|| async { (StatusCode::NOT_FOUND, "not found") })
+        // On the outer router, so unknown `/api` paths and methods need the token too.
+        .layer(middleware::from_fn_with_state(state.clone(), require_token))
         .with_state(state)
 }
 
-/// Every `/api` route needs `Authorization: Bearer <token>`, compared in constant time.
+/// Every `/api` request needs `Authorization: Bearer <token>`, compared in constant time.
 async fn require_token(State(s): State<AppState>, req: Request, next: Next) -> Response {
+    let path = req.uri().path();
+    if path != "/api" && !path.starts_with("/api/") {
+        return next.run(req).await;
+    }
     let given = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -98,8 +105,13 @@ struct ApiError(StatusCode, String);
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.0, Json(crablink_api::Error { error: self.1 })).into_response()
+        (self.0, Json(crablink_api::ErrorBody { error: self.1 })).into_response()
     }
+}
+
+/// The 404 for a Code with no live Link (missing or deleted).
+fn link_not_found() -> ApiError {
+    ApiError(StatusCode::NOT_FOUND, "link not found".into())
 }
 
 /// A body that doesn't match the DTO (e.g. a malformed `expires_at`) is a 400, not axum's 422.
@@ -160,6 +172,10 @@ fn validate_target(target: &str, base_url: &str) -> Result<(), ApiError> {
     let bad = |msg: &str| Err(ApiError(StatusCode::BAD_REQUEST, msg.into()));
     if target.chars().count() > MAX_TARGET_LEN {
         return bad("target must be at most 2048 characters");
+    }
+    // The URL parser silently strips these; stored raw they'd break the `Location` header.
+    if target.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return bad("target must not contain whitespace or control characters");
     }
     let Ok(url) = url::Url::parse(target) else {
         return bad("target must be an absolute http(s) URL");
@@ -254,7 +270,7 @@ async fn get_link(
     .fetch_optional(&s.pool)
     .await?
     .map(|row| Json(row.into_dto(&s.base_url)))
-    .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "link not found".into()))
+    .ok_or_else(link_not_found)
 }
 
 /// `PATCH /api/links/{code}`: changes Target and/or Expiry, never the Code;
@@ -282,7 +298,7 @@ async fn update_link(
     .fetch_optional(&s.pool)
     .await?
     .map(|row| Json(row.into_dto(&s.base_url)))
-    .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "link not found".into()))
+    .ok_or_else(link_not_found)
 }
 
 const DEFAULT_PAGE: u32 = 50;
@@ -352,7 +368,7 @@ async fn delete_link(
         .execute(&s.pool)
         .await?;
     if done.rows_affected() == 0 {
-        return Err(ApiError(StatusCode::NOT_FOUND, "link not found".into()));
+        return Err(link_not_found());
     }
     Ok(StatusCode::NO_CONTENT)
 }
@@ -361,31 +377,15 @@ async fn delete_link(
 /// Checks liveness and counts the click in one statement; only when that misses
 /// does a lookup tell a Link that never existed (404) from a dead one (410).
 async fn redirect(State(s): State<AppState>, Path(code): Path<String>) -> Response {
-    match follow(&s.pool, &code).await {
-        Ok(Some(target)) => (
-            StatusCode::FOUND,
-            [
-                (header::LOCATION, target),
-                (header::CACHE_CONTROL, "private, max-age=0".into()),
-            ],
-        )
-            .into_response(),
-        Ok(None) => match sqlx::query("SELECT 1 FROM links WHERE code = ?")
-            .bind(&code)
-            .fetch_optional(&s.pool)
-            .await
-        {
-            Ok(Some(_)) => (StatusCode::GONE, "gone").into_response(),
-            Ok(None) => (StatusCode::NOT_FOUND, "not found").into_response(),
-            Err(e) => db_error(e),
-        },
-        Err(e) => db_error(e),
-    }
+    // Unlike the management API, redirect error bodies are plain text.
+    follow(&s.pool, &code)
+        .await
+        .unwrap_or_else(|ApiError(status, msg)| (status, msg).into_response())
 }
 
-/// The Target of a live (not deleted, not expired) Link, counting the click.
-async fn follow(pool: &SqlitePool, code: &str) -> Result<Option<String>, sqlx::Error> {
-    sqlx::query_scalar(
+/// Redirects to the Target of a live (not deleted, not expired) Link, counting the click.
+async fn follow(pool: &SqlitePool, code: &str) -> Result<Response, ApiError> {
+    let target: Option<String> = sqlx::query_scalar(
         "UPDATE links SET click_count = click_count + 1 \
          WHERE code = ? AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > ?) \
          RETURNING target",
@@ -393,10 +393,22 @@ async fn follow(pool: &SqlitePool, code: &str) -> Result<Option<String>, sqlx::E
     .bind(code)
     .bind(Utc::now())
     .fetch_optional(pool)
-    .await
-}
-
-fn db_error(e: sqlx::Error) -> Response {
-    eprintln!("database error: {e}");
-    (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+    .await?;
+    if let Some(target) = target {
+        let headers = [
+            (header::LOCATION, target),
+            (header::CACHE_CONTROL, "private, max-age=0".into()),
+        ];
+        return Ok((StatusCode::FOUND, headers).into_response());
+    }
+    let exists = sqlx::query("SELECT 1 FROM links WHERE code = ?")
+        .bind(code)
+        .fetch_optional(pool)
+        .await?
+        .is_some();
+    Ok(if exists {
+        (StatusCode::GONE, "gone").into_response()
+    } else {
+        (StatusCode::NOT_FOUND, "not found").into_response()
+    })
 }

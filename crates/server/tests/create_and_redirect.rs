@@ -47,7 +47,9 @@ async fn unknown_code_and_root_are_not_found() {
     assert_eq!(res.status, StatusCode::NOT_FOUND);
     assert!(!res.text.is_empty());
 
-    assert_eq!(app.get("/").await.status, StatusCode::NOT_FOUND);
+    let res = app.get("/").await;
+    assert_eq!(res.status, StatusCode::NOT_FOUND);
+    assert!(!res.text.is_empty());
 }
 
 #[tokio::test]
