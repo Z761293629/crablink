@@ -12,6 +12,7 @@
 | `masters/crablink-wordmark.svg` | 图形已经出现过时，单独用字标 |
 | `*-reversed.svg` | 深色背景（图形保持蟹红，字标改为白色） |
 | `export/` | 黑色、白色、单色版本，PNG 文件，以及网页图标套件 |
+| `export/stacked/crablink-stacked-800.png`、`crablink-stacked-reversed-800.png` | 竖版全彩透明 PNG（宽 800），终端里显示 logo 用，见第 7 节 |
 
 所有母版都是纯路径，没有 `<text>`、位图、滤镜或渐变。
 
@@ -58,8 +59,16 @@ Logo 四周至少留 **2X** 的空白，其他文字、图形和画面边缘都�
 - 不要改变图形和字标的大小比例或间距，要用现成的组合文件。
 - 不要放在杂乱的照片上，也不要放在和蟹红对比度不足的颜色上（比如橙色、粉色）。
 
-## 7. 待办与说明
+## 7. 终端
+
+- 只通过终端图像协议（kitty / iTerm2 / sixel）显示 logo，用 `export/stacked/` 下的 800 px 全彩 PNG。终端不支持图像协议时就不显示 logo。
+- 不要用字符画代替 logo：半块字符（▀▄）、盲文点阵、ASCII 都不行。缺 logo 时宁可不显示，也不要"补"一个字符画。
+- 按终端背景选组合：浅色背景用标准版 `crablink-stacked-800.png`（壳墨字标）；深色背景或无法判断背景时用反白版 `crablink-stacked-reversed-800.png`（白色字标）。
+- 终端里用等宽字体打出的 "crablink" 只是名称标签，不是字标，不受第 5 节和第 6 节字标规则约束，也不要把它当 logo 摆放。
+
+## 8. 待办与说明
 
 - 商标：发布前请做一次正式的商标检索（商标库加以图搜图）。本设计不能保证没有冲突。
 - 网站部署：把 `export/symbol/` 下的 `favicon.ico`、`favicon.svg`、`apple-touch-icon.png`、`icon-*.png`、`maskable-512.png` 和 `site.webmanifest` 放到站点根目录，再把 `head-snippet.html` 的内容加进 `<head>`。
 - 需要改几何时，修改 `build_kit.py` 后重新运行 `python3 build_kit.py`，母版会重新生成。改完后需要重新执行导出命令。
+- 终端 PNG 用 logo-design 技能的 `scripts/render_png.py` 从 `masters/crablink-stacked*.svg` 导出（`--width 800 --height 661`），导出后运行 `python3 test_stacked_exports.py` 检查尺寸、透明背景和颜色。
