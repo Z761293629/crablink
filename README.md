@@ -59,8 +59,10 @@ docker start crablink
 crablink login --server https://crab.link   # 提示输入 token，存到 ~/.config/crablink/config.toml
 crablink create https://example.com/a/very/long/path
 crablink create https://rustconf.com --code rust-meetup --expires 7d
-crablink ls
+crablink ls                                  # 全部 Link：Code、Click Count、Expiry、Target
+crablink get rust-meetup
 crablink edit rust-meetup --target https://rustconf.com/2027
+crablink edit rust-meetup --no-expires       # 或 --expires 30d / RFC 3339，二者互斥
 crablink rm rust-meetup
 ```
 
