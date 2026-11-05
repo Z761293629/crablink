@@ -180,12 +180,8 @@ fn login(server: Option<String>) -> anyhow::Result<()> {
         token: Some(token),
     }
     .api()?;
-    // Any authenticated route works; `api` is a reserved Code, so a valid token gets 404.
-    // ponytail: switch to `GET /api/links?limit=1` once the list endpoint exists.
-    let res = api.get("/api/links/api").call();
-    if !matches!(&res, Ok(r) if r.status() == 404) {
-        api.check(res).context("login failed, nothing saved")?;
-    }
+    api.check(api.get("/api/links?limit=1").call())
+        .context("login failed, nothing saved")?;
     let path = save_config(&Creds {
         server: Some(api.server),
         token: Some(api.token),
