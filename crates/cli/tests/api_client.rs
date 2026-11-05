@@ -20,7 +20,11 @@ fn api_client_creates_links_and_lists_them_across_pages() {
     let mut pages = Vec::new();
     api.list(|page| pages.push(page)).unwrap();
 
-    assert!(pages.len() > 1, "expected several pages, got {}", pages.len());
+    assert!(
+        pages.len() > 1,
+        "expected several pages, got {}",
+        pages.len()
+    );
     let codes: Vec<String> = pages.concat().into_iter().map(|l| l.code).collect();
     let expected: Vec<String> = (0..51).rev().map(|i| format!("link{i:03}")).collect();
     assert_eq!(codes, expected);

@@ -5,20 +5,23 @@ use std::path::PathBuf;
 
 use anyhow::{Context, anyhow, bail};
 use chrono::{DateTime, TimeDelta, Utc};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use crablink_api::{CreateLink, Link, LinkPage, UpdateLink};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use ureq::http::{Method, Request, Response};
 use ureq::{Body, SendBody};
 
+pub mod tui;
+
 #[derive(Parser)]
 #[command(version, about = "Manage Links on a crablink server")]
 pub struct Cli {
     #[command(flatten)]
     pub creds: Creds,
+    /// None: open the TUI.
     #[command(subcommand)]
-    pub cmd: Cmd,
+    pub cmd: Option<Cmd>,
 }
 
 #[derive(Subcommand)]
@@ -212,15 +215,22 @@ impl Api {
     }
 }
 
-/// Runs one subcommand; the binary prints the error and exits 1.
+/// Runs one subcommand, or the TUI when there is none; the binary prints the error and exits 1.
 pub fn run(cli: Cli) -> anyhow::Result<()> {
-    if let Cmd::Login = cli.cmd {
+    let Some(cmd) = cli.cmd else {
+        // Piped or redirected: a full-screen app would only garble the output.
+        if !std::io::stdout().is_terminal() {
+            return Ok(Cli::command().print_help()?);
+        }
+        return tui::run(cli.creds.resolve()?, tui::Caps::default());
+    };
+    if let Cmd::Login = cmd {
         // A broken config must not stop `login` from replacing it.
         return login(cli.creds.or(load_config().unwrap_or_default()).server);
     }
     let api = cli.creds.resolve()?;
     let now = Utc::now();
-    match cli.cmd {
+    match cmd {
         Cmd::Login => unreachable!("handled above"),
         Cmd::Create {
             target,
