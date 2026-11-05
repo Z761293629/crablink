@@ -20,6 +20,7 @@ pub type CodeGenerator = Arc<dyn Fn() -> String + Send + Sync>;
 
 const CODE_LEN: usize = 7;
 const MAX_CODE_ATTEMPTS: usize = 5;
+const MAX_TARGET_LEN: usize = 2048;
 const BASE62: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 /// 7 random base62 characters (ADR-0003).
@@ -134,10 +135,34 @@ macro_rules! link_columns {
     };
 }
 
+/// A Target must be an absolute `http(s)` URL not on our own host (that would
+/// loop). It is never fetched. Shared by create and update.
+fn validate_target(target: &str, base_url: &str) -> Result<(), ApiError> {
+    let bad = |msg: &str| Err(ApiError(StatusCode::BAD_REQUEST, msg.into()));
+    if target.chars().count() > MAX_TARGET_LEN {
+        return bad("target must be at most 2048 characters");
+    }
+    let Ok(url) = url::Url::parse(target) else {
+        return bad("target must be an absolute http(s) URL");
+    };
+    if !matches!(url.scheme(), "http" | "https") {
+        return bad("target must be an absolute http(s) URL");
+    }
+    let base_host = url::Url::parse(base_url).ok();
+    let base_host = base_host.as_ref().and_then(|u| u.host_str());
+    if let (Some(host), Some(base)) = (url.host_str(), base_host)
+        && host.eq_ignore_ascii_case(base)
+    {
+        return bad("target must not point at this service's own host");
+    }
+    Ok(())
+}
+
 async fn create_link(
     State(s): State<AppState>,
     Json(req): Json<crablink_api::CreateLink>,
 ) -> Result<(StatusCode, Json<crablink_api::Link>), ApiError> {
+    validate_target(&req.target, &s.base_url)?;
     let now = Utc::now();
     // Insert and let the unique constraint reject a taken Code; never check first (ADR-0003).
     for _ in 0..MAX_CODE_ATTEMPTS {
