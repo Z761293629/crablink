@@ -8,4 +8,11 @@ name = "crablink"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
+clap = { version = "4.6.7", features = ["derive", "env"] }
 crablink-api = { path = "../api" }
+rpassword = "7.5.4"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.2.0"
+ureq = { version = "3.5.1", features = ["json"] }
