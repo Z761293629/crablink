@@ -4,9 +4,9 @@ on:
   push:
     tags: ["v*"]
 
+# Least privilege: each job is granted only what it writes.
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 env:
   IMAGE: ghcr.io/z761293629/crablink-server
@@ -16,21 +16,17 @@ jobs:
   check:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
-      - run: scripts/check-release-tag.sh "$GITHUB_REF_NAME"
-      - id: version
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          case "$version" in
-            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
-            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
-          esac
+      - id: tag
+        run: scripts/check-release-tag.sh "$GITHUB_REF_NAME"
 
   image:
+    permissions:
+      contents: read # build-push-action fetches the Git context with the token
+      packages: write
     needs: check
     runs-on: ubuntu-latest
     steps:
@@ -50,8 +46,9 @@ jobs:
             ${{ env.IMAGE }}:${{ needs.check.outputs.version }}
             ${{ needs.check.outputs.prerelease == 'false' && format('{0}:latest', env.IMAGE) || '' }}
 
-  # Jobs that attach assets to the Release (e.g. CLI binaries) should `needs: release`.
   release:
+    permissions:
+      contents: write
     needs: check
     runs-on: ubuntu-latest
     steps:
@@ -61,3 +58,36 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             --verify-tag --generate-notes --prerelease="$PRERELEASE"
+
+  # Unsigned CLI binaries, attached to the Release as crablink-<target>.tar.gz.
+  binaries:
+    permissions:
+      contents: write
+    needs: release
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      # Provides the musl C toolchain (for ring); musl targets link statically by default.
+      - if: runner.os == 'Linux'
+        uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target }}
+          runner: none
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: crablink
+          package: crablink-cli
+          target: ${{ matrix.target }}
+          locked: true

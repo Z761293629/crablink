@@ -9,7 +9,7 @@
 
 ---
 
-> **状态：server 与 CLI 已实现。** 完整规格见 [#1](https://github.com/Z761293629/crablink/issues/1)，打版本 tag 后 server 镜像自动发布到 GHCR。
+> **状态：server 与 CLI 已实现。** 完整规格见 [#1](https://github.com/Z761293629/crablink/issues/1)，打版本 tag 后 server 镜像自动发布到 GHCR，CLI 预编译二进制附在 GitHub Release 上。
 
 ## 特性
 
@@ -56,6 +56,17 @@ docker start crablink
 
 ### CLI
 
+从 [Releases](https://github.com/Z761293629/crablink/releases) 下载预编译二进制，无需安装 Rust。提供 `aarch64-apple-darwin`、`x86_64-unknown-linux-musl`、`aarch64-unknown-linux-musl`（Linux 版为静态链接），均未签名、未公证：
+
+```bash
+target=aarch64-apple-darwin   # 或 x86_64-unknown-linux-musl / aarch64-unknown-linux-musl
+curl -fsSL "https://github.com/Z761293629/crablink/releases/latest/download/crablink-$target.tar.gz" | tar xz
+sudo mv crablink /usr/local/bin/
+crablink --version
+```
+
+macOS 上用 `curl` 下载不会带隔离属性，因此不会触发 Gatekeeper 拦截；用浏览器下载的话需先 `xattr -d com.apple.quarantine crablink`。也可以从源码安装：`cargo install --path crates/cli`。
+
 ```bash
 crablink login --server https://crab.link   # 提示输入 token，存到 ~/.config/crablink/config.toml
 crablink create https://example.com/a/very/long/path
@@ -84,10 +95,10 @@ crablink rm rust-meetup
 
 ## Roadmap
 
-- [ ] **M1 跳转跑通**：workspace 骨架、数据库迁移、token 鉴权、创建 Link（随机 / Custom Code）、`GET /{code}`
-- [ ] **M2 Link 生命周期**：查看、修改、删除、分页列表、Expiry 与 410、Click Count
-- [ ] **M3 CLI**：`login` `create` `ls` `get` `edit` `rm`
-- [ ] **M4 交付**：Dockerfile、部署文档
+- [x] **M1 跳转跑通**：workspace 骨架、数据库迁移、token 鉴权、创建 Link（随机 / Custom Code）、`GET /{code}`、CI（PR 自动跑 fmt / clippy / test）
+- [x] **M2 Link 生命周期**：查看、修改、删除、分页列表、Expiry 与 410、Click Count
+- [x] **M3 CLI**：`login` `create` `ls` `get` `edit` `rm`
+- [x] **M4 交付**：Dockerfile、部署文档、Release workflow（打 `v*` tag 自动创建 GitHub Release、发布 GHCR 镜像、附上 CLI 预编译二进制）
 
 **以后再说**（有真实需求再做）：
 
