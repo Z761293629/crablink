@@ -12,6 +12,10 @@ Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `
 
 Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
+## Branches
+
+Push to GitHub only on `fix/<slug>` (bug fixes) or `feature/<slug>` (everything else); `<slug>` is a short kebab-case name for the change. A worktree session starts on a `claude/*` branch, which stays local: rename it before the first push with `git branch -m feature/<slug>`.
+
 ## Commits
 
 Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/): `type(scope): description`.
