@@ -1,6 +1,7 @@
 //! The full-screen TUI `crablink` opens with no subcommand. [`App`] is backend-free
 //! (key events in, [`App::render`] onto any `Frame`); only [`run`] touches the real terminal.
 
+use anyhow::Context;
 use chrono::{DateTime, Utc};
 use crablink_api::{CreateLink, Link, UpdateLink};
 use ratatui::Frame;
@@ -144,6 +145,8 @@ pub struct App {
     /// The `/` filter; empty shows every Link.
     filter: String,
     mode: Mode,
+    /// The last failed action's error, shown under the list until the next key.
+    error: Option<String>,
     quit: bool,
 }
 
@@ -166,38 +169,62 @@ enum Mode {
 /// (the server's, or a bad Expiry) are shown in it and leave the input as typed.
 #[derive(Default)]
 struct Form {
-    /// Target, Code, Expiry, as typed.
-    values: [String; 3],
-    /// Index into `values` of the field being typed in.
-    focus: usize,
+    target: String,
+    code: String,
+    expires: String,
+    /// The Expiry as pre-filled for editing. Saved unchanged, it isn't sent, so the
+    /// server keeps its exact (possibly sub-second) value.
+    prefilled_expires: String,
+    /// The field being typed in.
+    focus: Field,
     /// Editing an existing Link: the Code is shown, but can't be focused or changed.
-    edit: bool,
+    editing: bool,
     error: Option<String>,
 }
 
-/// The Code's index in [`Form::values`].
-const CODE: usize = 1;
+/// The form's fields, top to bottom.
+#[derive(Default, Clone, Copy, PartialEq)]
+enum Field {
+    #[default]
+    Target,
+    Code,
+    Expiry,
+}
 
 impl Form {
-    /// Moves the focus `by` fields forward, wrapping, skipping a read-only Code.
-    fn move_focus(&mut self, by: usize) {
+    /// Moves the focus one field forward (or back), wrapping, skipping a read-only Code.
+    fn move_focus(&mut self, forward: bool) {
+        use Field::*;
         loop {
-            self.focus = (self.focus + by) % self.values.len();
-            if !(self.edit && self.focus == CODE) {
+            self.focus = match (self.focus, forward) {
+                (Target, true) | (Expiry, false) => Code,
+                (Code, true) | (Target, false) => Expiry,
+                (Expiry, true) | (Code, false) => Target,
+            };
+            if !(self.editing && self.focus == Code) {
                 return;
             }
         }
     }
 
+    /// The focused field's value.
+    fn value_mut(&mut self) -> &mut String {
+        match self.focus {
+            Field::Target => &mut self.target,
+            Field::Code => &mut self.code,
+            Field::Expiry => &mut self.expires,
+        }
+    }
+
     /// The form for editing `l`, its Expiry as an RFC 3339 timestamp.
     fn edit(l: &Link) -> Form {
+        let expires = l.expires_at.map(crate::timestamp).unwrap_or_default();
         Form {
-            values: [
-                l.target.clone(),
-                l.code.clone(),
-                l.expires_at.map(crate::timestamp).unwrap_or_default(),
-            ],
-            edit: true,
+            target: l.target.clone(),
+            code: l.code.clone(),
+            prefilled_expires: expires.clone(),
+            expires,
+            editing: true,
             ..Form::default()
         }
     }
@@ -205,22 +232,24 @@ impl Form {
     /// Creates or updates the Link as typed; returns its Code. An empty Code means a
     /// generated one; an empty Expiry means none (clearing it when editing).
     fn save(&self, api: &Api) -> anyhow::Result<String> {
-        let [target, code, expires] = &self.values;
-        let expires_at = (!expires.is_empty())
-            .then(|| crate::parse_expires(expires, Utc::now()))
+        let expires_at = (!self.expires.is_empty())
+            .then(|| {
+                crate::parse_expires(&self.expires, Utc::now())
+                    .with_context(|| format!("invalid Expiry {:?}", self.expires))
+            })
             .transpose()?;
-        let link = if self.edit {
+        let link = if self.editing {
             api.update(
-                code,
+                &self.code,
                 &UpdateLink {
-                    target: Some(target.clone()),
-                    expires_at: Some(expires_at),
+                    target: Some(self.target.clone()),
+                    expires_at: (self.expires != self.prefilled_expires).then_some(expires_at),
                 },
             )?
         } else {
             api.create(&CreateLink {
-                target: target.clone(),
-                code: (!code.is_empty()).then(|| code.clone()),
+                target: self.target.clone(),
+                code: (!self.code.is_empty()).then(|| self.code.clone()),
                 expires_at,
             })?
         };
@@ -238,6 +267,7 @@ impl App {
             table: TableState::default().with_selected(0),
             filter: String::new(),
             mode: Mode::List,
+            error: None,
             quit: false,
         };
         app.load();
@@ -292,14 +322,15 @@ impl App {
     pub fn handle_key(&mut self, k: KeyEvent) {
         // Before the match, which borrows the mode mutably for the form's arms.
         let has_selection = self.selected().is_some();
+        self.error = None;
         match (&mut self.mode, k.code) {
             (Mode::Help, _) => self.mode = Mode::List,
             (Mode::Form(_), KeyCode::Esc) => self.mode = Mode::List,
             (Mode::Form(_), KeyCode::Enter) => self.submit(),
-            (Mode::Form(f), KeyCode::Tab | KeyCode::Down) => f.move_focus(1),
-            (Mode::Form(f), KeyCode::BackTab | KeyCode::Up) => f.move_focus(f.values.len() - 1),
-            (Mode::Form(f), KeyCode::Backspace) => drop(f.values[f.focus].pop()),
-            (Mode::Form(f), KeyCode::Char(c)) => f.values[f.focus].push(c),
+            (Mode::Form(f), KeyCode::Tab | KeyCode::Down) => f.move_focus(true),
+            (Mode::Form(f), KeyCode::BackTab | KeyCode::Up) => f.move_focus(false),
+            (Mode::Form(f), KeyCode::Backspace) => drop(f.value_mut().pop()),
+            (Mode::Form(f), KeyCode::Char(c)) => f.value_mut().push(c),
             (Mode::Form(_), _) => {}
             (Mode::Delete, KeyCode::Char('y')) => {
                 self.mode = Mode::List;
@@ -361,7 +392,7 @@ impl App {
         };
         match self.api.delete(&code) {
             Ok(()) => self.load(),
-            Err(e) => self.links = Err(format!("{e:#}")),
+            Err(e) => self.error = Some(format!("{e:#}")),
         }
     }
 
@@ -415,7 +446,14 @@ impl App {
             }
             list = rest;
         }
+        if let Some(e) = &self.error {
+            let [rest, line] =
+                Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(list);
+            f.render_widget(Line::from(e.as_str()).fg(CRAB_RED), line);
+            list = rest;
+        }
         let now = Utc::now();
+        let visible = self.visible();
         match &self.links {
             Err(e) => f.render_widget(
                 Paragraph::new(e.as_str())
@@ -426,10 +464,13 @@ impl App {
             Ok(links) if links.is_empty() => {
                 f.render_widget(Line::from("press n to create your first Link").dim(), list)
             }
-            Ok(links) => match matching(links, &self.filter) {
-                m if m.is_empty() => f.render_widget(Line::from("no Links match").dim(), list),
-                m => f.render_stateful_widget(link_table(&m, now), list, &mut self.table),
-            },
+            Ok(_) if visible.is_empty() => {
+                f.render_widget(Line::from("no Links match").dim(), list)
+            }
+            Ok(_) => {
+                let table = link_table(&visible, now, list.width);
+                f.render_stateful_widget(table, list, &mut self.table);
+            }
         }
         if let Some(l) = self.selected() {
             render_detail(f, detail, l, now);
@@ -485,16 +526,9 @@ fn render_help(f: &mut Frame, area: Rect) {
 
 /// The Link form, centred over `area`, with the cursor in the focused field.
 fn render_form(f: &mut Frame, area: Rect, form: &Form) {
-    const LABEL: u16 = 13;
-    let code = if form.edit { "Code" } else { "Custom Code" };
-    let fields = [
-        ("Target", ""),
-        (code, "generated"),
-        ("Expiry", "never, or 30m, 12h, 7d, RFC 3339"),
-    ];
     let area = area.centered(Constraint::Length(64), Constraint::Length(8));
     let block = Block::bordered()
-        .title(if form.edit {
+        .title(if form.editing {
             " edit Link "
         } else {
             " new Link "
@@ -502,27 +536,49 @@ fn render_form(f: &mut Frame, area: Rect, form: &Form) {
         .padding(Padding::horizontal(1));
     let inner = block.inner(area);
     // Columns left for a value after its label, keeping one for the cursor.
-    let room = inner.width.saturating_sub(LABEL + 1) as usize;
-    let mut text: Vec<Line> = fields
-        .iter()
-        .zip(&form.values)
-        .enumerate()
-        .map(|(i, ((label, placeholder), v))| {
-            let value = match v.as_str() {
-                "" => Span::from(*placeholder).dim(),
-                v if form.edit && i == CODE => Span::from(v).dim(),
-                v => Span::from(tail(v, room)),
-            };
-            Line::from(vec![Span::from(format!("{label:<13}")).dim(), value])
-        })
-        .collect();
+    let room = inner.width.saturating_sub(LABEL as u16 + 1) as usize;
+    let row = |label: &str, placeholder: &'static str, v: &str, read_only: bool| {
+        let value = match v {
+            "" => Span::from(placeholder).dim(),
+            v if read_only => Span::from(v.to_owned()).dim(),
+            v => Span::from(tail(v, room).to_owned()),
+        };
+        Line::from(vec![labelled(label), value])
+    };
+    let mut text = vec![
+        row("Target", "", &form.target, false),
+        if form.editing {
+            row("Code", "", &form.code, true)
+        } else {
+            row("Custom Code", "generated", &form.code, false)
+        },
+        row(
+            "Expiry",
+            "never, or 30m, 12h, 7d, RFC 3339",
+            &form.expires,
+            false,
+        ),
+    ];
     text.push(Line::from(""));
     text.push(Line::from(form.error.as_deref().unwrap_or_default()).fg(CRAB_RED));
     text.push(Line::from("Tab next field · Enter save · Esc cancel").dim());
     f.render_widget(Clear, area);
     f.render_widget(Paragraph::new(text).block(block), area);
-    let typed = tail(&form.values[form.focus], room).chars().count() as u16;
-    f.set_cursor_position((inner.x + LABEL + typed, inner.y + form.focus as u16));
+    let focused = match form.focus {
+        Field::Target => &form.target,
+        Field::Code => &form.code,
+        Field::Expiry => &form.expires,
+    };
+    let typed = tail(focused, room).chars().count() as u16;
+    f.set_cursor_position((inner.x + LABEL as u16 + typed, inner.y + form.focus as u16));
+}
+
+/// Width of the labels in the form and the detail pane.
+const LABEL: usize = 13;
+
+/// `label` padded to [`LABEL`] columns, dimmed.
+fn labelled<'a>(label: &str) -> Span<'a> {
+    Span::from(format!("{label:<LABEL$}")).dim()
 }
 
 /// The last `n` characters of `s`, so the end of a long value stays in view while typing.
@@ -565,8 +621,7 @@ fn render_delete(f: &mut Frame, area: Rect, code: &str) {
 
 /// The selected Link in full, under the list.
 fn render_detail(f: &mut Frame, area: Rect, l: &Link, now: DateTime<Utc>) {
-    let field =
-        |k: &str, v: String| Line::from(vec![Span::from(format!("{k:<12}")).dim(), Span::from(v)]);
+    let field = |k: &str, v: String| Line::from(vec![labelled(k), Span::from(v)]);
     let text = vec![
         field("Short URL", l.short_url.clone()).bold(),
         field("Target", l.target.clone()),
@@ -594,27 +649,44 @@ fn matching<'a>(links: &'a [Link], filter: &str) -> Vec<&'a Link> {
         .collect()
 }
 
-fn link_table<'a>(links: &[&'a Link], now: DateTime<Utc>) -> Table<'a> {
-    let rows = links.iter().map(|l| {
-        let expiry = match l.expires_at {
-            None => Span::from("never").dim(),
-            Some(t) if t <= now => Span::from("expired").fg(CRAB_RED),
-            Some(t) => Span::from(t.format("%Y-%m-%d %H:%M").to_string()).dim(),
-        };
+/// The list, `width` columns wide. Code and Expiry are as wide as their longest visible
+/// value (the Code bounded so the Target keeps 10 columns); the Target gets the rest and
+/// is what gets truncated.
+fn link_table(links: &[&Link], now: DateTime<Utc>, width: u16) -> Table<'static> {
+    const HEADER: [&str; 4] = ["Code", "Click Count", "Expiry", "Target"];
+    let expiries: Vec<String> = links.iter().map(|l| crate::expiry(l, now)).collect();
+    let widest = |header: &str, values: Vec<&str>| {
+        values
+            .into_iter()
+            .chain([header])
+            .map(|v| v.chars().count())
+            .max()
+            .unwrap_or(0) as u16
+    };
+    let clicks = HEADER[1].len() as u16;
+    let expiry = widest(HEADER[2], expiries.iter().map(String::as_str).collect());
+    // Highlight symbol, three column gaps, and the Target's minimum.
+    let room = width.saturating_sub(1 + 3 * 2 + clicks + expiry + 10);
+    let code = widest(HEADER[0], links.iter().map(|l| l.code.as_str()).collect()).min(room);
+    let rows = links.iter().zip(expiries).map(|(l, e)| {
         Row::new(vec![
-            Span::from(l.code.as_str()).bold(),
-            Span::from(format!("{:>6}", l.click_count)),
-            expiry,
-            Span::from(l.target.as_str()).dim(),
+            Line::from(l.code.clone()).bold(),
+            Line::from(l.click_count.to_string()).right_aligned(),
+            if crate::expired(l, now) {
+                Line::from(e).fg(CRAB_RED)
+            } else {
+                Line::from(e).dim()
+            },
+            Line::from(l.target.clone()).dim(),
         ])
     });
-    let header = Row::new(["Code", "Clicks", "Expiry", "Target"])
+    let header = Row::new(HEADER)
         .style(Style::new().underlined().dim())
         .bottom_margin(1);
     let widths = [
-        Constraint::Length(13),
-        Constraint::Length(6),
-        Constraint::Length(16),
+        Constraint::Length(code),
+        Constraint::Length(clicks),
+        Constraint::Length(expiry),
         Constraint::Min(10),
     ];
     Table::new(rows, widths)
