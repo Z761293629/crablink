@@ -1,7 +1,7 @@
 //! Request and response DTOs shared by `crablink-server` and the `crablink` CLI.
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Body of `POST /api/links`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,6 +13,26 @@ pub struct CreateLink {
     /// Expiry; a past value means "expired now".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// Body of `PATCH /api/links/{code}`. An absent field is left unchanged.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateLink {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    /// `None`: leave the Expiry unchanged (field absent). `Some(None)`: clear it
+    /// (`null`). `Some(Some(t))`: set it.
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub expires_at: Option<Option<DateTime<Utc>>>,
+}
+
+/// Wraps any present value (including `null`) in `Some`; `default` covers absence.
+fn present<'de, T: Deserialize<'de>, D: Deserializer<'de>>(d: D) -> Result<Option<T>, D::Error> {
+    T::deserialize(d).map(Some)
 }
 
 /// A Link as returned by the management API.
@@ -31,4 +51,31 @@ pub struct Link {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Error {
     pub error: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn update_link_expiry_is_three_state() {
+        let t: DateTime<Utc> = "2030-01-01T00:00:00Z".parse().unwrap();
+        for (dto, wire) in [
+            (None, json!({})),
+            (Some(None), json!({ "expires_at": null })),
+            (
+                Some(Some(t)),
+                json!({ "expires_at": "2030-01-01T00:00:00Z" }),
+            ),
+        ] {
+            let req = UpdateLink {
+                target: None,
+                expires_at: dto,
+            };
+            assert_eq!(serde_json::to_value(&req).unwrap(), wire);
+            let back: UpdateLink = serde_json::from_value(wire).unwrap();
+            assert_eq!(back.expires_at, dto);
+        }
+    }
 }
