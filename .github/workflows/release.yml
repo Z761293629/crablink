@@ -135,3 +135,43 @@ jobs:
           package: crablink-cli
           target: ${{ matrix.target }}
           locked: true
+
+  # Regenerates the tap's formula from this Release's binaries (ADR-0004). Like `latest`
+  # on the image, pre-releases leave the tap alone.
+  homebrew:
+    permissions:
+      contents: read # gh release download; the tap is written with its own deploy key
+    needs: [check, binaries]
+    if: needs.check.outputs.prerelease == 'false'
+    # Serialises tap pushes. A newer run may cancel a pending one; the version guard below
+    # keeps the tap on the newest release whatever order the runs finish in.
+    concurrency: homebrew-tap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: Z761293629/homebrew-tap
+          path: tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+      # Leaves a newer tap version alone and commits only when the formula changed, so a late
+      # or re-run job never downgrades the tap or adds an empty commit.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'crablink-*.tar.gz' --dir "$RUNNER_TEMP/assets"
+          current=$(sed -n 's|.*/download/v\([^/]*\)/.*|\1|p' tap/Formula/crablink.rb | head -n1) || true
+          if [ "$(printf '%s\n' "$current" "$VERSION" | sort -V | tail -n1)" != "$VERSION" ]; then
+            echo "The tap already has crablink $current, newer than $VERSION; leaving it alone."
+            exit 0
+          fi
+          scripts/homebrew-formula.sh "$VERSION" "$RUNNER_TEMP/assets" >tap/Formula/crablink.rb
+          cd tap
+          git add Formula/crablink.rb
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "crablink $VERSION"
+          git push origin HEAD:main

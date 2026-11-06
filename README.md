@@ -56,7 +56,13 @@ docker start crablink
 
 ### CLI
 
-从 [Releases](https://github.com/Z761293629/crablink/releases) 下载预编译二进制，无需安装 Rust。提供 `aarch64-apple-darwin`、`x86_64-unknown-linux-musl`、`aarch64-unknown-linux-musl`（Linux 版为静态链接），均未签名、未公证：
+macOS（Apple 芯片）和 Linux 上用 Homebrew 安装，`brew upgrade` 升级，`brew uninstall crablink` 卸载：
+
+```bash
+brew install Z761293629/tap/crablink
+```
+
+不用 Homebrew 的话，从 [Releases](https://github.com/Z761293629/crablink/releases) 下载预编译二进制，无需安装 Rust。提供 `aarch64-apple-darwin`、`x86_64-unknown-linux-musl`、`aarch64-unknown-linux-musl`（Linux 版为静态链接），均未签名、未公证：
 
 ```bash
 target=aarch64-apple-darwin   # 或 x86_64-unknown-linux-musl / aarch64-unknown-linux-musl
@@ -101,6 +107,7 @@ crablink rm rust-meetup
 - [x] **M2 Link 生命周期**：查看、修改、删除、分页列表、Expiry 与 410、Click Count
 - [x] **M3 CLI**：`login` `create` `ls` `get` `edit` `rm`
 - [x] **M4 交付**：Dockerfile、部署文档、Release workflow（打 `v*` tag 自动创建 GitHub Release、发布 GHCR 镜像、附上 CLI 预编译二进制）
+- [x] **Homebrew tap**：发布稳定版时自动更新 tap 里的 formula，`brew upgrade crablink` 即可升级
 
 **以后再说**（有真实需求再做）：
 
