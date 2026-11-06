@@ -106,7 +106,8 @@ crablink rm rust-meetup
 - [x] **M1 跳转跑通**：workspace 骨架、数据库迁移、token 鉴权、创建 Link（随机 / Custom Code）、`GET /{code}`、CI（PR 自动跑 fmt / clippy / test）
 - [x] **M2 Link 生命周期**：查看、修改、删除、分页列表、Expiry 与 410、Click Count
 - [x] **M3 CLI**：`login` `create` `ls` `get` `edit` `rm`
-- [x] **M4 交付**：Dockerfile、部署文档、Release workflow（打 `v*` tag 自动创建 GitHub Release、发布 GHCR 镜像、附上 CLI 预编译二进制、更新 Homebrew tap）
+- [x] **M4 交付**：Dockerfile、部署文档、Release workflow（打 `v*` tag 自动创建 GitHub Release、发布 GHCR 镜像、附上 CLI 预编译二进制）
+- [x] **Homebrew tap**：发布稳定版时自动更新 tap 里的 formula，`brew upgrade crablink` 即可升级
 
 **以后再说**（有真实需求再做）：
 
