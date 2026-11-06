@@ -56,7 +56,13 @@ docker start crablink
 
 ### CLI
 
-从 [Releases](https://github.com/Z761293629/crablink/releases) 下载预编译二进制，无需安装 Rust。提供 `aarch64-apple-darwin`、`x86_64-unknown-linux-musl`、`aarch64-unknown-linux-musl`（Linux 版为静态链接），均未签名、未公证：
+macOS（Apple 芯片）和 Linux 上用 Homebrew 安装，`brew upgrade` 升级，`brew uninstall crablink` 卸载：
+
+```bash
+brew install Z761293629/tap/crablink
+```
+
+不用 Homebrew 的话，从 [Releases](https://github.com/Z761293629/crablink/releases) 下载预编译二进制，无需安装 Rust。提供 `aarch64-apple-darwin`、`x86_64-unknown-linux-musl`、`aarch64-unknown-linux-musl`（Linux 版为静态链接），均未签名、未公证：
 
 ```bash
 target=aarch64-apple-darwin   # 或 x86_64-unknown-linux-musl / aarch64-unknown-linux-musl
