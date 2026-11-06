@@ -135,3 +135,34 @@ jobs:
           package: crablink-cli
           target: ${{ matrix.target }}
           locked: true
+
+  # Regenerates the tap's formula from this Release's binaries (ADR-0004). Like `latest`
+  # on the image, pre-releases leave the tap alone.
+  homebrew:
+    permissions:
+      contents: read # gh release download; the tap is written with its own deploy key
+    needs: [check, binaries]
+    if: needs.check.outputs.prerelease == 'false'
+    concurrency: homebrew-tap # one tap push at a time, never cancelled
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: Z761293629/homebrew-tap
+          path: tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+      # Commits only when the formula changed, so re-running for the same tag is a no-op.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'crablink-*.tar.gz' --dir "$RUNNER_TEMP/assets"
+          scripts/homebrew-formula.sh "$VERSION" "$RUNNER_TEMP/assets" >tap/Formula/crablink.rb
+          cd tap
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "crablink $VERSION"
+          git push origin HEAD:main
