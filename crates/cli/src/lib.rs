@@ -2,6 +2,7 @@
 
 use std::io::{BufRead, IsTerminal};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::{Context, anyhow, bail};
 use chrono::{DateTime, TimeDelta, Utc};
@@ -93,6 +94,11 @@ impl Creds {
                 .trim_end_matches('/')
                 .into(),
             token: self.token.ok_or_else(|| missing("token"))?,
+            agent: ureq::Agent::config_builder()
+                .http_status_as_error(false)
+                .timeout_global(Some(REQUEST_TIMEOUT))
+                .build()
+                .into(),
         })
     }
 
@@ -132,11 +138,15 @@ fn save_config(creds: &Creds) -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
+/// Longest a single API request may take, so a hung server can't freeze the TUI.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Authenticated HTTP client for `/api`. Every method fails with the server's
-/// `{ "error" }` message (plus status) on a non-2xx response.
+/// `{ "error" }` message (plus status) on a non-2xx response. Reuses connections.
 pub struct Api {
     server: String,
     token: String,
+    agent: ureq::Agent,
 }
 
 impl Api {
@@ -191,11 +201,8 @@ impl Api {
             // `agent.run` ignores `SendBody::from_json`'s content type; every API body is JSON.
             .header("Content-Type", "application/json")
             .body(body)?;
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .build()
-            .into();
-        let mut res = agent
+        let mut res = self
+            .agent
             .run(req)
             .with_context(|| format!("cannot reach {}", self.server))?;
         let status = res.status();
