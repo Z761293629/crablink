@@ -1,6 +1,6 @@
 # Build a static musl binary, then ship it on plain Alpine: busybox wget does the health check,
 # tini forwards SIGTERM (a bare Rust binary as PID 1 would ignore it).
-FROM rust:1.95-alpine AS build
+FROM rust:1.100-alpine AS build
 RUN apk add --no-cache musl-dev
 WORKDIR /src
 COPY . .
