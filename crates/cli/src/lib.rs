@@ -43,11 +43,23 @@ pub enum Cmd {
         /// RFC 3339 timestamp, or a duration from now like 30m, 12h, 7d.
         #[arg(long)]
         expires: Option<String>,
+        /// Print the API's JSON for the new Link instead.
+        #[arg(long)]
+        json: bool,
     },
     /// List all Links, newest first: Code, Click Count, Expiry, Target.
-    Ls,
+    Ls {
+        /// Print one JSON array of every Link instead.
+        #[arg(long)]
+        json: bool,
+    },
     /// Show one Link in detail.
-    Get { code: String },
+    Get {
+        code: String,
+        /// Print the API's JSON instead.
+        #[arg(long)]
+        json: bool,
+    },
     /// Change a Link's Target and/or Expiry.
     Edit {
         code: String,
@@ -59,6 +71,9 @@ pub enum Cmd {
         /// Remove the Expiry.
         #[arg(long)]
         no_expires: bool,
+        /// Print the API's JSON for the updated Link instead.
+        #[arg(long)]
+        json: bool,
     },
     /// Delete a Link (its Code is never reused).
     Rm { code: String },
@@ -262,6 +277,7 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
             target,
             code,
             expires,
+            json,
         } => {
             let expires_at = expires.map(|e| expires_flag(&e, now)).transpose()?;
             let link = api.create(&CreateLink {
@@ -269,9 +285,18 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
                 code,
                 expires_at,
             })?;
-            println!("{}", link.short_url);
+            if json {
+                print_json(&link)?;
+            } else {
+                println!("{}", link.short_url);
+            }
         }
-        Cmd::Ls => api.list(|links| {
+        Cmd::Ls { json: true } => {
+            let mut all = Vec::new();
+            api.list(|links| all.extend(links))?;
+            print_json(&all)?;
+        }
+        Cmd::Ls { json: false } => api.list(|links| {
             for l in &links {
                 println!(
                     "{:<20} {:>7}  {:<30}  {}",
@@ -282,15 +307,16 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
                 );
             }
         })?,
-        Cmd::Get { code } => print_link(&api.get(&code)?, now),
+        Cmd::Get { code, json } => show_link(&api.get(&code)?, json, now)?,
         Cmd::Edit {
             code,
             target,
             expires,
             no_expires,
+            json,
         } => {
             let body = edit_body(target, expires, no_expires, now)?;
-            print_link(&api.update(&code, &body)?, now);
+            show_link(&api.update(&code, &body)?, json, now)?;
         }
         Cmd::Rm { code } => {
             api.delete(&code)?;
@@ -377,6 +403,21 @@ pub(crate) fn expiry(l: &Link, now: DateTime<Utc>) -> String {
 /// Whether the Link's Expiry has passed.
 pub(crate) fn expired(l: &Link, now: DateTime<Utc>) -> bool {
     l.expires_at.is_some_and(|t| t <= now)
+}
+
+/// The Link as the API's JSON with `--json`, else as `print_link` shows it.
+fn show_link(l: &Link, json: bool, now: DateTime<Utc>) -> anyhow::Result<()> {
+    if json {
+        return print_json(l);
+    }
+    print_link(l, now);
+    Ok(())
+}
+
+/// Prints an API DTO as the API serializes it (pretty-printed; `jq` reads it either way).
+fn print_json(dto: &impl Serialize) -> anyhow::Result<()> {
+    println!("{}", serde_json::to_string_pretty(dto)?);
+    Ok(())
 }
 
 fn print_link(l: &Link, now: DateTime<Utc>) {

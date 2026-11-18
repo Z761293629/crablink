@@ -36,6 +36,7 @@ async fn invalid_target_is_rejected_and_link_unchanged() {
         let res = patch(&app, "Edit002", json!({ "target": bad })).await;
         assert_eq!(res.status, StatusCode::BAD_REQUEST, "{bad}");
         assert!(res.json()["error"].is_string());
+        assert_eq!(res.json()["kind"], "invalid_target", "{}", res.text);
     }
     assert_eq!(
         app.get("/Edit002").await.header("location"),
@@ -53,6 +54,7 @@ async fn unknown_or_deleted_link_is_not_found() {
         let res = patch(&app, code, json!({ "target": "https://new.example" })).await;
         assert_eq!(res.status, StatusCode::NOT_FOUND, "{code}");
         assert!(res.json()["error"].is_string());
+        assert_eq!(res.json()["kind"], "link_not_found", "{}", res.text);
     }
 }
 
@@ -66,6 +68,7 @@ async fn patch_needs_token() {
         .api_with_token("PATCH", "/api/links/Auth001", body, None)
         .await;
     assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);
 }
 
 #[tokio::test]
@@ -119,4 +122,5 @@ async fn malformed_expiry_is_rejected() {
     let res = patch(&app, "Exp0003", json!({ "expires_at": "tomorrow" })).await;
     assert_eq!(res.status, StatusCode::BAD_REQUEST);
     assert!(res.json()["error"].is_string());
+    assert_eq!(res.json()["kind"], "bad_request", "{}", res.text);
 }

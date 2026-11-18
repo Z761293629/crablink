@@ -41,6 +41,7 @@ async fn an_unknown_or_deleted_code_has_no_qr_code() {
     for code in ["nope123", "Gone001"] {
         let res = app.api("GET", &format!("/api/links/{code}/qr"), None).await;
         assert_eq!(res.status, StatusCode::NOT_FOUND, "{code}: {}", res.text);
+        assert_eq!(res.json()["kind"], "link_not_found", "{}", res.text);
         assert_eq!(res.json()["error"], "link not found");
     }
 }
@@ -54,6 +55,7 @@ async fn an_expired_link_has_no_qr_code() {
     let res = app.api("GET", "/api/links/Old0001/qr", None).await;
 
     assert_eq!(res.status, StatusCode::GONE, "{}", res.text);
+    assert_eq!(res.json()["kind"], "link_expired", "{}", res.text);
     assert_eq!(res.json()["error"], "link has expired");
 }
 
@@ -67,6 +69,7 @@ async fn an_unknown_format_is_a_bad_request() {
         .await;
 
     assert_eq!(res.status, StatusCode::BAD_REQUEST, "{}", res.text);
+    assert_eq!(res.json()["kind"], "bad_request", "{}", res.text);
     assert!(res.json()["error"].is_string());
 }
 
@@ -80,6 +83,7 @@ async fn a_qr_code_needs_a_token() {
             .api_with_token("GET", "/api/links/Qr00004/qr", None, token)
             .await;
         assert_eq!(res.status, StatusCode::UNAUTHORIZED, "token {token:?}");
+        assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);
     }
 }
 

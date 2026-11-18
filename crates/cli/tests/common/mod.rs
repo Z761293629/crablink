@@ -69,6 +69,48 @@ impl TestServer {
     pub fn tui(&self) -> Tui {
         Tui::new(self.api())
     }
+
+    /// Runs the `crablink` binary against this server with `args`; never reads a real config file.
+    pub fn cli(&self, args: &[&str]) -> CliOutput {
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_crablink"))
+            .args(["--server", &self.url, "--token", &self.token])
+            .args(args)
+            .env("HOME", std::env::temp_dir().join("crablink-test-no-home"))
+            .output()
+            .unwrap();
+        CliOutput {
+            success: out.status.success(),
+            stdout: String::from_utf8(out.stdout).unwrap(),
+            stderr: String::from_utf8(out.stderr).unwrap(),
+        }
+    }
+
+    /// The raw JSON body of an authenticated `GET` on this server, bypassing the CLI.
+    pub fn raw_get(&self, path: &str) -> serde_json::Value {
+        ureq::get(format!("{}{path}", self.url))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .call()
+            .unwrap()
+            .body_mut()
+            .read_json()
+            .unwrap()
+    }
+}
+
+/// What one `crablink` run printed, and whether it exited 0.
+pub struct CliOutput {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl CliOutput {
+    /// Stdout parsed as JSON, after asserting the run succeeded.
+    pub fn json(&self) -> serde_json::Value {
+        assert!(self.success, "crablink failed: {}", self.stderr);
+        serde_json::from_str(&self.stdout)
+            .unwrap_or_else(|e| panic!("stdout is not JSON ({e}): {}", self.stdout))
+    }
 }
 
 /// Reads a QR code drawn in half blocks (`█ ▀ ▄`, space for two light modules) back

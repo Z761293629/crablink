@@ -92,8 +92,8 @@ fn half_blocks_draw_every_module_inside_a_four_module_quiet_zone() {
     let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
     assert_eq!(decode_half_blocks(&rows), url);
     // Version 2 (25 modules) plus 4 light modules each side, two modules per row.
-    let size = 25 + 2 * 4;
-    assert_eq!(rows.len(), (size as usize).div_ceil(2));
+    let size: usize = 25 + 2 * 4;
+    assert_eq!(rows.len(), size.div_ceil(2));
     assert!(rows.iter().all(|r| r.chars().count() == size));
     // The quiet zone: the first two rows (4 modules) and the outer 4 columns are light.
     assert!(rows[..2].iter().all(|r| r.trim().is_empty()));

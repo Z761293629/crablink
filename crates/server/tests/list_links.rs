@@ -112,6 +112,7 @@ async fn limit_outside_1_to_200_or_a_bad_cursor_is_rejected() {
         let res = app.api("GET", &format!("/api/links{query}"), None).await;
         assert_eq!(res.status, StatusCode::BAD_REQUEST, "{query}: {}", res.text);
         assert!(res.json()["error"].is_string(), "{query}");
+        assert_eq!(res.json()["kind"], "bad_request", "{}", res.text);
     }
     let (codes, _) = page(&app, "?limit=200").await;
     assert_eq!(codes, ["link000"]);
@@ -147,4 +148,5 @@ async fn listing_needs_a_token() {
     let app = app().await;
     let res = app.api_with_token("GET", "/api/links", None, None).await;
     assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{}", res.text);
+    assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);
 }

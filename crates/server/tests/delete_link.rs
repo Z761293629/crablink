@@ -23,6 +23,7 @@ async fn a_deleted_link_is_not_found_by_the_api() {
 
     let res = app.api("GET", "/api/links/Gone001", None).await;
     assert_eq!(res.status, StatusCode::NOT_FOUND, "{}", res.text);
+    assert_eq!(res.json()["kind"], "link_not_found", "{}", res.text);
 }
 
 #[tokio::test]
@@ -34,6 +35,7 @@ async fn deleting_twice_or_deleting_an_unknown_code_is_404() {
     for path in ["/api/links/Gone001", "/api/links/nope123"] {
         let res = app.api("DELETE", path, None).await;
         assert_eq!(res.status, StatusCode::NOT_FOUND, "{path}: {}", res.text);
+        assert_eq!(res.json()["kind"], "link_not_found", "{}", res.text);
     }
 }
 
@@ -52,6 +54,7 @@ async fn a_deleted_code_can_never_be_reused() {
         )
         .await;
     assert_eq!(res.status, StatusCode::CONFLICT, "{}", res.text);
+    assert_eq!(res.json()["kind"], "code_taken", "{}", res.text);
     assert_eq!(app.get("/old-code").await.status, StatusCode::GONE);
 }
 
@@ -64,5 +67,6 @@ async fn deleting_needs_a_token() {
         .api_with_token("DELETE", "/api/links/Keep001", None, None)
         .await;
     assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{}", res.text);
+    assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);
     assert_eq!(app.get("/Keep001").await.status, StatusCode::FOUND);
 }
