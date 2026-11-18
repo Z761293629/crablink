@@ -81,3 +81,22 @@ fn edit_json_prints_the_updated_link_as_the_api_returns_it() {
     assert_eq!(link["target"], "https://example.com/new");
     assert_eq!(link, s.raw_get("/api/links/abc"));
 }
+
+#[test]
+fn json_into_a_closed_pipe_exits_quietly_like_any_unix_tool() {
+    let s = server();
+    s.create("abc", "https://example.com/a");
+    // `crablink ls --json | head -0`: the reader is gone before the first write.
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_crablink"))
+        .args(["--server", &s.url, "--token", &s.token, "ls", "--json"])
+        .env("HOME", std::env::temp_dir().join("crablink-test-no-home"))
+        .stdout(writer)
+        .output()
+        .unwrap();
+
+    assert!(out.status.success(), "{:?}", out.status);
+    assert_eq!(String::from_utf8_lossy(&out.stderr), "");
+}

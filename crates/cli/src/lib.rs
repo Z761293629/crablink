@@ -1,6 +1,6 @@
 //! `crablink`: a thin client for the crablink management API. All validation lives in the server.
 
-use std::io::{BufRead, IsTerminal};
+use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -414,8 +414,12 @@ fn show_link(l: &Link, json: bool, now: DateTime<Utc>) -> anyhow::Result<()> {
 }
 
 /// Prints an API DTO as the API serializes it (pretty-printed; `jq` reads it either way).
+/// A closed stdout is an `io::Error`, not a panic as with `println!`.
 fn print_json(dto: &impl Serialize) -> anyhow::Result<()> {
-    println!("{}", serde_json::to_string_pretty(dto)?);
+    let mut out = std::io::stdout().lock();
+    // Back to the io::Error inside, so `main` can spot a broken pipe.
+    serde_json::to_writer_pretty(&mut out, dto).map_err(std::io::Error::from)?;
+    writeln!(out)?;
     Ok(())
 }
 
