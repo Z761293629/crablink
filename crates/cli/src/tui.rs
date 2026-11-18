@@ -446,11 +446,14 @@ impl App {
                 }
             }
             (Mode::List, KeyCode::Char('d')) if has_selection => self.mode = Mode::Delete,
-            (Mode::List, KeyCode::Char('v')) => {
-                if let Some(url) = self.selected().map(|l| l.short_url.clone()) {
-                    self.mode = Mode::Qr(url);
+            // An expired Link's Short URL no longer redirects: its QR code would only mislead.
+            (Mode::List, KeyCode::Char('v')) => match self.selected() {
+                Some(l) if l.is_expired(Utc::now()) => {
+                    self.error = Some(format!("Link {} has expired: no QR code", l.code));
                 }
-            }
+                Some(l) => self.mode = Mode::Qr(l.short_url.clone()),
+                None => {}
+            },
             (Mode::Filter, KeyCode::Enter) => self.mode = Mode::List,
             (Mode::Filter, KeyCode::Esc) => {
                 self.mode = Mode::List;
@@ -810,7 +813,7 @@ fn link_table(links: &[&Link], now: DateTime<Utc>, width: u16) -> Table<'static>
         Row::new(vec![
             Line::from(l.code.clone()).bold(),
             Line::from(l.click_count.to_string()).right_aligned(),
-            if crate::expired(l, now) {
+            if l.is_expired(now) {
                 Line::from(e).fg(CRAB_RED)
             } else {
                 Line::from(e).dim()

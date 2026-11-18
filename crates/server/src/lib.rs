@@ -350,7 +350,7 @@ async fn link_qr(
     let Query(q) = query?;
     let link = fetch_link(&s, &code).await?;
     // Its Short URL no longer redirects, so a QR code of it would only mislead.
-    if link.expires_at.is_some_and(|t| t <= Utc::now()) {
+    if link.is_expired(Utc::now()) {
         return Err(ApiError::LinkExpired);
     }
     let format = q.format.unwrap_or(crablink_api::QrFormat::Svg);

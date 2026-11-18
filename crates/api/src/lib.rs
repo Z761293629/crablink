@@ -47,6 +47,13 @@ pub struct Link {
     pub click_count: i64,
 }
 
+impl Link {
+    /// Whether the Link's Expiry has passed at `now`: its Short URL no longer redirects.
+    pub fn is_expired(&self, now: DateTime<Utc>) -> bool {
+        self.expires_at.is_some_and(|t| t <= now)
+    }
+}
+
 /// Body of every management API error response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorBody {
@@ -157,6 +164,25 @@ mod tests {
             let back: UpdateLink = serde_json::from_value(wire).unwrap();
             assert_eq!(back.expires_at, dto);
         }
+    }
+
+    #[test]
+    fn a_link_is_expired_from_its_expiry_on() {
+        let t: DateTime<Utc> = "2030-01-01T00:00:00Z".parse().unwrap();
+        let link = |expires_at| Link {
+            code: "abc".into(),
+            short_url: "https://crab.link/abc".into(),
+            target: "https://example.com".into(),
+            created_at: t,
+            updated_at: t,
+            expires_at,
+            click_count: 0,
+        };
+        let second = chrono::TimeDelta::seconds(1);
+        assert!(!link(None).is_expired(t));
+        assert!(!link(Some(t)).is_expired(t - second));
+        assert!(link(Some(t)).is_expired(t));
+        assert!(link(Some(t)).is_expired(t + second));
     }
 
     #[test]
