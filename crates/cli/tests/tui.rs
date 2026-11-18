@@ -417,6 +417,29 @@ fn v_with_no_link_selected_does_nothing() {
 }
 
 #[test]
+fn v_on_an_expired_link_shows_an_error_instead_of_its_qr_code() {
+    let srv = server();
+    srv.api()
+        .create(&CreateLink {
+            target: "https://example.com/old".into(),
+            code: Some("old".into()),
+            expires_at: Some("2020-01-01T00:00:00Z".parse().unwrap()),
+        })
+        .unwrap();
+    let mut tui = srv.tui();
+
+    tui.keys("v");
+    let screen = tui.screen();
+
+    assert!(!screen.contains("┌ QR code "), "{screen}");
+    assert!(!screen.contains(['█', '▀', '▄']), "{screen}");
+    assert!(screen.contains("old has expired"), "{screen}");
+    // The error goes with the next key; the list still takes keys.
+    tui.keys("q");
+    assert!(tui.app.quit());
+}
+
+#[test]
 fn a_terminal_too_small_for_the_qr_code_shows_the_size_it_needs() {
     let srv = server();
     let link = srv.create("abc", "https://example.com/a");

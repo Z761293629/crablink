@@ -12,6 +12,10 @@ const QUIET_ZONE: usize = 4;
 /// The QR code of `short_url` in Unicode half blocks, one string per row: two modules
 /// per cell (top and bottom), every module drawn, with the quiet zone. Meant to be
 /// drawn in [`DARK`] on [`LIGHT`], whatever the terminal's own colours.
+///
+/// # Panics
+///
+/// If `short_url` is too long for any QR code (about 2900 bytes), which no Short URL is.
 pub fn half_blocks(short_url: &str) -> Vec<String> {
     let qr = qrcode::QrCode::new(short_url).expect("a Short URL fits in a QR code");
     let width = qr.width();
