@@ -192,7 +192,7 @@ pub struct CreateInvite {
 }
 
 /// Response of `POST /api/admin/invites`: the only time the invite link is shown.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct NewInvite {
     /// What the Instance Admin sends the new User; its fragment is the token.
     pub url: String,
@@ -271,6 +271,19 @@ impl std::fmt::Debug for AcceptInvite {
         f.debug_struct("AcceptInvite")
             .field("token", &REDACTED)
             .field("password", &REDACTED)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for NewInvite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let page = self
+            .url
+            .split_once('#')
+            .map_or(&*self.url, |(page, _)| page);
+        f.debug_struct("NewInvite")
+            .field("url", &format_args!("{page}#{REDACTED}"))
+            .field("expires_at", &self.expires_at)
             .finish()
     }
 }
@@ -448,6 +461,13 @@ mod tests {
             ),
             format!("{:?}", NewApiKey { key, secret: s() }),
             format!("{:?}", NewPassword { password: s() }),
+            format!(
+                "{:?}",
+                NewInvite {
+                    url: format!("https://crabl.ink/app/invite#{}", s()),
+                    expires_at: DateTime::UNIX_EPOCH
+                }
+            ),
         ] {
             assert!(!debug.contains("s3cret"), "{debug}");
             assert!(debug.contains("<redacted>"), "{debug}");
