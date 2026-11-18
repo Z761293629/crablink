@@ -29,6 +29,7 @@ const KEYS: &[(&str, &str)] = &[
     ("e", "edit"),
     ("r", "refresh"),
     ("d", "delete"),
+    ("v", "QR code"),
     ("?", "help"),
     ("q", "quit (Esc)"),
 ];
@@ -247,6 +248,8 @@ enum Mode {
     Form(Form),
     /// Asking to delete the selected Link; only `y` confirms.
     Delete,
+    /// The QR code of this Short URL over everything; only `Esc` closes it.
+    Qr(String),
 }
 
 /// The Link form: Target, Code, Expiry. `n` opens it empty to create a Link; `e`
@@ -423,6 +426,8 @@ impl App {
                 self.delete_selected();
             }
             (Mode::Delete, _) => self.mode = Mode::List,
+            (Mode::Qr(_), KeyCode::Esc) => self.mode = Mode::List,
+            (Mode::Qr(_), _) => {}
             (_, KeyCode::Down) => self.move_selection(1),
             (_, KeyCode::Up) => self.move_selection(-1),
             (Mode::List, KeyCode::Char('q') | KeyCode::Esc) => self.quit = true,
@@ -441,6 +446,11 @@ impl App {
                 }
             }
             (Mode::List, KeyCode::Char('d')) if has_selection => self.mode = Mode::Delete,
+            (Mode::List, KeyCode::Char('v')) => {
+                if let Some(url) = self.selected().map(|l| l.short_url.clone()) {
+                    self.mode = Mode::Qr(url);
+                }
+            }
             (Mode::Filter, KeyCode::Enter) => self.mode = Mode::List,
             (Mode::Filter, KeyCode::Esc) => {
                 self.mode = Mode::List;
@@ -572,9 +582,48 @@ impl App {
                     render_delete(f, main, &l.code);
                 }
             }
+            // Over the whole screen, sidebar included: a QR code needs all the room it can get.
+            Mode::Qr(url) => render_qr(f, area, url),
             Mode::List | Mode::Filter => {}
         }
     }
+}
+
+/// The QR code of `short_url`, every module drawn, with the Short URL under it, centred
+/// over `area`. If `area` can't hold it, the terminal size it needs instead.
+fn render_qr(f: &mut Frame, area: Rect, short_url: &str) {
+    let rows = crate::qr::half_blocks(short_url);
+    let qr_width = rows[0].chars().count();
+    let width = qr_width.max(short_url.chars().count()) as u16 + 2;
+    let height = rows.len() as u16 + 3;
+    if width > area.width || height > area.height {
+        let text = vec![
+            Line::from(format!(
+                "Enlarge the terminal to {width}x{height} to show the QR code."
+            )),
+            Line::from("Esc closes").dim(),
+        ];
+        f.render_widget(Clear, area);
+        f.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), area);
+        return;
+    }
+    // Dark on light whatever the terminal theme, so it scans.
+    let colours = Style::new()
+        .fg(Color::Indexed(crate::qr::DARK))
+        .bg(Color::Indexed(crate::qr::LIGHT));
+    let mut text: Vec<Line> = rows
+        .into_iter()
+        .map(|r| Line::from(Span::styled(r, colours)))
+        .collect();
+    text.push(Line::from(short_url).bold());
+    let area = area.centered(Constraint::Length(width), Constraint::Length(height));
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Paragraph::new(text)
+            .centered()
+            .block(Block::bordered().title(" QR code ")),
+        area,
+    );
 }
 
 fn key_hints<'a>() -> impl Iterator<Item = Line<'a>> {
