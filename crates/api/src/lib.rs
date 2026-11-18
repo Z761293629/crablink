@@ -58,7 +58,7 @@ impl Link {
 }
 
 /// Body of `POST /api/session`: signing in.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SignIn {
     /// Matched ignoring case.
     pub email: String,
@@ -66,7 +66,7 @@ pub struct SignIn {
 }
 
 /// Body of `POST /api/me/password`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ChangePassword {
     pub current_password: String,
     /// At least 8 characters.
@@ -172,7 +172,7 @@ pub struct ApiKey {
 }
 
 /// Response of `POST /api/workspaces/{slug}/api-keys`: the only time the secret is shown.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct NewApiKey {
     #[serde(flatten)]
     pub key: ApiKey,
@@ -199,7 +199,7 @@ pub struct NewInvite {
 }
 
 /// Body of `POST /api/invites/accept`; the response is the new, signed-in `User`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AcceptInvite {
     /// The invite link's fragment.
     pub token: String,
@@ -230,9 +230,56 @@ pub struct UpdateUser {
 
 /// Response of `POST /api/admin/users/{id}/password`: the only time the new
 /// password is shown.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct NewPassword {
     pub password: String,
+}
+
+/// What `Debug` shows instead of a password, token or secret, so none reaches a log.
+const REDACTED: &str = "<redacted>";
+
+impl std::fmt::Debug for SignIn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SignIn")
+            .field("email", &self.email)
+            .field("password", &REDACTED)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ChangePassword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChangePassword")
+            .field("current_password", &REDACTED)
+            .field("new_password", &REDACTED)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for NewApiKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NewApiKey")
+            .field("key", &self.key)
+            .field("secret", &REDACTED)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for AcceptInvite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AcceptInvite")
+            .field("token", &REDACTED)
+            .field("password", &REDACTED)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for NewPassword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NewPassword")
+            .field("password", &REDACTED)
+            .finish()
+    }
 }
 
 /// Body of every management API error response.
@@ -365,6 +412,46 @@ impl QrFormat {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn debug_output_never_shows_a_password_token_or_secret() {
+        let s = || "hunter2-s3cret".to_owned();
+        let key = ApiKey {
+            id: 1,
+            name: "CI".into(),
+            prefix: "crab_1234567".into(),
+            created_at: "2030-01-01T00:00:00Z".parse().unwrap(),
+            last_used_at: None,
+        };
+        for debug in [
+            format!(
+                "{:?}",
+                SignIn {
+                    email: "ada@example.com".into(),
+                    password: s()
+                }
+            ),
+            format!(
+                "{:?}",
+                ChangePassword {
+                    current_password: s(),
+                    new_password: s()
+                }
+            ),
+            format!(
+                "{:?}",
+                AcceptInvite {
+                    token: s(),
+                    password: s()
+                }
+            ),
+            format!("{:?}", NewApiKey { key, secret: s() }),
+            format!("{:?}", NewPassword { password: s() }),
+        ] {
+            assert!(!debug.contains("s3cret"), "{debug}");
+            assert!(debug.contains("<redacted>"), "{debug}");
+        }
+    }
 
     #[test]
     fn update_link_expiry_is_three_state() {
