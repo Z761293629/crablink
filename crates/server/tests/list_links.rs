@@ -40,7 +40,7 @@ async fn links_come_back_newest_first_as_full_links() {
     assert_eq!(body["next_cursor"], Value::Null);
     let first = &body["links"][0];
     assert_eq!(first["code"], "link002");
-    assert_eq!(first["short_url"], "https://crab.link/link002");
+    assert_eq!(first["short_url"], "https://crabl.ink/link002");
     assert_eq!(first["click_count"], 0);
 
     let (codes, _) = page(&app, "").await;

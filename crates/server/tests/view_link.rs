@@ -16,7 +16,7 @@ async fn a_new_link_can_be_viewed_with_zero_clicks() {
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
     let link = res.json();
     assert_eq!(link["code"], "View001");
-    assert_eq!(link["short_url"], "https://crab.link/View001");
+    assert_eq!(link["short_url"], "https://crabl.ink/View001");
     assert_eq!(link["target"], "https://example.com/v");
     assert_eq!(link["click_count"], 0);
     assert!(link["expires_at"].is_null());

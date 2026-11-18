@@ -14,7 +14,7 @@ use crate::Api;
 /// `token` is ignored, so its user is sent to `crablink login`.
 #[derive(Args, Serialize, Deserialize, Default)]
 pub struct Creds {
-    /// Server URL, e.g. https://crab.link
+    /// Server URL, e.g. https://crabl.ink
     #[arg(long, env = "CRABLINK_URL", global = true)]
     pub server: Option<String>,
     /// API Key of the Workspace to manage

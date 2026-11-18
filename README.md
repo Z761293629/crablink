@@ -28,7 +28,7 @@
 server 把数据存在 Postgres 里（[ADR-0007](docs/adr/0007-postgres-only.md)）。仓库根目录的 `compose.yaml` 同时起 server 和官方 `postgres:18` 镜像：
 
 ```bash
-CRABLINK_BASE_URL=https://crab.link docker compose up -d
+CRABLINK_BASE_URL=https://crabl.ink docker compose up -d
 curl http://localhost:8080/health   # → ok
 ```
 
@@ -48,7 +48,7 @@ Postgres 只在 compose 网络内可达，数据在卷 `postgres` 里，删掉�
 
 | 环境变量 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
-| `CRABLINK_BASE_URL` | 是 | — | 对外地址，如 `https://crab.link`；启动时用它的 host（和端口）建 Default Domain，Short URL 是 `scheme://host/{code}`，路径部分不计入 |
+| `CRABLINK_BASE_URL` | 是 | — | 对外地址，如 `https://crabl.ink`；启动时用它的 host（和端口）建 Default Domain，Short URL 是 `scheme://host/{code}`，路径部分不计入 |
 | `CRABLINK_DATABASE_URL` | 是 | compose 里已设好 | Postgres URL，如 `postgres://user:pass@host:5432/crablink`；启动时自动建表 |
 | `CRABLINK_LISTEN` | 否 | `0.0.0.0:8080` | 监听地址（改端口的话 `ports` 和健康检查端口要一起改） |
 
@@ -57,18 +57,18 @@ Postgres 只在 compose 网络内可达，数据在卷 `postgres` 里，删掉�
 没有公开注册：Instance Admin 登录后生成邀请链接，发给对方。`workspace` 可省略，给了就让对方以 Member 加入这个 Workspace：
 
 ```bash
-curl -c jar -H 'Origin: https://crab.link' -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","password":"…"}' https://crab.link/api/session
-curl -b jar -H 'Origin: https://crab.link' -H 'Content-Type: application/json' \
-  -d '{"email":"friend@example.com","workspace":"you"}' https://crab.link/api/admin/invites
-# → {"url":"https://crab.link/app/invite#<token>","expires_at":"…"}
+curl -c jar -H 'Origin: https://crabl.ink' -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}' https://crabl.ink/api/session
+curl -b jar -H 'Origin: https://crabl.ink' -H 'Content-Type: application/json' \
+  -d '{"email":"friend@example.com","workspace":"you"}' https://crabl.ink/api/admin/invites
+# → {"url":"https://crabl.ink/app/invite#<token>","expires_at":"…"}
 ```
 
 邀请 7 天有效、只能用一次。Web UI 上线前，对方取 `#` 后面的 token，自己设密码完成注册（同时登录）：
 
 ```bash
 curl -c jar -H 'Content-Type: application/json' \
-  -d '{"token":"<token>","password":"…"}' https://crab.link/api/invites/accept
+  -d '{"token":"<token>","password":"…"}' https://crabl.ink/api/invites/accept
 ```
 
 Instance Admin 用 `/api/admin/users` 列出 User、停用 / 启用、设为 Instance Admin 或重置密码（见下方 HTTP API）；停用或重置密码会立即结束该 User 的所有 session。
@@ -122,15 +122,15 @@ macOS 上用 `curl` 下载不会带隔离属性，因此不会触发 Gatekeeper 
 CLI 用 Workspace 的 API Key 登录。每个 User 首次登录时会得到一个个人 Workspace（自己是 Owner，slug 取自 email `@` 前的部分）；在 Web UI 上线前，用 curl 登录并建一个 API Key：
 
 ```bash
-curl -c jar -H 'Origin: https://crab.link' -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","password":"…"}' https://crab.link/api/session
-curl -b jar https://crab.link/api/workspaces                      # → [{"slug":"you",…}]
-curl -b jar -H 'Origin: https://crab.link' -H 'Content-Type: application/json' \
-  -d '{"name":"laptop"}' https://crab.link/api/workspaces/you/api-keys   # secret 只显示这一次
+curl -c jar -H 'Origin: https://crabl.ink' -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}' https://crabl.ink/api/session
+curl -b jar https://crabl.ink/api/workspaces                      # → [{"slug":"you",…}]
+curl -b jar -H 'Origin: https://crabl.ink' -H 'Content-Type: application/json' \
+  -d '{"name":"laptop"}' https://crabl.ink/api/workspaces/you/api-keys   # secret 只显示这一次
 ```
 
 ```bash
-crablink login --server https://crab.link   # 提示输入 API Key，向服务器问出它的 Workspace，存到 ~/.config/crablink/config.toml
+crablink login --server https://crabl.ink   # 提示输入 API Key，向服务器问出它的 Workspace，存到 ~/.config/crablink/config.toml
 crablink create https://example.com/a/very/long/path
 crablink create https://rustconf.com --code rust-meetup --expires 7d
 crablink ls                                  # 全部 Link：Code、Click Count、Expiry、Target
@@ -145,7 +145,7 @@ crablink qr rust-meetup -o poster.png        # 存为文件，格式看扩展名
 
 `--json` 输出与 HTTP API 的响应格式一致（`ls` 为跨所有分页的一个数组，新的在前），API 变它就跟着变；出错时仍只在 stderr 打印错误并以非零码退出，stdout 不输出 JSON。
 
-服务器地址、API Key 和 Workspace 按字段逐个取，优先级从高到低：`--server` / `--api-key` / `--workspace` 参数 > 环境变量 `CRABLINK_URL` / `CRABLINK_API_KEY` / `CRABLINK_WORKSPACE` > `~/.config/crablink/config.toml`。没给 Workspace 时向 `/api/me` 问 API Key 所属的 Workspace。`login` 先用 API Key 请求 `/api/me`，通过后才把服务器、API Key 和 Workspace 写进配置文件，权限为 `0600`（仅本人可读写）。非终端环境下 `login` 从 stdin 读 API Key：`echo "$CRABLINK_API_KEY" | crablink login --server https://crab.link`。0.2 / 0.3 的配置文件里的 `token` 不再生效，需重新 `login`。
+服务器地址、API Key 和 Workspace 按字段逐个取，优先级从高到低：`--server` / `--api-key` / `--workspace` 参数 > 环境变量 `CRABLINK_URL` / `CRABLINK_API_KEY` / `CRABLINK_WORKSPACE` > `~/.config/crablink/config.toml`。没给 Workspace 时向 `/api/me` 问 API Key 所属的 Workspace。`login` 先用 API Key 请求 `/api/me`，通过后才把服务器、API Key 和 Workspace 写进配置文件，权限为 `0600`（仅本人可读写）。非终端环境下 `login` 从 stdin 读 API Key：`echo "$CRABLINK_API_KEY" | crablink login --server https://crabl.ink`。0.2 / 0.3 的配置文件里的 `token` 不再生效，需重新 `login`。
 
 不带参数运行 `crablink` 会在终端里打开全屏 TUI 浏览 Link（stdout 不是终端时只打印帮助）。左侧边栏顶部通过终端图像协议显示 crablink logo，并按终端背景自动选浅色/深色版本：Ghostty、kitty、WezTerm、iTerm2 及其他支持 kitty / iTerm2 / sixel 图像协议的终端会显示；macOS Terminal.app 等不支持图像协议的终端不显示 logo，其余照常可用。TUI 运行中切换终端主题，logo 约 1 秒内跟着换版本，按 `r` 可立即重新检测（tmux 内不跟随）。在选中的 Link 上按 `v` 弹出它的 QR 码（白底黑码，与终端主题无关），`Esc` 关闭；终端放不下时显示所需的最小尺寸。
 

@@ -39,7 +39,7 @@ fn present<'de, T: Deserialize<'de>, D: Deserializer<'de>>(d: D) -> Result<Optio
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Link {
     pub code: String,
-    /// The Domain the Link lives on, e.g. `crab.link`.
+    /// The Domain the Link lives on, e.g. `crabl.ink`.
     pub domain: String,
     /// The Domain joined with the Code.
     pub short_url: String,
@@ -480,8 +480,8 @@ mod tests {
         let t: DateTime<Utc> = "2030-01-01T00:00:00Z".parse().unwrap();
         let link = |expires_at| Link {
             code: "abc".into(),
-            domain: "crab.link".into(),
-            short_url: "https://crab.link/abc".into(),
+            domain: "crabl.ink".into(),
+            short_url: "https://crabl.ink/abc".into(),
             target: "https://example.com".into(),
             created_at: t,
             updated_at: t,

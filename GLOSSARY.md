@@ -9,7 +9,7 @@ The mapping from a Code on a Domain to a Target, owned by one Workspace. Its Tar
 _Avoid_: Short link, URL, mapping, redirect
 
 **Code**:
-The identifier in the path of a Short URL, e.g. `aZ3k9` in `crab.link/aZ3k9`. Either a **Generated Code** (chosen by the service) or a **Custom Code** (chosen by whoever creates the Link). Case-sensitive, unique within its Domain, and never reused on that Domain once taken, even after its Link is deleted.
+The identifier in the path of a Short URL, e.g. `aZ3k9` in `crabl.ink/aZ3k9`. Either a **Generated Code** (chosen by the service) or a **Custom Code** (chosen by whoever creates the Link). Case-sensitive, unique within its Domain, and never reused on that Domain once taken, even after its Link is deleted.
 _Avoid_: Slug (that names a Workspace), key, alias, hash, short id
 
 **Target**:
@@ -17,7 +17,7 @@ The URL a Link sends visitors to.
 _Avoid_: Destination, long URL, original URL
 
 **Short URL**:
-A Domain joined with a Code, e.g. `crab.link/aZ3k9`. Derived for display, never stored.
+A Domain joined with a Code, e.g. `crabl.ink/aZ3k9`. Derived for display, never stored.
 _Avoid_: Short link, link
 
 **Tag**:
@@ -41,7 +41,7 @@ The number of Clicks a Link has had.
 _Avoid_: Hits, views, visits, PV
 
 **Domain**:
-A host name that Short URLs live on, e.g. `crab.link` or `go.example.com`. Each Code belongs to exactly one Domain. A custom Domain belongs to one Workspace.
+A host name that Short URLs live on, e.g. `crabl.ink` or `go.example.com`. Each Code belongs to exactly one Domain. A custom Domain belongs to one Workspace.
 _Avoid_: Host, base URL, hostname
 
 **Default Domain**:

@@ -136,8 +136,8 @@ async fn a_cookie_request_that_changes_state_needs_this_hosts_origin() {
 
     for origin in [
         Some("https://evil.example"),
-        Some("https://crab.link.evil.example"),
-        Some("http://crab.link:8080"),
+        Some("https://crabl.ink.evil.example"),
+        Some("http://crabl.ink:8080"),
         Some("null"),
         None,
     ] {

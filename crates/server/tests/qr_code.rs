@@ -27,7 +27,7 @@ async fn a_png_qr_code_decodes_to_exactly_the_short_url() {
 
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
     assert_eq!(res.header("content-type"), "image/png");
-    assert_eq!(decode_png(&res.bytes), "https://crab.link/Qr00002");
+    assert_eq!(decode_png(&res.bytes), "https://crabl.ink/Qr00002");
 }
 
 #[tokio::test]

@@ -34,7 +34,7 @@ async fn invalid_target_is_rejected_and_link_unchanged() {
     let app = app_with_codes(&["Edit002"]).await;
     app.create(json!({ "target": "https://old.example" })).await;
 
-    for bad in ["javascript:alert(1)", "https://crab.link/loop", "not a url"] {
+    for bad in ["javascript:alert(1)", "https://crabl.ink/loop", "not a url"] {
         let res = patch(&app, "Edit002", json!({ "target": bad })).await;
         assert_eq!(res.status, StatusCode::BAD_REQUEST, "{bad}");
         assert!(res.json()["error"].is_string());

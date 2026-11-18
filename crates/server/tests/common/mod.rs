@@ -19,9 +19,9 @@ use serde_json::Value;
 use sqlx::PgPool;
 use tower::ServiceExt;
 
-pub const BASE_URL: &str = "https://crab.link";
+pub const BASE_URL: &str = "https://crabl.ink";
 /// The `Host` and `Origin` a browser on `BASE_URL` sends.
-pub const HOST: &str = "crab.link";
+pub const HOST: &str = "crabl.ink";
 pub const ORIGIN: &str = BASE_URL;
 /// The password `TestApp::create_user` gives every User.
 pub const PASSWORD: &str = "correct horse battery";

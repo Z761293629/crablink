@@ -91,7 +91,7 @@ fn qr_without_a_file_asks_for_one_when_stdout_is_not_a_terminal() {
 
 #[test]
 fn half_blocks_draw_every_module_inside_a_four_module_quiet_zone() {
-    let url = "https://crab.link/aZ3k9";
+    let url = "https://crabl.ink/aZ3k9";
 
     let rows = crablink_cli::qr::half_blocks(url);
 
