@@ -67,6 +67,8 @@ pub enum ErrorKind {
     NotFound,
     /// No live Link has this Code.
     LinkNotFound,
+    /// The Link's Expiry has passed, and only a live Link will do (e.g. its QR code).
+    LinkExpired,
     /// Malformed body or query.
     BadRequest,
     InvalidTarget,
@@ -97,6 +99,38 @@ pub struct ListLinks {
 pub struct LinkPage {
     pub links: Vec<Link>,
     pub next_cursor: Option<String>,
+}
+
+/// Query of `GET /api/links/{code}/qr`: SVG when `format` is absent.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct QrQuery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<QrFormat>,
+}
+
+/// The file format of a Link's QR code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QrFormat {
+    Svg,
+    Png,
+}
+
+impl QrFormat {
+    /// The value of `format` in the query string.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            QrFormat::Svg => "svg",
+            QrFormat::Png => "png",
+        }
+    }
+
+    pub fn content_type(self) -> &'static str {
+        match self {
+            QrFormat::Svg => "image/svg+xml",
+            QrFormat::Png => "image/png",
+        }
+    }
 }
 
 #[cfg(test)]

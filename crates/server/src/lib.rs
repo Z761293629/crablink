@@ -83,6 +83,7 @@ pub fn app(pool: SqlitePool, codes: CodeGenerator, token: &str, base_url: &str) 
             "/links/{code}",
             get(get_link).patch(update_link).delete(delete_link),
         )
+        .route("/links/{code}/qr", get(link_qr))
         .fallback(|| async { ApiError::NotFound });
     Router::new()
         .nest("/api", api)
@@ -124,6 +125,9 @@ enum ApiError {
     /// A Code with no live Link (missing or deleted).
     #[error("link not found")]
     LinkNotFound,
+    /// A Link whose Expiry has passed, where only a live one will do.
+    #[error("link has expired")]
+    LinkExpired,
     #[error("{0}")]
     BadRequest(String),
     #[error("{0}")]
@@ -147,6 +151,7 @@ impl ApiError {
             Self::Unauthorized => ErrorKind::Unauthorized,
             Self::NotFound => ErrorKind::NotFound,
             Self::LinkNotFound => ErrorKind::LinkNotFound,
+            Self::LinkExpired => ErrorKind::LinkExpired,
             Self::BadRequest(_) => ErrorKind::BadRequest,
             Self::InvalidTarget(_) => ErrorKind::InvalidTarget,
             Self::InvalidCode => ErrorKind::InvalidCode,
@@ -160,6 +165,7 @@ impl ApiError {
         match self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::NotFound | Self::LinkNotFound => StatusCode::NOT_FOUND,
+            Self::LinkExpired => StatusCode::GONE,
             Self::BadRequest(_)
             | Self::InvalidTarget(_)
             | Self::InvalidCode
@@ -318,16 +324,52 @@ async fn get_link(
     State(s): State<AppState>,
     Path(code): Path<String>,
 ) -> Result<Json<crablink_api::Link>, ApiError> {
+    fetch_link(&s, &code).await.map(Json)
+}
+
+/// The live or expired Link with this Code; 404 if missing or deleted.
+async fn fetch_link(s: &AppState, code: &str) -> Result<crablink_api::Link, ApiError> {
     sqlx::query_as::<_, LinkRow>(concat!(
         "SELECT ",
         link_columns!(),
         " FROM links WHERE code = ? AND deleted_at IS NULL"
     ))
-    .bind(&code)
+    .bind(code)
     .fetch_optional(&s.pool)
     .await?
-    .map(|row| Json(row.into_dto(&s.base_url)))
+    .map(|row| row.into_dto(&s.base_url))
     .ok_or(ApiError::LinkNotFound)
+}
+
+/// `GET /api/links/{code}/qr?format=svg|png`: the QR code of the Link's Short URL.
+async fn link_qr(
+    State(s): State<AppState>,
+    Path(code): Path<String>,
+    query: Result<Query<crablink_api::QrQuery>, QueryRejection>,
+) -> Result<Response, ApiError> {
+    let Query(q) = query?;
+    let link = fetch_link(&s, &code).await?;
+    // Its Short URL no longer redirects, so a QR code of it would only mislead.
+    if link.expires_at.is_some_and(|t| t <= Utc::now()) {
+        return Err(ApiError::LinkExpired);
+    }
+    let format = q.format.unwrap_or(crablink_api::QrFormat::Svg);
+    let internal = |what: &str, e: &dyn std::fmt::Display| {
+        eprintln!("cannot {what} the QR code of {:?}: {e}", link.short_url);
+        ApiError::Internal
+    };
+    let qr = qrcode::QrCode::new(&link.short_url).map_err(|e| internal("encode", &e))?;
+    let body = match format {
+        crablink_api::QrFormat::Svg => qr.render::<qrcode::render::svg::Color>().build().into(),
+        crablink_api::QrFormat::Png => {
+            let img = qr.render::<image::Luma<u8>>().build();
+            let mut png = std::io::Cursor::new(Vec::new());
+            img.write_to(&mut png, image::ImageFormat::Png)
+                .map_err(|e| internal("write", &e))?;
+            png.into_inner()
+        }
+    };
+    Ok(([(header::CONTENT_TYPE, format.content_type())], body).into_response())
 }
 
 /// `PATCH /api/links/{code}`: changes Target and/or Expiry, never the Code;

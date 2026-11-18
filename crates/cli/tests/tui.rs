@@ -342,6 +342,7 @@ fn question_mark_shows_every_key_and_the_version() {
         "e edit",
         "r refresh",
         "d delete",
+        "v QR code",
         "? help",
         "q quit",
         "Esc",
@@ -353,6 +354,94 @@ fn question_mark_shows_every_key_and_the_version() {
     tui.keys("q");
     assert!(!tui.app.quit());
     assert!(!tui.screen().contains("refresh"), "{}", tui.screen());
+}
+
+/// The rows inside the bordered popup titled `title`, borders excluded.
+fn popup(screen: &str, title: &str) -> Vec<String> {
+    let lines: Vec<Vec<char>> = screen.lines().map(|l| l.chars().collect()).collect();
+    let top = lines
+        .iter()
+        .position(|l| l.iter().collect::<String>().contains(&format!("┌{title}")))
+        .unwrap_or_else(|| panic!("no {title:?} popup:\n{screen}"));
+    let left = lines[top].iter().position(|&c| c == '┌').expect(screen);
+    let right = left
+        + lines[top][left..]
+            .iter()
+            .position(|&c| c == '┐')
+            .expect(screen);
+    lines[top + 1..]
+        .iter()
+        .take_while(|l| l.get(left) != Some(&'└'))
+        .map(|l| l[left + 1..right].iter().collect())
+        .collect()
+}
+
+#[test]
+fn v_shows_the_selected_links_qr_code_with_its_short_url_and_esc_closes_it() {
+    let srv = server();
+    srv.create("abc", "https://example.com/a");
+    let link = srv.create("xyz", "https://example.com/x");
+    let mut tui = srv.tui();
+
+    tui.keys("v");
+    let screen = tui.screen();
+
+    let rows = popup(&screen, " QR code ");
+    let (url, qr) = rows.split_last().unwrap();
+    assert_eq!(url.trim(), link.short_url, "{screen}");
+    let qr: Vec<&str> = qr.iter().map(String::as_str).collect();
+    assert_eq!(decode_half_blocks(&qr), link.short_url);
+
+    // Only Esc closes it; other keys don't reach the list underneath.
+    tui.keys("jq");
+    assert!(!tui.app.quit());
+    assert!(tui.screen().contains("┌ QR code "));
+    tui.key(KeyCode::Esc);
+    let screen = tui.screen();
+    assert!(!screen.contains("┌ QR code "), "{screen}");
+    assert!(
+        line_with(&screen, "Short URL").contains(&link.short_url),
+        "{screen}"
+    );
+}
+
+#[test]
+fn v_with_no_link_selected_does_nothing() {
+    let srv = server();
+    let mut tui = srv.tui();
+    let before = tui.screen();
+
+    tui.keys("v");
+
+    assert_eq!(tui.screen(), before);
+}
+
+#[test]
+fn a_terminal_too_small_for_the_qr_code_shows_the_size_it_needs() {
+    let srv = server();
+    let link = srv.create("abc", "https://example.com/a");
+    let mut tui = srv.tui();
+    // The code with its 4-module quiet zone, in half blocks, plus the Short URL under
+    // it and the border. The Short URL is shorter than the code is wide.
+    let modules = qrcode::QrCode::new(&link.short_url).unwrap().width() as u16 + 8;
+    let (min_w, min_h) = (modules + 2, modules.div_ceil(2) + 3);
+    let needed = format!("{min_w}x{min_h}");
+
+    for (width, height) in [(min_w - 1, 30), (100, min_h - 1)] {
+        tui.resize(width, height);
+        tui.keys("v");
+        let screen = tui.screen();
+        assert!(screen.contains(&needed), "{width}x{height}:\n{screen}");
+        assert!(
+            !screen.contains(['█', '▀', '▄']),
+            "{width}x{height}:\n{screen}"
+        );
+        tui.key(KeyCode::Esc);
+    }
+
+    tui.resize(min_w, min_h);
+    tui.keys("v");
+    assert!(tui.screen().contains('▀'), "{}", tui.screen());
 }
 
 /// Every Link on the server, newest first.

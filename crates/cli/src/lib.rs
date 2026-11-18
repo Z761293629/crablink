@@ -1,18 +1,19 @@
 //! `crablink`: a thin client for the crablink management API. All validation lives in the server.
 
 use std::io::{BufRead, IsTerminal};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, anyhow, bail};
 use chrono::{DateTime, TimeDelta, Utc};
 use clap::{Args, CommandFactory, Parser, Subcommand};
-use crablink_api::{CreateLink, Link, LinkPage, UpdateLink};
+use crablink_api::{CreateLink, Link, LinkPage, QrFormat, UpdateLink};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use ureq::http::{Method, Request, Response};
 use ureq::{Body, SendBody};
 
+pub mod qr;
 pub mod tui;
 
 #[derive(Parser)]
@@ -76,6 +77,13 @@ pub enum Cmd {
     },
     /// Delete a Link (its Code is never reused).
     Rm { code: String },
+    /// Show a Link's QR code in the terminal, or save it to a file.
+    Qr {
+        code: String,
+        /// Save to this file instead: .svg or .png.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 /// Server and token. Flags beat env vars (clap), which beat the config file (`or`).
@@ -208,6 +216,13 @@ impl Api {
             .map(drop)
     }
 
+    /// `GET /api/links/{code}/qr`: the QR code file's bytes.
+    pub fn qr(&self, code: &str, format: QrFormat) -> anyhow::Result<Vec<u8>> {
+        let path = format!("{}/qr?format={}", link_path(code), format.as_str());
+        let mut res = self.send(Method::GET, &path, SendBody::none())?;
+        Ok(res.body_mut().read_to_vec()?)
+    }
+
     fn send(&self, method: Method, path: &str, body: SendBody) -> anyhow::Result<Response<Body>> {
         let req = Request::builder()
             .method(method)
@@ -307,6 +322,26 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
             api.delete(&code)?;
             eprintln!("Deleted {code}");
         }
+        Cmd::Qr {
+            code,
+            output: Some(path),
+        } => {
+            let format = qr_format(&path)?;
+            std::fs::write(&path, api.qr(&code, format)?)
+                .with_context(|| format!("cannot write {}", path.display()))?;
+            eprintln!("Saved {}", path.display());
+        }
+        Cmd::Qr { code, output: None } => {
+            if !std::io::stdout().is_terminal() {
+                bail!("stdout is not a terminal: pass -o <file.svg|file.png> to save the QR code");
+            }
+            let link = api.get(&code)?;
+            for row in qr::half_blocks(&link.short_url) {
+                // Forced dark on light, then reset, so it scans in any terminal theme.
+                println!("\x1b[38;5;{};48;5;{}m{row}\x1b[0m", qr::DARK, qr::LIGHT);
+            }
+            println!("{}", link.short_url);
+        }
     }
     Ok(())
 }
@@ -325,6 +360,16 @@ fn encode(s: &str) -> String {
             _ => format!("%{b:02X}"),
         })
         .collect()
+}
+
+/// The QR code format named by `path`'s extension.
+fn qr_format(path: &Path) -> anyhow::Result<QrFormat> {
+    let ext = path.extension().and_then(|e| e.to_str());
+    match ext.map(str::to_ascii_lowercase).as_deref() {
+        Some("svg") => Ok(QrFormat::Svg),
+        Some("png") => Ok(QrFormat::Png),
+        _ => bail!("{} must end in .svg or .png", path.display()),
+    }
 }
 
 /// `edit` flags to a PATCH body; clap already rejects `--expires` with `--no-expires`.
