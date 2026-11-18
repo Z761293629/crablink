@@ -41,11 +41,15 @@ impl Creds {
         let missing = |what| anyhow!("no {what} configured: run `crablink login --server <url>`");
         let server = self.server.ok_or_else(|| missing("server"))?;
         let api_key = self.api_key.ok_or_else(|| missing("API Key"))?;
-        let mut api = Api::new(server, api_key, self.workspace.unwrap_or_default());
-        if api.workspace.is_empty() {
-            api.workspace = api.me()?.slug;
-        }
-        Ok(api)
+        let workspace = match self.workspace {
+            Some(workspace) => workspace,
+            None => {
+                Api::new(server.clone(), api_key.clone(), String::new())
+                    .me()?
+                    .slug
+            }
+        };
+        Ok(Api::new(server, api_key, workspace))
     }
 
     /// These credentials completed from the config file: the resolution every subcommand uses.

@@ -155,12 +155,15 @@ impl Api {
 
 /// Percent-encodes every byte except `A-Z a-z 0-9 _ -`.
 fn encode(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-' => (b as char).to_string(),
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
+    use std::fmt::Write;
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-' => out.push(b as char),
+            _ => write!(out, "%{b:02X}").expect("writing to a String never fails"),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
