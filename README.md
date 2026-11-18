@@ -25,10 +25,10 @@
 
 ### Server（Docker Compose）
 
-server 把数据存在 Postgres 里（[ADR-0007](docs/adr/0007-postgres-only.md)）。仓库根目录的 `compose.yaml` 同时起 server 和官方 `postgres:18` 镜像：
+server 把数据存在 Postgres 里（[ADR-0007](docs/adr/0007-postgres-only.md)）。仓库根目录的 `compose.yaml` 用于本地试用：从源码构建 server，同时起官方 `postgres:18` 镜像，数据库密码固定。对外部署请用下一节的 `deploy/`。
 
 ```bash
-CRABLINK_BASE_URL=https://crabl.ink docker compose up -d
+docker compose up -d
 curl http://localhost:8080/health   # → ok
 ```
 
@@ -38,7 +38,7 @@ curl http://localhost:8080/health   # → ok
 docker compose exec crablink crablink-server admin create --email you@example.com
 ```
 
-server 只讲 HTTP，对外请在前面放一个终止 HTTPS 的反向代理：session cookie 带 `Secure`，浏览器只经 HTTPS（或 localhost）发回它。
+server 只讲 HTTP，对外必须在前面放一个终止 HTTPS 的反向代理：session cookie 带 `Secure`，浏览器只经 HTTPS（或 localhost）发回它。
 
 Postgres 只在 compose 网络内可达，数据在卷 `postgres` 里，删掉或重建容器数据都还在。
 
@@ -51,6 +51,24 @@ Postgres 只在 compose 网络内可达，数据在卷 `postgres` 里，删掉�
 | `CRABLINK_BASE_URL` | 是 | — | 对外地址，如 `https://crabl.ink`；启动时用它的 host（和端口）建 Default Domain，Short URL 是 `scheme://host/{code}`，路径部分不计入 |
 | `CRABLINK_DATABASE_URL` | 是 | compose 里已设好 | Postgres URL，如 `postgres://user:pass@host:5432/crablink`；启动时自动建表 |
 | `CRABLINK_LISTEN` | 否 | `0.0.0.0:8080` | 监听地址（改端口的话 `ports` 和健康检查端口要一起改） |
+
+### 生产部署（HTTPS）
+
+`deploy/` 里是对外部署用的 `compose.yaml` 和 `Caddyfile`：Caddy 自动申请、续期 Let's Encrypt 证书并反代到 server；server 和 Postgres 都不对外开端口，只有 Caddy 监听 80 / 443；镜像钉在发布的版本号上；域名和数据库密码从 `.env` 读，缺了就拒绝启动。
+
+1. 准备一台装好 Docker 的 Linux 主机，放行 80 和 443（在中国大陆的主机对外提供服务需先 ICP 备案）。
+2. 把域名的 A（和 AAAA）记录指向这台主机。
+3. 把 `deploy/compose.yaml` 和 `deploy/Caddyfile` 放到主机上同一个目录，在里面生成 `.env` 并启动：
+
+```bash
+printf 'CRABLINK_DOMAIN=crabl.ink\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
+chmod 600 .env
+docker compose up -d
+curl https://crabl.ink/health   # → ok
+docker compose exec crablink crablink-server admin create --email you@example.com
+```
+
+`POSTGRES_PASSWORD` 只在 Postgres 卷第一次初始化时写入，之后改 `.env` 不会改掉库里的密码。升级时改 `compose.yaml` 里的镜像版本号，再 `docker compose pull && docker compose up -d`，schema 在启动时自动升级。备份见下方「备份与恢复」，命令在同一目录里执行；把备份文件复制到这台主机以外。
 
 ### 邀请与管理 User
 

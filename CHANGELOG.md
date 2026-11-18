@@ -20,6 +20,7 @@
 - **Workspace 与 API Key**：每个 User 首次登录时得到一个个人 Workspace（自己是 Owner）。Owner 建、列出、吊销 API Key，`secret` 只在创建时返回一次，服务器只存哈希；API Key 属于 Workspace，创建者离开后照样可用。(#55)
 - **成员与角色**：`GET /api/workspaces` 带上角色；新建、改名、删除 Workspace（删除后其 Link 变为已删除，Code 仍被占用，API Key 失效）；Owner 按 email 加成员、升降角色、移除成员，Member 可以退出。Member 只能管理 Link；最后一个 Owner 不能退出、被移除或降级（409 `last_owner`）。(#56)
 - **邀请与 User 管理**：Instance Admin 用 `POST /api/admin/invites` 生成一次性邀请链接（7 天有效，可指定加入的 Workspace），被邀请人用 `POST /api/invites/accept` 设密码、建 User 并登录；`GET /api/admin/users` 列出 User，`PATCH /api/admin/users/{id}` 停用 / 启用或设为 Instance Admin，`POST /api/admin/users/{id}/password` 重置为随机密码（只返回一次）。停用或重置密码都会结束该 User 的所有 session。`/api/admin` 下除 Instance Admin 的 session 外一律 403。(#57)
+- **生产部署**：`deploy/` 提供对外部署用的 `compose.yaml` 和 `Caddyfile`，Caddy 终止 HTTPS 并自动续证，server 和 Postgres 不对外开端口，域名和数据库密码从 `.env` 读。仓库根目录的 `compose.yaml` 只用于本地试用。(#58)
 
 ## 0.3.0
 

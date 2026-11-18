@@ -1,0 +1,5 @@
+# Caddy gets and renews the certificate for the Default Domain and keeps the Host header,
+# which crablink checks against Origin on cookie requests.
+{$CRABLINK_DOMAIN} {
+	reverse_proxy crablink:8080
+}
