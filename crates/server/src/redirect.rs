@@ -3,7 +3,6 @@
 use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use chrono::Utc;
 
 use crate::AppState;
 use crate::error::ApiError;
@@ -28,7 +27,7 @@ async fn follow(s: &AppState, code: &str) -> Result<Response, ApiError> {
     )
     .bind(s.domain_id)
     .bind(code)
-    .bind(Utc::now())
+    .bind((s.clock)())
     .fetch_optional(&s.pool)
     .await?;
     if let Some(target) = target {

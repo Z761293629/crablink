@@ -118,7 +118,7 @@ pub(crate) async fn create_link(
     if let Some(code) = &req.code {
         validate_custom_code(code)?;
     }
-    let now = Utc::now();
+    let now = (s.clock)();
     // Insert and let the unique constraint reject a taken Code; never check first (ADR-0003).
     for _ in 0..MAX_CODE_ATTEMPTS {
         let inserted = sqlx::query_as::<_, LinkRow>(concat!(
@@ -193,7 +193,7 @@ pub(crate) async fn link_qr(
     let Query(q) = query?;
     let link = fetch_link(&s, workspace_id, &code).await?;
     // Its Short URL no longer redirects, so a QR code of it would only mislead.
-    if link.is_expired(Utc::now()) {
+    if link.is_expired((s.clock)()) {
         return Err(ApiError::LinkExpired);
     }
     let format = q.format.unwrap_or(crablink_api::QrFormat::Svg);
@@ -239,7 +239,7 @@ pub(crate) async fn update_link(
     .bind(&req.target)
     .bind(req.expires_at.is_some())
     .bind(req.expires_at.flatten())
-    .bind(Utc::now())
+    .bind((s.clock)())
     .bind(workspace_id)
     .bind(s.domain_id)
     .bind(&code)
@@ -324,7 +324,7 @@ pub(crate) async fn delete_link(
         "UPDATE links SET deleted_at = $1 \
          WHERE workspace_id = $2 AND domain_id = $3 AND code = $4 AND deleted_at IS NULL",
     )
-    .bind(Utc::now())
+    .bind((s.clock)())
     .bind(workspace_id)
     .bind(s.domain_id)
     .bind(&code)

@@ -1,6 +1,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use chrono::TimeDelta;
 use common::*;
 use serde_json::{Value, json};
 
@@ -13,6 +14,7 @@ async fn patch(app: &TestApp, code: &str, body: Value) -> Res {
 async fn changed_target_is_used_by_redirect() {
     let app = app_with_codes(&["Edit001"]).await;
     let before = app.create(json!({ "target": "https://old.example" })).await;
+    app.advance(TimeDelta::seconds(1));
 
     let res = patch(&app, "Edit001", json!({ "target": "https://new.example/" })).await;
 
