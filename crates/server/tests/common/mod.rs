@@ -85,6 +85,23 @@ impl TestApp {
         Res::read(resp).await
     }
 
+    /// The app restarted with `CRABLINK_BASE_URL` set to `base_url`, on the same
+    /// database and clock.
+    pub async fn restarted_on(&self, base_url: &str) -> TestApp {
+        let codes: crablink_server::CodeGenerator = Arc::new(crablink_server::random_code);
+        let now = self.now.clone();
+        let clock: crablink_server::Clock = Arc::new(move || *now.lock().unwrap());
+        let router = crablink_server::app(self.pool.clone(), codes, clock, base_url)
+            .await
+            .unwrap();
+        TestApp {
+            router,
+            pool: self.pool.clone(),
+            now: self.now.clone(),
+            owner: self.owner.clone(),
+        }
+    }
+
     /// Moves the app's clock forward.
     pub fn advance(&self, by: TimeDelta) {
         *self.now.lock().unwrap() += by;

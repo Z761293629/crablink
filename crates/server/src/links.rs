@@ -259,9 +259,9 @@ struct ListRow {
     link: LinkRow,
 }
 
-/// `GET /api/workspaces/{slug}/links`: the Workspace's live and expired Links, newest
-/// (highest id) first. The cursor is the id of the previous page's last Link, so each
-/// page is an index range scan.
+/// `GET /api/workspaces/{slug}/links`: the Workspace's live and expired Links on the
+/// Default Domain, newest (highest id) first. The cursor is the id of the previous
+/// page's last Link, so each page is an index range scan.
 pub(crate) async fn list_links(
     State(s): State<AppState>,
     caller: Caller,
@@ -287,12 +287,13 @@ pub(crate) async fn list_links(
         "SELECT l.id, ",
         link_columns!(),
         " FROM links l JOIN domains d ON d.id = l.domain_id \
-         WHERE l.workspace_id = $3 AND l.deleted_at IS NULL AND l.id < $1 \
+         WHERE l.workspace_id = $3 AND l.domain_id = $4 AND l.deleted_at IS NULL AND l.id < $1 \
          ORDER BY l.id DESC LIMIT $2"
     ))
     .bind(before)
     .bind(i64::from(limit) + 1)
     .bind(workspace_id)
+    .bind(s.domain_id)
     .fetch_all(&s.pool)
     .await?;
     let next_cursor = if rows.len() > limit as usize {

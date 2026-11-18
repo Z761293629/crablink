@@ -150,3 +150,19 @@ async fn listing_needs_a_credential() {
     assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{}", res.text);
     assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);
 }
+
+#[tokio::test]
+async fn links_on_a_former_default_domain_are_not_listed() {
+    let app = app().await;
+    app.create(json!({ "target": "https://example.com", "code": "old" }))
+        .await;
+
+    let app = app.restarted_on("https://new.link").await;
+    app.create(json!({ "target": "https://example.com", "code": "new" }))
+        .await;
+
+    // Like every other Link endpoint, listing sees only the Default Domain's Links.
+    assert_eq!(page(&app, "").await.0, ["new"]);
+    let res = app.api("GET", "/links/old", None).await;
+    assert_eq!(res.status, StatusCode::NOT_FOUND, "{}", res.text);
+}
