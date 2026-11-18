@@ -10,12 +10,19 @@ use crablink_api::ErrorKind;
 /// `error` is the `Display` message.
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
-    #[error("missing or invalid token")]
-    Unauthorized,
+    /// A Bearer value that is no live API Key, such as a 0.2 token.
+    #[error(
+        "unknown or revoked API Key (0.2 tokens no longer work): sign in again with an API Key, e.g. `crablink login --server <url>`"
+    )]
+    InvalidApiKey,
     #[error("not signed in, or the session has expired")]
     NotSignedIn,
     #[error("wrong email or password")]
     InvalidCredentials,
+    /// Another Workspace's credential, an API Key where only a User will do, or a
+    /// Member where only an Owner will do.
+    #[error("not allowed for this credential")]
+    Forbidden,
     #[error("Origin header must match the host")]
     OriginMismatch,
     #[error("current password is wrong")]
@@ -54,7 +61,8 @@ pub enum ApiError {
 impl ApiError {
     fn kind(&self) -> ErrorKind {
         match self {
-            Self::Unauthorized | Self::NotSignedIn => ErrorKind::Unauthorized,
+            Self::InvalidApiKey | Self::NotSignedIn => ErrorKind::Unauthorized,
+            Self::Forbidden => ErrorKind::Forbidden,
             Self::InvalidCredentials => ErrorKind::InvalidCredentials,
             Self::OriginMismatch => ErrorKind::OriginMismatch,
             Self::WrongPassword => ErrorKind::WrongPassword,
@@ -75,10 +83,10 @@ impl ApiError {
 
     pub(crate) fn status(&self) -> StatusCode {
         match self {
-            Self::Unauthorized | Self::NotSignedIn | Self::InvalidCredentials => {
+            Self::InvalidApiKey | Self::NotSignedIn | Self::InvalidCredentials => {
                 StatusCode::UNAUTHORIZED
             }
-            Self::OriginMismatch | Self::WrongPassword => StatusCode::FORBIDDEN,
+            Self::Forbidden | Self::OriginMismatch | Self::WrongPassword => StatusCode::FORBIDDEN,
             Self::NotFound | Self::LinkNotFound => StatusCode::NOT_FOUND,
             Self::LinkExpired => StatusCode::GONE,
             Self::BadRequest(_)

@@ -1,6 +1,7 @@
 //! Shared CLI test harness: starts a real `crablink-server` (built through
 //! `crablink_server::app` with a fresh Postgres database) on `127.0.0.1:0`,
-//! served on a background runtime. The CLI itself stays synchronous.
+//! served on a background runtime, and signs in with an API Key of a User's
+//! personal Workspace. The CLI itself stays synchronous.
 //!
 //! Use from a test file with `mod common;` then `use common::*;`.
 #![allow(dead_code)]
@@ -17,15 +18,21 @@ pub use ratatui::crossterm::event::KeyCode;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::{Terminal, backend::TestBackend};
 
-pub const TOKEN: &str = "test-token";
+const EMAIL: &str = "owner@example.com";
+const PASSWORD: &str = "correct horse battery";
 
-/// A running server; it lives until the test process exits.
+/// A running server and the credentials the CLI uses on it; the server lives until
+/// the test process exits.
 pub struct TestServer {
     pub url: String,
-    pub token: String,
+    /// An API Key of `workspace`.
+    pub key: String,
+    /// The slug of `EMAIL`'s personal Workspace.
+    pub workspace: String,
 }
 
-/// Starts a server with random Generated Codes and an empty database.
+/// Starts a server with random Generated Codes and an empty database, signs in as a
+/// new User and issues an API Key of their personal Workspace.
 pub fn server() -> TestServer {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
@@ -36,21 +43,63 @@ pub fn server() -> TestServer {
             let pool = crablink_server::connect(&pg::database_url().await)
                 .await
                 .unwrap();
+            crablink_server::create_user(&pool, EMAIL, PASSWORD, false)
+                .await
+                .unwrap();
             let app = crablink_server::app(
                 pool,
                 Arc::new(crablink_server::random_code),
                 Arc::new(chrono::Utc::now),
-                TOKEN,
                 &url,
-            );
+            )
+            .await
+            .unwrap();
             tx.send(url).unwrap();
             axum::serve(listener, app).await.unwrap();
         });
     });
+    let url = rx.recv().expect("test server failed to start");
+    let (key, workspace) = issue_api_key(&url);
     TestServer {
-        url: rx.recv().expect("test server failed to start"),
-        token: TOKEN.into(),
+        url,
+        key,
+        workspace,
     }
+}
+
+/// Signs in as `EMAIL` like a browser would and issues an API Key of their personal
+/// Workspace; returns its secret and the Workspace's slug.
+fn issue_api_key(url: &str) -> (String, String) {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .http_status_as_error(true)
+        .build()
+        .into();
+    let res = agent
+        .post(format!("{url}/api/session"))
+        .header("Origin", url)
+        .send_json(serde_json::json!({ "email": EMAIL, "password": PASSWORD }))
+        .unwrap();
+    let set_cookie = res.headers()["set-cookie"].to_str().unwrap();
+    let cookie = set_cookie.split(';').next().unwrap().to_string();
+    let workspaces: serde_json::Value = agent
+        .get(format!("{url}/api/workspaces"))
+        .header("Cookie", &cookie)
+        .call()
+        .unwrap()
+        .body_mut()
+        .read_json()
+        .unwrap();
+    let slug = workspaces[0]["slug"].as_str().unwrap().to_string();
+    let key: serde_json::Value = agent
+        .post(format!("{url}/api/workspaces/{slug}/api-keys"))
+        .header("Cookie", &cookie)
+        .header("Origin", url)
+        .send_json(serde_json::json!({ "name": "CLI tests" }))
+        .unwrap()
+        .body_mut()
+        .read_json()
+        .unwrap();
+    (key["secret"].as_str().unwrap().to_string(), slug)
 }
 
 impl TestServer {
@@ -58,7 +107,8 @@ impl TestServer {
     pub fn api(&self) -> Api {
         Creds {
             server: Some(self.url.clone()),
-            token: Some(self.token.clone()),
+            api_key: Some(self.key.clone()),
+            workspace: Some(self.workspace.clone()),
         }
         .api()
         .unwrap()
@@ -80,10 +130,22 @@ impl TestServer {
         Tui::new(self.api())
     }
 
+    /// The global flags that point the `crablink` binary at this server.
+    pub fn flags(&self) -> [&str; 6] {
+        [
+            "--server",
+            &self.url,
+            "--api-key",
+            &self.key,
+            "--workspace",
+            &self.workspace,
+        ]
+    }
+
     /// Runs the `crablink` binary against this server with `args`; never reads a real config file.
     pub fn cli(&self, args: &[&str]) -> CliOutput {
         let out = std::process::Command::new(env!("CARGO_BIN_EXE_crablink"))
-            .args(["--server", &self.url, "--token", &self.token])
+            .args(self.flags())
             .args(args)
             .env("HOME", std::env::temp_dir().join("crablink-test-no-home"))
             .output()
@@ -95,15 +157,19 @@ impl TestServer {
         }
     }
 
-    /// The raw JSON body of an authenticated `GET` on this server, bypassing the CLI.
+    /// The raw JSON body of a `GET` with the API Key on `path` under the Workspace
+    /// (e.g. `/links/abc`), bypassing the CLI.
     pub fn raw_get(&self, path: &str) -> serde_json::Value {
-        ureq::get(format!("{}{path}", self.url))
-            .header("Authorization", format!("Bearer {}", self.token))
-            .call()
-            .unwrap()
-            .body_mut()
-            .read_json()
-            .unwrap()
+        ureq::get(format!(
+            "{}/api/workspaces/{}{path}",
+            self.url, self.workspace
+        ))
+        .header("Authorization", format!("Bearer {}", self.key))
+        .call()
+        .unwrap()
+        .body_mut()
+        .read_json()
+        .unwrap()
     }
 }
 

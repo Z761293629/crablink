@@ -1,4 +1,4 @@
-# crablink-server with Postgres. `CRABLINK_TOKEN=change-me docker compose up -d`, then
+# crablink-server with Postgres. `docker compose up -d`, then
 # `curl http://localhost:8080/health`. Postgres is reachable only inside this compose network.
 services:
   postgres:
@@ -25,7 +25,6 @@ services:
         condition: service_healthy
     environment:
       CRABLINK_BASE_URL: ${CRABLINK_BASE_URL:-http://localhost:8080}
-      CRABLINK_TOKEN: ${CRABLINK_TOKEN:?set CRABLINK_TOKEN to the management API token}
       CRABLINK_DATABASE_URL: postgres://crablink:crablink@postgres:5432/crablink
     ports:
       - "8080:8080"

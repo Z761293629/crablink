@@ -19,13 +19,14 @@ use serde_json::Value;
 use sqlx::PgPool;
 use tower::ServiceExt;
 
-pub const TOKEN: &str = "test-token";
 pub const BASE_URL: &str = "https://crab.link";
 /// The `Host` and `Origin` a browser on `BASE_URL` sends.
 pub const HOST: &str = "crab.link";
 pub const ORIGIN: &str = BASE_URL;
 /// The password `TestApp::create_user` gives every User.
 pub const PASSWORD: &str = "correct horse battery";
+/// The User whose personal Workspace and API Key `TestApp::api` uses.
+pub const OWNER: &str = "owner@example.com";
 
 /// App with random Generated Codes.
 pub async fn app() -> TestApp {
@@ -48,11 +49,25 @@ pub async fn app_with_codes(codes: &[&str]) -> TestApp {
     let now = Arc::new(Mutex::new(Utc::now()));
     let clock = now.clone();
     let clock: crablink_server::Clock = Arc::new(move || *clock.lock().unwrap());
-    TestApp {
-        router: crablink_server::app(pool.clone(), generator, clock, TOKEN, BASE_URL),
+    let router = crablink_server::app(pool.clone(), generator, clock, BASE_URL)
+        .await
+        .unwrap();
+    let mut app = TestApp {
+        router,
         pool,
         now,
-    }
+        owner: Account::default(),
+    };
+    app.owner = app.account(OWNER).await;
+    app
+}
+
+/// A signed-in User with their personal Workspace and an API Key of it.
+#[derive(Default, Clone)]
+pub struct Account {
+    pub cookie: String,
+    pub slug: String,
+    pub key: String,
 }
 
 pub struct TestApp {
@@ -60,6 +75,8 @@ pub struct TestApp {
     pub pool: PgPool,
     /// What the app's clock reads; starts at the real time.
     now: Arc<Mutex<DateTime<Utc>>>,
+    /// `OWNER`'s Account: what `api` and `create` act as.
+    pub owner: Account,
 }
 
 impl TestApp {
@@ -93,6 +110,31 @@ impl TestApp {
         let body = serde_json::json!({ "email": email, "password": password });
         self.request("POST", "/api/session", Some(body), &[("origin", ORIGIN)])
             .await
+    }
+
+    /// Creates a User, signs them in and issues an API Key of their personal Workspace.
+    pub async fn account(&self, email: &str) -> Account {
+        self.create_user(email).await;
+        let cookie = self.sign_in(email, PASSWORD).await;
+        let slug = self.workspace_of(&cookie).await;
+        let key = self.api_key(&cookie, &slug).await;
+        Account { cookie, slug, key }
+    }
+
+    /// The slug of the signed-in User's first Workspace.
+    pub async fn workspace_of(&self, cookie: &str) -> String {
+        let res = self.as_user("GET", "/api/workspaces", None, cookie).await;
+        assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+        res.json()[0]["slug"].as_str().unwrap().to_string()
+    }
+
+    /// Issues an API Key of Workspace `slug` as the signed-in Owner; returns its secret.
+    pub async fn api_key(&self, cookie: &str, slug: &str) -> String {
+        let path = format!("/api/workspaces/{slug}/api-keys");
+        let body = serde_json::json!({ "name": "test" });
+        let res = self.as_user("POST", &path, Some(body), cookie).await;
+        assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
+        res.json()["secret"].as_str().unwrap().to_string()
     }
 
     /// A browser request carrying the session `cookie`, from the app's own origin.
@@ -142,21 +184,36 @@ impl TestApp {
             .await
     }
 
-    /// Request carrying the valid token, with an optional JSON body.
+    /// A request with `OWNER`'s API Key to `path` under `OWNER`'s Workspace, e.g.
+    /// `/links/abc` for `/api/workspaces/owner/links/abc`.
     pub async fn api(&self, method: &str, path: &str, body: Option<Value>) -> Res {
-        self.api_with_token(method, path, body, Some(TOKEN)).await
+        self.api_with_key(method, path, body, Some(&self.owner.key))
+            .await
     }
 
-    pub async fn api_with_token(
+    /// `api` with `Authorization: Bearer <key>`, or no credential at all.
+    pub async fn api_with_key(
         &self,
         method: &str,
         path: &str,
         body: Option<Value>,
-        token: Option<&str>,
+        key: Option<&str>,
+    ) -> Res {
+        let path = format!("/api/workspaces/{}{path}", self.owner.slug);
+        self.bearer(method, &path, body, key).await
+    }
+
+    /// A request to the absolute `path` with `Authorization: Bearer <key>`, or no credential.
+    pub async fn bearer(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<Value>,
+        key: Option<&str>,
     ) -> Res {
         let mut req = Request::builder().method(method).uri(path);
-        if let Some(token) = token {
-            req = req.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        if let Some(key) = key {
+            req = req.header(header::AUTHORIZATION, format!("Bearer {key}"));
         }
         let req = match body {
             Some(json) => req
@@ -167,9 +224,9 @@ impl TestApp {
         self.send(req.unwrap()).await
     }
 
-    /// `POST /api/links`, asserting `201`; returns the Link JSON.
+    /// `POST /links` in `OWNER`'s Workspace, asserting `201`; returns the Link JSON.
     pub async fn create(&self, body: Value) -> Value {
-        let res = self.api("POST", "/api/links", Some(body)).await;
+        let res = self.api("POST", "/links", Some(body)).await;
         assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
         res.json()
     }

@@ -5,7 +5,7 @@ use common::*;
 use serde_json::json;
 
 async fn clicks(app: &TestApp, code: &str) -> serde_json::Value {
-    let res = app.api("GET", &format!("/api/links/{code}"), None).await;
+    let res = app.api("GET", &format!("/links/{code}"), None).await;
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
     res.json()["click_count"].clone()
 }

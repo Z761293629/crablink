@@ -35,7 +35,7 @@ async fn malformed_custom_codes_are_rejected() {
         let res = app
             .api(
                 "POST",
-                "/api/links",
+                "/links",
                 Some(json!({ "target": "https://example.com/", "code": code })),
             )
             .await;
@@ -57,7 +57,7 @@ async fn reserved_words_are_rejected_in_any_casing() {
         let res = app
             .api(
                 "POST",
-                "/api/links",
+                "/links",
                 Some(json!({ "target": "https://example.com/", "code": code })),
             )
             .await;
@@ -96,7 +96,7 @@ async fn reusing_a_taken_custom_code_conflicts_and_keeps_the_original() {
     let res = app
         .api(
             "POST",
-            "/api/links",
+            "/links",
             Some(json!({ "target": "https://example.com/second", "code": "taken" })),
         )
         .await;

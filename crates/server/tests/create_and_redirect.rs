@@ -15,6 +15,7 @@ async fn creating_a_link_returns_a_generated_code_and_short_url() {
     let code = link["code"].as_str().unwrap();
     assert_eq!(code.len(), 7);
     assert!(code.chars().all(|c| c.is_ascii_alphanumeric()), "{code}");
+    assert_eq!(link["domain"], HOST);
     assert_eq!(link["short_url"], format!("{BASE_URL}/{code}"));
     assert_eq!(link["target"], "https://example.com/a");
     assert_eq!(link["click_count"], 0);

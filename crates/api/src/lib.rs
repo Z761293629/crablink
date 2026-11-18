@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// Body of `POST /api/links`.
+/// Body of `POST /api/workspaces/{slug}/links`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateLink {
     pub target: String,
@@ -15,7 +15,7 @@ pub struct CreateLink {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-/// Body of `PATCH /api/links/{code}`. An absent field is left unchanged.
+/// Body of `PATCH /api/workspaces/{slug}/links/{code}`. An absent field is left unchanged.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UpdateLink {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -39,6 +39,9 @@ fn present<'de, T: Deserialize<'de>, D: Deserializer<'de>>(d: D) -> Result<Optio
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Link {
     pub code: String,
+    /// The Domain the Link lives on, e.g. `crab.link`.
+    pub domain: String,
+    /// The Domain joined with the Code.
     pub short_url: String,
     pub target: String,
     pub created_at: DateTime<Utc>,
@@ -78,6 +81,52 @@ pub struct User {
     pub instance_admin: bool,
 }
 
+/// A Workspace: the owner of Links.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Workspace {
+    /// Unique; names the Workspace in API paths: `/api/workspaces/{slug}/…`.
+    pub slug: String,
+    pub name: String,
+}
+
+/// Response of `GET /api/me`: who the credential acts as.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Me {
+    /// A session cookie: `{ "user": { … } }`.
+    User(User),
+    /// An API Key: `{ "workspace": { … } }`, the Workspace it belongs to.
+    Workspace(Workspace),
+}
+
+/// Body of `POST /api/workspaces/{slug}/api-keys`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateApiKey {
+    /// What the key is for, e.g. `CI`; 1-100 characters.
+    pub name: String,
+}
+
+/// An API Key as listed; never its secret.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiKey {
+    /// Addresses the key in `DELETE /api/workspaces/{slug}/api-keys/{id}`.
+    pub id: i64,
+    pub name: String,
+    /// The secret's first characters, to tell keys apart.
+    pub prefix: String,
+    pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+/// Response of `POST /api/workspaces/{slug}/api-keys`: the only time the secret is shown.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewApiKey {
+    #[serde(flatten)]
+    pub key: ApiKey,
+    /// What a program sends as `Authorization: Bearer <secret>`.
+    pub secret: String,
+}
+
 /// Body of every management API error response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorBody {
@@ -94,8 +143,12 @@ pub struct ErrorBody {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
-    /// Missing or wrong token, or no live session: never signed in, signed out or expired.
+    /// No credential, an unknown or revoked API Key (such as a 0.2 token), or no live
+    /// session: never signed in, signed out or expired.
     Unauthorized,
+    /// A valid credential that may not do this: another Workspace's, an API Key where
+    /// only a User will do, or a Member where only an Owner will do.
+    Forbidden,
     /// Sign-in with an unknown email, a wrong password or a disabled User; `error`
     /// never says which.
     InvalidCredentials,
@@ -110,7 +163,7 @@ pub enum ErrorKind {
     PasswordTooShort,
     /// Another User already has this email, ignoring case.
     EmailTaken,
-    /// No such API route.
+    /// No such API route, or no such API Key.
     NotFound,
     /// No live Link has this Code.
     LinkNotFound,
@@ -137,7 +190,7 @@ pub enum ErrorKind {
     Unknown,
 }
 
-/// Query of `GET /api/links`. `limit` defaults to 50 and must be 1-200.
+/// Query of `GET /api/workspaces/{slug}/links`. `limit` defaults to 50 and must be 1-200.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ListLinks {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -147,14 +200,14 @@ pub struct ListLinks {
     pub cursor: Option<String>,
 }
 
-/// Response of `GET /api/links`: newest first; `next_cursor` is `None` on the last page.
+/// Response of `GET /api/workspaces/{slug}/links`: newest first; `next_cursor` is `None` on the last page.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinkPage {
     pub links: Vec<Link>,
     pub next_cursor: Option<String>,
 }
 
-/// Query of `GET /api/links/{code}/qr`: SVG when `format` is absent.
+/// Query of `GET /api/workspaces/{slug}/links/{code}/qr`: SVG when `format` is absent.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QrQuery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -218,6 +271,7 @@ mod tests {
         let t: DateTime<Utc> = "2030-01-01T00:00:00Z".parse().unwrap();
         let link = |expires_at| Link {
             code: "abc".into(),
+            domain: "crab.link".into(),
             short_url: "https://crab.link/abc".into(),
             target: "https://example.com".into(),
             created_at: t,

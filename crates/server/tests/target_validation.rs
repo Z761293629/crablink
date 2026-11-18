@@ -6,7 +6,7 @@ use serde_json::json;
 
 async fn assert_rejected(app: &TestApp, target: &str) {
     let res = app
-        .api("POST", "/api/links", Some(json!({ "target": target })))
+        .api("POST", "/links", Some(json!({ "target": target })))
         .await;
     assert_eq!(res.status, StatusCode::BAD_REQUEST, "{target}");
     assert!(res.json()["error"].is_string(), "{target}: {}", res.text);
@@ -98,7 +98,7 @@ async fn targets_with_whitespace_or_control_characters_are_rejected_on_edit() {
     let link = app
         .create(json!({ "target": "https://example.com/ok" }))
         .await;
-    let path = format!("/api/links/{}", link["code"].as_str().unwrap());
+    let path = format!("/links/{}", link["code"].as_str().unwrap());
     for target in WHITESPACE_OR_CONTROL {
         let res = app
             .api("PATCH", &path, Some(json!({ "target": target })))

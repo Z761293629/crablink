@@ -35,7 +35,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Cmd {
-    /// Prompt for the token, check it against the server, and save it.
+    /// Prompt for an API Key, learn its Workspace from the server, and save both.
     Login,
     /// Create a Link and print its Short URL.
     Create {

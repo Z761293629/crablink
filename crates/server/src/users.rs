@@ -1,5 +1,6 @@
 //! Users and their sessions: creating Users (and so the first Instance Admin),
-//! signing in and out, `/api/me` and changing password.
+//! signing in (creating a personal Workspace the first time) and out, `/api/me`
+//! and changing password.
 
 use std::sync::LazyLock;
 
@@ -13,12 +14,13 @@ use axum::http::request::Parts;
 use axum::http::{Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use chrono::TimeDelta;
-use crablink_api::{ChangePassword, SignIn, User};
+use crablink_api::{ChangePassword, Me, SignIn, User, Workspace};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
 use crate::AppState;
 use crate::error::ApiError;
+use crate::workspaces::{self, Caller};
 
 const COOKIE: &str = "crablink_session";
 const SESSION_TTL: TimeDelta = TimeDelta::days(30);
@@ -109,8 +111,18 @@ fn internal(e: impl std::fmt::Display) -> ApiError {
     ApiError::Internal
 }
 
-fn token_hash(token: &str) -> Vec<u8> {
+/// SHA-256 of a session token or API Key secret: both are random enough that a
+/// slow password hash would buy nothing.
+pub(crate) fn token_hash(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
+}
+
+/// 32 random bytes as 64 hex characters.
+pub(crate) fn random_token() -> String {
+    rand::random::<[u8; 32]>()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn session_cookie(token: &str, max_age: i64) -> String {
@@ -118,6 +130,7 @@ fn session_cookie(token: &str, max_age: i64) -> String {
 }
 
 /// `POST /api/session`: signs in, setting the session cookie; returns the User.
+/// The first sign-in also creates the User's personal Workspace.
 pub(crate) async fn sign_in(
     State(s): State<AppState>,
     body: Result<Json<SignIn>, JsonRejection>,
@@ -137,17 +150,23 @@ pub(crate) async fn sign_in(
         return Err(ApiError::InvalidCredentials);
     };
 
-    let token: String = rand::random::<[u8; 32]>()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let token = random_token();
+    let mut tx = s.pool.begin().await?;
+    let first = sqlx::query("UPDATE users SET signed_in = TRUE WHERE id = $1 AND NOT signed_in")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    if first.rows_affected() == 1 {
+        workspaces::create_personal(&mut tx, id, &email).await?;
+    }
     // ponytail: expired sessions are never swept; add a cleanup if the table grows.
     sqlx::query("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)")
         .bind(token_hash(&token))
         .bind(id)
         .bind((s.clock)() + SESSION_TTL)
-        .execute(&s.pool)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     let cookie = session_cookie(&token, SESSION_TTL.num_seconds());
     let user = User {
         email,
@@ -172,9 +191,18 @@ pub(crate) async fn sign_out(
         .into_response())
 }
 
-/// `GET /api/me`: the signed-in User.
-pub(crate) async fn me(session: Session) -> Json<User> {
-    Json(session.user)
+/// `GET /api/me`: the signed-in User, or the API Key's Workspace.
+pub(crate) async fn me(State(s): State<AppState>, caller: Caller) -> Result<Json<Me>, ApiError> {
+    Ok(Json(match caller {
+        Caller::User(session) => Me::User(session.user),
+        Caller::ApiKey { workspace_id } => {
+            let (slug, name) = sqlx::query_as("SELECT slug, name FROM workspaces WHERE id = $1")
+                .bind(workspace_id)
+                .fetch_one(&s.pool)
+                .await?;
+            Me::Workspace(Workspace { slug, name })
+        }
+    }))
 }
 
 /// `POST /api/me/password`: needs the current password; ends the User's other sessions.
@@ -210,7 +238,7 @@ pub(crate) async fn change_password(
 /// A live session of an enabled User, from the session cookie. A state-changing
 /// request must also come from this host's `Origin`, which is what stops CSRF.
 pub(crate) struct Session {
-    user_id: i64,
+    pub(crate) user_id: i64,
     token_hash: Vec<u8>,
     user: User,
 }

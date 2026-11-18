@@ -29,7 +29,7 @@ async fn expired_link_is_gone_and_not_counted() {
         assert!(!res.text.is_empty());
     }
 
-    let link = app.api("GET", "/api/links/Past001", None).await.json();
+    let link = app.api("GET", "/links/Past001", None).await.json();
     assert_eq!(link["click_count"], 0);
 }
 
@@ -40,7 +40,7 @@ async fn malformed_expiry_is_rejected() {
         let res = app
             .api(
                 "POST",
-                "/api/links",
+                "/links",
                 Some(json!({ "target": "https://example.com", "expires_at": bad })),
             )
             .await;

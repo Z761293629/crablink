@@ -14,8 +14,8 @@ async fn a_signed_in_user_sees_themselves_at_me() {
     let res = app.as_user("GET", "/api/me", None, &cookie).await;
 
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
-    assert_eq!(res.json()["email"], "Ada@Example.com");
-    assert_eq!(res.json()["instance_admin"], false);
+    assert_eq!(res.json()["user"]["email"], "Ada@Example.com");
+    assert_eq!(res.json()["user"]["instance_admin"], false);
 }
 
 #[tokio::test]
@@ -165,8 +165,8 @@ async fn admin_create_makes_an_instance_admin_who_can_sign_in() {
     let cookie = app.sign_in("root@example.com", PASSWORD).await;
     let res = app.as_user("GET", "/api/me", None, &cookie).await;
 
-    assert_eq!(res.json()["email"], "root@example.com");
-    assert_eq!(res.json()["instance_admin"], true);
+    assert_eq!(res.json()["user"]["email"], "root@example.com");
+    assert_eq!(res.json()["user"]["instance_admin"], true);
 }
 
 #[tokio::test]

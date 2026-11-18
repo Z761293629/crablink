@@ -4,29 +4,29 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{Request, State};
-use axum::http::{StatusCode, header};
-use axum::middleware::{self, Next};
-use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::http::StatusCode;
+use axum::routing::{delete, get, post};
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
-use subtle::ConstantTimeEq;
 
+mod api_keys;
 mod db;
 mod error;
 mod links;
 mod redirect;
 mod users;
+mod workspaces;
 
 pub use db::connect;
 pub use error::ApiError;
 pub use links::random_code;
 pub use users::{create_user, set_user_disabled};
 
+use api_keys::{create_api_key, list_api_keys, revoke_api_key};
 use links::{create_link, delete_link, get_link, link_qr, list_links, update_link};
 use redirect::redirect;
 use users::{change_password, me, sign_in, sign_out};
+use workspaces::{api_fallback, list_workspaces};
 
 /// Produces a candidate Generated Code. Injected so tests can script collisions.
 pub type CodeGenerator = Arc<dyn Fn() -> String + Send + Sync>;
@@ -39,65 +39,56 @@ struct AppState {
     pool: PgPool,
     codes: CodeGenerator,
     clock: Clock,
-    token: Arc<str>,
     base_url: Arc<str>,
+    /// The scheme of Short URLs: `base_url`'s.
+    scheme: Arc<str>,
+    /// The Default Domain's id: every Link lives on it for now.
+    domain_id: i64,
 }
 
-/// Builds the full HTTP app.
-pub fn app(
+/// Builds the full HTTP app, first creating the Default Domain from `base_url`
+/// (its host, and port if any) if missing.
+pub async fn app(
     pool: PgPool,
     codes: CodeGenerator,
     clock: Clock,
-    token: &str,
     base_url: &str,
-) -> Router {
+) -> Result<Router, Box<dyn std::error::Error + Send + Sync>> {
+    let url = url::Url::parse(base_url)?;
+    let host = match (url.host_str(), url.port()) {
+        (Some(host), Some(port)) => format!("{host}:{port}"),
+        (Some(host), None) => host.to_owned(),
+        (None, _) => return Err(format!("{base_url} has no host").into()),
+    };
+    let domain_id = db::default_domain(&pool, &host).await?;
     let state = AppState {
         pool,
         codes,
         clock,
-        token: token.into(),
         base_url: base_url.trim_end_matches('/').into(),
+        scheme: url.scheme().into(),
+        domain_id,
     };
-    let api = Router::new()
+    let workspace = Router::new()
         .route("/links", post(create_link).get(list_links))
         .route(
             "/links/{code}",
             get(get_link).patch(update_link).delete(delete_link),
         )
         .route("/links/{code}/qr", get(link_qr))
+        .route("/api-keys", post(create_api_key).get(list_api_keys))
+        .route("/api-keys/{id}", delete(revoke_api_key));
+    let api = Router::new()
+        .nest("/workspaces/{slug}", workspace)
+        .route("/workspaces", get(list_workspaces))
         .route("/session", post(sign_in).delete(sign_out))
         .route("/me", get(me))
         .route("/me/password", post(change_password))
-        .fallback(|| async { ApiError::NotFound });
-    Router::new()
+        .fallback(api_fallback);
+    Ok(Router::new()
         .nest("/api", api)
         .route("/health", get(|| async { "ok" }))
         .route("/{code}", get(redirect))
         .fallback(|| async { (StatusCode::NOT_FOUND, "not found") })
-        // On the outer router, so unknown `/api` paths and methods need the token too.
-        .layer(middleware::from_fn_with_state(state.clone(), require_token))
-        .with_state(state)
-}
-
-/// Paths under `/api` that a session cookie guards instead of the token.
-const SESSION_PATHS: [&str; 3] = ["/api/session", "/api/me", "/api/me/password"];
-
-/// Every other `/api` request needs `Authorization: Bearer <token>`, compared in
-/// constant time.
-async fn require_token(State(s): State<AppState>, req: Request, next: Next) -> Response {
-    let path = req.uri().path();
-    if path != "/api" && !path.starts_with("/api/") || SESSION_PATHS.contains(&path) {
-        return next.run(req).await;
-    }
-    let given = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .unwrap_or("");
-    if !s.token.is_empty() && bool::from(given.as_bytes().ct_eq(s.token.as_bytes())) {
-        next.run(req).await
-    } else {
-        ApiError::Unauthorized.into_response()
-    }
+        .with_state(state))
 }

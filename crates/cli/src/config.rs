@@ -6,21 +6,23 @@ use std::path::PathBuf;
 use anyhow::{Context, anyhow, bail};
 use clap::Args;
 use serde::{Deserialize, Serialize};
-use ureq::SendBody;
-use ureq::http::Method;
 
 use crate::Api;
 
-/// Server and token. Flags beat env vars (clap), which beat the config file (`or`).
-/// Also the shape of `~/.config/crablink/config.toml`.
+/// Server, API Key and Workspace. Flags beat env vars (clap), which beat the config
+/// file (`or`). Also the shape of `~/.config/crablink/config.toml`; a 0.2 file's
+/// `token` is ignored, so its user is sent to `crablink login`.
 #[derive(Args, Serialize, Deserialize, Default)]
 pub struct Creds {
     /// Server URL, e.g. https://crab.link
     #[arg(long, env = "CRABLINK_URL", global = true)]
     pub server: Option<String>,
-    /// API token
-    #[arg(long, env = "CRABLINK_TOKEN", global = true, hide_env_values = true)]
-    pub token: Option<String>,
+    /// API Key of the Workspace to manage
+    #[arg(long, env = "CRABLINK_API_KEY", global = true, hide_env_values = true)]
+    pub api_key: Option<String>,
+    /// Slug of the API Key's Workspace (asked from the server when missing)
+    #[arg(long, env = "CRABLINK_WORKSPACE", global = true)]
+    pub workspace: Option<String>,
 }
 
 impl Creds {
@@ -28,17 +30,22 @@ impl Creds {
     pub fn or(self, fallback: Creds) -> Creds {
         Creds {
             server: self.server.or(fallback.server),
-            token: self.token.or(fallback.token),
+            api_key: self.api_key.or(fallback.api_key),
+            workspace: self.workspace.or(fallback.workspace),
         }
     }
 
-    /// The client, or an error pointing at `crablink login` if a field is missing.
+    /// The client, or an error pointing at `crablink login` if the server or API Key
+    /// is missing. A missing Workspace is the API Key's own, asked from `/api/me`.
     pub fn api(self) -> anyhow::Result<Api> {
         let missing = |what| anyhow!("no {what} configured: run `crablink login --server <url>`");
-        Ok(Api::new(
-            self.server.ok_or_else(|| missing("server"))?,
-            self.token.ok_or_else(|| missing("token"))?,
-        ))
+        let server = self.server.ok_or_else(|| missing("server"))?;
+        let api_key = self.api_key.ok_or_else(|| missing("API Key"))?;
+        let mut api = Api::new(server, api_key, self.workspace.unwrap_or_default());
+        if api.workspace.is_empty() {
+            api.workspace = api.me()?.slug;
+        }
+        Ok(api)
     }
 
     /// These credentials completed from the config file: the resolution every subcommand uses.
@@ -77,62 +84,72 @@ fn save_config(creds: &Creds) -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
+/// Reads an API Key, learns its Workspace from the server and saves all three.
 pub(crate) fn login(server: Option<String>) -> anyhow::Result<()> {
     let server = server.context("pass --server <url>")?;
-    let token = read_token()?;
-    let api = Creds {
-        server: Some(server),
-        token: Some(token),
-    }
-    .api()?;
-    api.send(Method::GET, "/api/links?limit=1", SendBody::none())
-        .context("login failed, nothing saved")?;
+    let api = Api::new(server, read_api_key()?, String::new());
+    let workspace = api.me().context("login failed, nothing saved")?;
     let path = save_config(&Creds {
         server: Some(api.server),
-        token: Some(api.token),
+        api_key: Some(api.api_key),
+        workspace: Some(workspace.slug.clone()),
     })?;
-    eprintln!("Logged in; saved {}", path.display());
+    eprintln!(
+        "Logged in to Workspace {} ({}); saved {}",
+        workspace.name,
+        workspace.slug,
+        path.display()
+    );
     Ok(())
 }
 
 /// Prompts with echo disabled on a terminal; reads one line from stdin otherwise (scripts).
-fn read_token() -> anyhow::Result<String> {
-    let token = if std::io::stdin().is_terminal() {
-        rpassword::prompt_password("Token: ")?
+fn read_api_key() -> anyhow::Result<String> {
+    let key = if std::io::stdin().is_terminal() {
+        rpassword::prompt_password("API Key: ")?
     } else {
         let mut line = String::new();
         std::io::stdin().lock().read_line(&mut line)?;
         line
     };
-    let token = token.trim().to_string();
-    if token.is_empty() {
-        bail!("empty token");
+    let key = key.trim().to_string();
+    if key.is_empty() {
+        bail!("empty API Key");
     }
-    Ok(token)
+    Ok(key)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn creds(server: Option<&str>, token: Option<&str>) -> Creds {
+    fn creds(server: Option<&str>, api_key: Option<&str>) -> Creds {
         Creds {
             server: server.map(Into::into),
-            token: token.map(Into::into),
+            api_key: api_key.map(Into::into),
+            workspace: Some("ws".into()),
         }
     }
 
     #[test]
     fn flags_and_env_override_saved_config_per_field() {
-        let saved = creds(Some("https://saved"), Some("saved-token"));
-        let got = creds(None, Some("flag-token")).or(saved).api().unwrap();
+        let saved = creds(Some("https://saved"), Some("saved-key"));
+        let got = creds(None, Some("flag-key")).or(saved).api().unwrap();
         assert_eq!(got.server, "https://saved");
-        assert_eq!(got.token, "flag-token");
+        assert_eq!(got.api_key, "flag-key");
+        assert_eq!(got.workspace, "ws");
     }
 
     #[test]
     fn missing_credentials_point_at_login() {
         let err = creds(Some("https://x"), None).api().err().unwrap();
         assert!(err.to_string().contains("crablink login"), "{err}");
+    }
+
+    #[test]
+    fn a_0_2_config_with_a_token_has_no_api_key() {
+        let old: Creds = toml::from_str("server = \"https://x\"\ntoken = \"t\"\n").unwrap();
+        let err = old.api().err().unwrap();
+        assert!(err.to_string().contains("no API Key"), "{err}");
     }
 }

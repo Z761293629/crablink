@@ -58,18 +58,27 @@ async fn open_database(db_url: &str) -> sqlx::PgPool {
 
 async fn serve() {
     let base_url = required("CRABLINK_BASE_URL");
-    let token = required("CRABLINK_TOKEN");
     let db_url = required("CRABLINK_DATABASE_URL");
     let listen = std::env::var("CRABLINK_LISTEN").unwrap_or_else(|_| "0.0.0.0:8080".into());
+
+    if std::env::var_os("CRABLINK_TOKEN").is_some() {
+        eprintln!(
+            "crablink-server: CRABLINK_TOKEN is no longer used: programs sign in with an API Key"
+        );
+    }
 
     let pool = open_database(&db_url).await;
     let app = crablink_server::app(
         pool.clone(),
         Arc::new(crablink_server::random_code),
         Arc::new(chrono::Utc::now),
-        &token,
         &base_url,
-    );
+    )
+    .await
+    .unwrap_or_else(|e| {
+        eprintln!("crablink-server: cannot set up the Default Domain from CRABLINK_BASE_URL: {e}");
+        exit(1);
+    });
     let listener = tokio::net::TcpListener::bind(&listen)
         .await
         .unwrap_or_else(|e| {

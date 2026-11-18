@@ -1,9 +1,9 @@
-//! `Api`: the authenticated HTTP client for the management API.
+//! `Api`: the HTTP client for one Workspace's Links, authenticated with its API Key.
 
 use std::time::Duration;
 
-use anyhow::{Context, bail};
-use crablink_api::{CreateLink, Link, LinkPage, QrFormat, UpdateLink};
+use anyhow::{Context, anyhow, bail};
+use crablink_api::{CreateLink, Link, LinkPage, Me, QrFormat, UpdateLink, Workspace};
 use serde::de::DeserializeOwned;
 use ureq::http::{Method, Request, Response};
 use ureq::{Body, SendBody};
@@ -11,20 +11,25 @@ use ureq::{Body, SendBody};
 /// Longest a single API request may take, so a hung server can't freeze the TUI.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Authenticated HTTP client for `/api`. Every method fails with the server's
-/// `{ "error" }` message (plus status) on a non-2xx response. Reuses connections.
+/// HTTP client for `/api`, acting on Workspace `workspace` with `api_key`. Every
+/// method fails with the server's `{ "error" }` message (plus status) on a non-2xx
+/// response. Reuses connections.
 pub struct Api {
     pub(crate) server: String,
-    pub(crate) token: String,
+    pub(crate) api_key: String,
+    /// The Workspace's slug.
+    pub(crate) workspace: String,
     agent: ureq::Agent,
 }
 
 impl Api {
-    /// A client for `server` (any trailing slash dropped) that authenticates with `token`.
-    pub(crate) fn new(server: String, token: String) -> Api {
+    /// A client for `server` (any trailing slash dropped) that authenticates with
+    /// `api_key` and acts on Workspace `workspace`.
+    pub(crate) fn new(server: String, api_key: String, workspace: String) -> Api {
         Api {
             server: server.trim_end_matches('/').into(),
-            token,
+            api_key,
+            workspace,
             agent: ureq::Agent::config_builder()
                 .http_status_as_error(false)
                 .timeout_global(Some(REQUEST_TIMEOUT))
@@ -38,18 +43,33 @@ impl Api {
         &self.server
     }
 
-    /// `POST /api/links`.
-    pub fn create(&self, body: &CreateLink) -> anyhow::Result<Link> {
-        self.json(Method::POST, "/api/links", SendBody::from_json(body)?)
+    /// The Workspace's slug.
+    pub fn workspace(&self) -> &str {
+        &self.workspace
     }
 
-    /// `GET /api/links`, following `next_cursor`; calls `each_page` with every page, newest first.
+    /// `GET /api/me`: the API Key's Workspace.
+    pub fn me(&self) -> anyhow::Result<Workspace> {
+        match self.json(Method::GET, "/api/me", SendBody::none())? {
+            Me::Workspace(w) => Ok(w),
+            Me::User(_) => Err(anyhow!("the server took the API Key for a User")),
+        }
+    }
+
+    /// `POST /api/workspaces/{slug}/links`.
+    pub fn create(&self, body: &CreateLink) -> anyhow::Result<Link> {
+        let path = self.links_path();
+        self.json(Method::POST, &path, SendBody::from_json(body)?)
+    }
+
+    /// `GET /api/workspaces/{slug}/links`, following `next_cursor`; calls `each_page`
+    /// with every page, newest first.
     pub fn list(&self, mut each_page: impl FnMut(Vec<Link>)) -> anyhow::Result<()> {
         let mut cursor: Option<String> = None;
         loop {
             let path = match &cursor {
-                Some(c) => format!("/api/links?cursor={}", encode(c)),
-                None => "/api/links".into(),
+                Some(c) => format!("{}?cursor={}", self.links_path(), encode(c)),
+                None => self.links_path(),
             };
             let page: LinkPage = self.json(Method::GET, &path, SendBody::none())?;
             each_page(page.links);
@@ -60,25 +80,26 @@ impl Api {
         }
     }
 
-    /// `GET /api/links/{code}`.
+    /// `GET /api/workspaces/{slug}/links/{code}`.
     pub fn get(&self, code: &str) -> anyhow::Result<Link> {
-        self.json(Method::GET, &link_path(code), SendBody::none())
+        self.json(Method::GET, &self.link_path(code), SendBody::none())
     }
 
-    /// `PATCH /api/links/{code}`.
+    /// `PATCH /api/workspaces/{slug}/links/{code}`.
     pub fn update(&self, code: &str, body: &UpdateLink) -> anyhow::Result<Link> {
-        self.json(Method::PATCH, &link_path(code), SendBody::from_json(body)?)
+        let path = self.link_path(code);
+        self.json(Method::PATCH, &path, SendBody::from_json(body)?)
     }
 
-    /// `DELETE /api/links/{code}`.
+    /// `DELETE /api/workspaces/{slug}/links/{code}`.
     pub fn delete(&self, code: &str) -> anyhow::Result<()> {
-        self.send(Method::DELETE, &link_path(code), SendBody::none())
+        self.send(Method::DELETE, &self.link_path(code), SendBody::none())
             .map(drop)
     }
 
-    /// `GET /api/links/{code}/qr`: the QR code file's bytes.
+    /// `GET /api/workspaces/{slug}/links/{code}/qr`: the QR code file's bytes.
     pub fn qr(&self, code: &str, format: QrFormat) -> anyhow::Result<Vec<u8>> {
-        let path = format!("{}/qr?format={}", link_path(code), format.as_str());
+        let path = format!("{}/qr?format={}", self.link_path(code), format.as_str());
         let mut res = self.send(Method::GET, &path, SendBody::none())?;
         Ok(res.body_mut().read_to_vec()?)
     }
@@ -92,7 +113,7 @@ impl Api {
         let req = Request::builder()
             .method(method)
             .uri(format!("{}{path}", self.server))
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.api_key))
             // `agent.run` ignores `SendBody::from_json`'s content type; every API body is JSON.
             .header("Content-Type", "application/json")
             .body(body)?;
@@ -119,12 +140,17 @@ impl Api {
     ) -> anyhow::Result<T> {
         Ok(self.send(method, path, body)?.body_mut().read_json()?)
     }
-}
 
-/// The Code as one path segment, so e.g. `rm 'a?x'` cannot hit Link `a`.
-/// Whether the Code is valid is the server's call.
-fn link_path(code: &str) -> String {
-    format!("/api/links/{}", encode(code))
+    /// The Workspace's Links. The slug is encoded as one path segment, like a Code.
+    fn links_path(&self) -> String {
+        format!("/api/workspaces/{}/links", encode(&self.workspace))
+    }
+
+    /// The Code as one path segment, so e.g. `rm 'a?x'` cannot hit Link `a`.
+    /// Whether the Code is valid is the server's call.
+    fn link_path(&self, code: &str) -> String {
+        format!("{}/{}", self.links_path(), encode(code))
+    }
 }
 
 /// Percent-encodes every byte except `A-Z a-z 0-9 _ -`.
@@ -143,10 +169,12 @@ mod tests {
 
     #[test]
     fn codes_are_sent_as_one_encoded_path_segment() {
-        assert_eq!(link_path("Ab_-9"), "/api/links/Ab_-9");
-        assert_eq!(link_path("a?x"), "/api/links/a%3Fx");
-        assert_eq!(link_path("a/b#c"), "/api/links/a%2Fb%23c");
-        assert_eq!(link_path(".."), "/api/links/%2E%2E");
-        assert_eq!(link_path("é"), "/api/links/%C3%A9");
+        let api = Api::new("https://x".into(), "key".into(), "ada".into());
+        let link_path = |code| api.link_path(code);
+        assert_eq!(link_path("Ab_-9"), "/api/workspaces/ada/links/Ab_-9");
+        assert_eq!(link_path("a?x"), "/api/workspaces/ada/links/a%3Fx");
+        assert_eq!(link_path("a/b#c"), "/api/workspaces/ada/links/a%2Fb%23c");
+        assert_eq!(link_path(".."), "/api/workspaces/ada/links/%2E%2E");
+        assert_eq!(link_path("é"), "/api/workspaces/ada/links/%C3%A9");
     }
 }
