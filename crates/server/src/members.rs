@@ -9,7 +9,7 @@ use crablink_api::{AddMember, Member, Role, UpdateMember};
 
 use crate::AppState;
 use crate::error::ApiError;
-use crate::workspaces::{Access, Caller, role};
+use crate::workspaces::{Access, Caller, role, stored_role};
 
 /// `GET /api/workspaces/{slug}/members`: by email.
 pub(crate) async fn list_members(
@@ -25,14 +25,13 @@ pub(crate) async fn list_members(
     .bind(workspace_id)
     .fetch_all(&s.pool)
     .await?;
-    Ok(Json(
-        rows.into_iter()
-            .map(|(email, r)| Member {
-                email,
-                role: role(&r),
-            })
-            .collect(),
-    ))
+    let members = rows.into_iter().map(|(email, r)| {
+        Ok(Member {
+            email,
+            role: role(&r)?,
+        })
+    });
+    Ok(Json(members.collect::<Result<_, ApiError>>()?))
 }
 
 /// `POST /api/workspaces/{slug}/members`: adds an existing User, ignoring the email's
@@ -52,11 +51,12 @@ pub(crate) async fn add_member(
             .await?
             .ok_or(ApiError::UserNotFound)?;
     let added = sqlx::query(
-        "INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'member') \
+        "INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, $3) \
          ON CONFLICT DO NOTHING",
     )
     .bind(user_id)
     .bind(workspace_id)
+    .bind(stored_role(Role::Member))
     .execute(&s.pool)
     .await?;
     if added.rows_affected() == 0 {
@@ -136,10 +136,7 @@ async fn change(
             sqlx::query("UPDATE memberships SET role = $3 WHERE workspace_id = $1 AND user_id = $2")
                 .bind(workspace_id)
                 .bind(user_id)
-                .bind(match role {
-                    Role::Owner => "owner",
-                    Role::Member => "member",
-                })
+                .bind(stored_role(role))
         }
         None => sqlx::query("DELETE FROM memberships WHERE workspace_id = $1 AND user_id = $2")
             .bind(workspace_id)
@@ -147,9 +144,10 @@ async fn change(
     };
     query.execute(&mut *tx).await?;
     let owners: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM memberships WHERE workspace_id = $1 AND role = 'owner'",
+        "SELECT count(*) FROM memberships WHERE workspace_id = $1 AND role = $2",
     )
     .bind(workspace_id)
+    .bind(stored_role(Role::Owner))
     .fetch_one(&mut *tx)
     .await?;
     if owners == 0 {

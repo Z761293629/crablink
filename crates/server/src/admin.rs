@@ -9,13 +9,13 @@ use axum::http::request::Parts;
 use axum::response::Response;
 use chrono::TimeDelta;
 use crablink_api::{
-    AcceptInvite, CreateInvite, ManagedUser, NewInvite, NewPassword, UpdateUser, User,
+    AcceptInvite, CreateInvite, ManagedUser, NewInvite, NewPassword, Role, UpdateUser, User,
 };
 
 use crate::AppState;
 use crate::error::ApiError;
 use crate::users::{self, SameOrigin, Session};
-use crate::workspaces::Caller;
+use crate::workspaces::{Caller, stored_role};
 
 const INVITE_TTL: TimeDelta = TimeDelta::days(7);
 
@@ -118,13 +118,12 @@ pub(crate) async fn accept_invite(
     }
     let id = users::insert_user(&mut tx, &email, &req.password, false).await?;
     if let Some(workspace_id) = workspace_id {
-        sqlx::query(
-            "INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'member')",
-        )
-        .bind(id)
-        .bind(workspace_id)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, $3)")
+            .bind(id)
+            .bind(workspace_id)
+            .bind(stored_role(Role::Member))
+            .execute(&mut *tx)
+            .await?;
     }
     sqlx::query("UPDATE invites SET used_at = $2 WHERE token_hash = $1")
         .bind(users::token_hash(&req.token))

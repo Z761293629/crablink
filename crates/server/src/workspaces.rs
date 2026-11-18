@@ -62,12 +62,13 @@ impl Caller {
     pub(crate) async fn workspace(&self, s: &AppState, slug: &str) -> Result<Access, ApiError> {
         let query = match self {
             Caller::User(session) => sqlx::query_as(
-                "SELECT w.id AS workspace_id, m.role = 'owner' AS owner FROM workspaces w \
+                "SELECT w.id AS workspace_id, m.role = $3 AS owner FROM workspaces w \
                  JOIN memberships m ON m.workspace_id = w.id \
                  WHERE w.slug = $1 AND m.user_id = $2",
             )
             .bind(slug)
-            .bind(session.user_id),
+            .bind(session.user_id)
+            .bind(stored_role(Role::Owner)),
             Caller::ApiKey { workspace_id } => sqlx::query_as(
                 "SELECT id AS workspace_id, FALSE AS owner FROM workspaces \
                      WHERE slug = $1 AND id = $2",
@@ -102,11 +103,23 @@ impl Caller {
 
 const MAX_NAME_LEN: usize = 100;
 
-/// The role stored in `memberships.role`.
-pub(crate) fn role(stored: &str) -> Role {
+/// The `Role` a `memberships.role` value stands for; any other value is a bug.
+pub(crate) fn role(stored: &str) -> Result<Role, ApiError> {
     match stored {
-        "owner" => Role::Owner,
-        _ => Role::Member,
+        "owner" => Ok(Role::Owner),
+        "member" => Ok(Role::Member),
+        other => {
+            eprintln!("unknown role in memberships.role: {other:?}");
+            Err(ApiError::Internal)
+        }
+    }
+}
+
+/// How `role` is stored in `memberships.role`.
+pub(crate) fn stored_role(role: Role) -> &'static str {
+    match role {
+        Role::Owner => "owner",
+        Role::Member => "member",
     }
 }
 
@@ -137,14 +150,13 @@ pub(crate) async fn list_workspaces(
     .bind(session.user_id)
     .fetch_all(&s.pool)
     .await?;
-    Ok(Json(
-        rows.into_iter()
-            .map(|(slug, name, r)| Membership {
-                workspace: Workspace { slug, name },
-                role: role(&r),
-            })
-            .collect(),
-    ))
+    let memberships = rows.into_iter().map(|(slug, name, r)| {
+        Ok(Membership {
+            workspace: Workspace { slug, name },
+            role: role(&r)?,
+        })
+    });
+    Ok(Json(memberships.collect::<Result<_, ApiError>>()?))
 }
 
 /// `POST /api/workspaces`: the signed-in User becomes the new Workspace's Owner.
@@ -263,10 +275,11 @@ async fn create(
         .await?;
         if let Some(id) = id {
             sqlx::query(
-                "INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'owner')",
+                "INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, $3)",
             )
             .bind(user_id)
             .bind(id)
+            .bind(stored_role(Role::Owner))
             .execute(&mut *conn)
             .await?;
             let name = name.to_owned();
