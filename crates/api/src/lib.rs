@@ -50,7 +50,36 @@ pub struct Link {
 /// Body of every management API error response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorBody {
+    /// Stable and machine-readable: branch on this, not on `error`.
+    pub kind: ErrorKind,
+    /// English message for people.
     pub error: String,
+}
+
+/// What went wrong, as `ErrorBody::kind`. Named `kind`, never `code`, so it
+/// can't be read as a Link's Code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorKind {
+    /// Missing or wrong token.
+    Unauthorized,
+    /// No such API route.
+    NotFound,
+    /// No live Link has this Code.
+    LinkNotFound,
+    /// Malformed body or query.
+    BadRequest,
+    InvalidTarget,
+    /// A Custom Code that isn't `[A-Za-z0-9_-]{3,64}`.
+    InvalidCode,
+    /// A Custom Code that would shadow one of the service's own routes.
+    CodeReserved,
+    /// The Code is taken on its Domain, possibly by a Deleted Link.
+    CodeTaken,
+    Internal,
+    /// A kind this build doesn't know, sent by a newer server. Never sent.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Query of `GET /api/links`. `limit` defaults to 50 and must be 1-200.
@@ -94,5 +123,26 @@ mod tests {
             let back: UpdateLink = serde_json::from_value(wire).unwrap();
             assert_eq!(back.expires_at, dto);
         }
+    }
+
+    #[test]
+    fn error_body_carries_a_snake_case_kind() {
+        let body = ErrorBody {
+            kind: ErrorKind::LinkNotFound,
+            error: "link not found".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(&body).unwrap(),
+            json!({ "kind": "link_not_found", "error": "link not found" })
+        );
+    }
+
+    #[test]
+    fn a_kind_from_a_newer_server_still_yields_the_message() {
+        let body: ErrorBody =
+            serde_json::from_value(json!({ "kind": "domain_pending", "error": "pending" }))
+                .unwrap();
+        assert_eq!(body.kind, ErrorKind::Unknown);
+        assert_eq!(body.error, "pending");
     }
 }
