@@ -53,7 +53,8 @@ fn expired_links_are_marked_and_deleted_links_are_absent() {
 fn no_arguments_without_a_terminal_prints_help() {
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_crablink"))
         .env_remove("CRABLINK_URL")
-        .env_remove("CRABLINK_TOKEN")
+        .env_remove("CRABLINK_API_KEY")
+        .env_remove("CRABLINK_WORKSPACE")
         .output()
         .unwrap();
     assert!(out.status.success(), "{out:?}");
@@ -70,7 +71,8 @@ fn missing_credentials_point_at_login() {
         .arg("ls")
         .env("HOME", "/nonexistent/crablink-test-home")
         .env_remove("CRABLINK_URL")
-        .env_remove("CRABLINK_TOKEN")
+        .env_remove("CRABLINK_API_KEY")
+        .env_remove("CRABLINK_WORKSPACE")
         .output()
         .unwrap();
     assert!(!out.status.success(), "{out:?}");
@@ -92,21 +94,21 @@ fn an_empty_instance_says_how_to_create_the_first_link() {
 }
 
 #[test]
-fn a_wrong_token_shows_the_servers_error() {
+fn a_wrong_api_key_shows_the_servers_error() {
     let srv = server();
     let wrong = TestServer {
-        url: srv.url.clone(),
-        token: "wrong".into(),
+        key: "wrong".into(),
+        ..srv
     };
     let screen = wrong.tui().screen();
-    assert!(screen.contains("missing or invalid token"), "{screen}");
+    assert!(screen.contains("unknown or revoked API Key"), "{screen}");
 }
 
 #[test]
 fn an_unreachable_server_shows_an_error() {
     let wrong = TestServer {
         url: "http://127.0.0.1:1".into(),
-        token: TOKEN.into(),
+        ..server()
     };
     let screen = wrong.tui().screen();
     assert!(

@@ -26,5 +26,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      # The tests' embedded Postgres binaries (crates/server/tests/common/pg.rs); bump the key
+      # with its major version.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.theseus/postgresql
+          key: embedded-postgres-18-${{ runner.os }}
       - run: cargo test --workspace
+        env:
+          # On a cache miss the download resolves the version through the GitHub API, whose
+          # unauthenticated rate limit a shared runner IP easily exhausts.
+          GITHUB_TOKEN: ${{ github.token }}
       - run: docker build .

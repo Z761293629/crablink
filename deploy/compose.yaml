@@ -1,0 +1,53 @@
+# Production: Caddy terminates HTTPS in front of crablink-server and Postgres.
+# Neither crablink nor Postgres publishes a port; only Caddy listens on 80/443.
+#   cd deploy
+#   printf 'CRABLINK_DOMAIN=crabl.ink\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
+#   chmod 600 .env && docker compose up -d
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crablink
+      # Read only when the volume is first initialised; changing it later doesn't change the database's password.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: crablink
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "crablink", "-d", "crablink"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  crablink:
+    # Pin the version; upgrade by changing it, then `docker compose pull && docker compose up -d`.
+    image: ghcr.io/z761293629/crablink-server:0.4.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CRABLINK_BASE_URL: https://${CRABLINK_DOMAIN:?set CRABLINK_DOMAIN in .env}
+      CRABLINK_DATABASE_URL: postgres://crablink:${POSTGRES_PASSWORD}@postgres:5432/crablink
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - crablink
+    environment:
+      CRABLINK_DOMAIN: ${CRABLINK_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres:
+  caddy_data:
+  caddy_config:

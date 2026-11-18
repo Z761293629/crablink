@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::process::exit;
 use std::sync::Arc;
 
@@ -13,33 +14,71 @@ fn required(name: &str) -> String {
 
 #[tokio::main]
 async fn main() {
-    let base_url = required("CRABLINK_BASE_URL");
-    let token = required("CRABLINK_TOKEN");
-    let db_url =
-        std::env::var("CRABLINK_DATABASE_URL").unwrap_or_else(|_| "sqlite:crablink.db".into());
-    let listen = std::env::var("CRABLINK_LISTEN").unwrap_or_else(|_| "0.0.0.0:8080".into());
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
+        [] => serve().await,
+        ["admin", "create", "--email", email] => admin_create(email).await,
+        _ => {
+            eprintln!("usage: crablink-server [admin create --email <email>]");
+            exit(2);
+        }
+    }
+}
 
-    let pool = crablink_server::connect(&db_url).await.unwrap_or_else(|e| {
-        eprintln!("crablink-server: cannot open database {db_url}: {e}");
+/// `admin create`: creates an Instance Admin, reading the password from a prompt,
+/// or from stdin's first line when it isn't a terminal.
+async fn admin_create(email: &str) {
+    let db_url = required("CRABLINK_DATABASE_URL");
+    let password = if std::io::stdin().is_terminal() {
+        rpassword::prompt_password("Password: ")
+    } else {
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line).map(|_| line)
+    };
+    let password = password.unwrap_or_else(|e| {
+        eprintln!("crablink-server: cannot read the password: {e}");
         exit(1);
     });
-    // ponytail: fixed 10 s; at the ~7k clicks/s a laptop sustains that caps the WAL near 300 MB.
-    let checkpoints = pool.clone();
-    let checkpointer = tokio::spawn(async move {
-        let mut every = tokio::time::interval(std::time::Duration::from_secs(10));
-        loop {
-            every.tick().await;
-            if let Err(e) = crablink_server::checkpoint(&checkpoints).await {
-                eprintln!("crablink-server: WAL checkpoint failed: {e}");
-            }
-        }
-    });
+    let pool = open_database(&db_url).await;
+    let password = password.trim_end_matches(['\r', '\n']);
+    if let Err(e) = crablink_server::create_user(&pool, email, password, true).await {
+        eprintln!("crablink-server: {e}");
+        exit(1);
+    }
+    eprintln!("crablink-server: created Instance Admin {email}");
+}
+
+async fn open_database(db_url: &str) -> sqlx::PgPool {
+    crablink_server::connect(db_url).await.unwrap_or_else(|e| {
+        // Not the URL itself: it usually carries the database password.
+        eprintln!("crablink-server: cannot open the database: {e}");
+        exit(1);
+    })
+}
+
+async fn serve() {
+    let base_url = required("CRABLINK_BASE_URL");
+    let db_url = required("CRABLINK_DATABASE_URL");
+    let listen = std::env::var("CRABLINK_LISTEN").unwrap_or_else(|_| "0.0.0.0:8080".into());
+
+    if std::env::var_os("CRABLINK_TOKEN").is_some() {
+        eprintln!(
+            "crablink-server: CRABLINK_TOKEN is no longer used: programs sign in with an API Key"
+        );
+    }
+
+    let pool = open_database(&db_url).await;
     let app = crablink_server::app(
         pool.clone(),
         Arc::new(crablink_server::random_code),
-        &token,
+        Arc::new(chrono::Utc::now),
         &base_url,
-    );
+    )
+    .await
+    .unwrap_or_else(|e| {
+        eprintln!("crablink-server: cannot set up the Default Domain from CRABLINK_BASE_URL: {e}");
+        exit(1);
+    });
     let listener = tokio::net::TcpListener::bind(&listen)
         .await
         .unwrap_or_else(|e| {
@@ -54,9 +93,6 @@ async fn main() {
         eprintln!("crablink-server: server error: {e}");
         exit(1);
     }
-    // Stopped first, so a tick during `close` can't log a spurious "pool closed" failure.
-    checkpointer.abort();
-    // Closing the last connection checkpoints the WAL into the database.
     pool.close().await;
     eprintln!("crablink-server stopped");
 }

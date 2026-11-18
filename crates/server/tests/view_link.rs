@@ -11,12 +11,12 @@ async fn a_new_link_can_be_viewed_with_zero_clicks() {
         .create(json!({ "target": "https://example.com/v" }))
         .await;
 
-    let res = app.api("GET", "/api/links/View001", None).await;
+    let res = app.api("GET", "/links/View001", None).await;
 
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
     let link = res.json();
     assert_eq!(link["code"], "View001");
-    assert_eq!(link["short_url"], "https://crab.link/View001");
+    assert_eq!(link["short_url"], "https://crabl.ink/View001");
     assert_eq!(link["target"], "https://example.com/v");
     assert_eq!(link["click_count"], 0);
     assert!(link["expires_at"].is_null());
@@ -28,7 +28,7 @@ async fn a_new_link_can_be_viewed_with_zero_clicks() {
 async fn viewing_an_unknown_code_is_not_found() {
     let app = app().await;
 
-    let res = app.api("GET", "/api/links/nope123", None).await;
+    let res = app.api("GET", "/links/nope123", None).await;
 
     assert_eq!(res.status, StatusCode::NOT_FOUND);
     assert!(res.json()["error"].is_string());
@@ -36,15 +36,13 @@ async fn viewing_an_unknown_code_is_not_found() {
 }
 
 #[tokio::test]
-async fn viewing_a_link_needs_a_token() {
+async fn viewing_a_link_needs_a_credential() {
     let app = app_with_codes(&["View001"]).await;
     app.create(json!({ "target": "https://example.com" })).await;
 
-    for token in [None, Some("wrong")] {
-        let res = app
-            .api_with_token("GET", "/api/links/View001", None, token)
-            .await;
-        assert_eq!(res.status, StatusCode::UNAUTHORIZED, "token {token:?}");
+    for key in [None, Some("wrong")] {
+        let res = app.api_with_key("GET", "/links/View001", None, key).await;
+        assert_eq!(res.status, StatusCode::UNAUTHORIZED, "key {key:?}");
         assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);
     }
 }

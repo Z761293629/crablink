@@ -6,7 +6,7 @@ use serde_json::json;
 
 async fn assert_rejected(app: &TestApp, target: &str) {
     let res = app
-        .api("POST", "/api/links", Some(json!({ "target": target })))
+        .api("POST", "/links", Some(json!({ "target": target })))
         .await;
     assert_eq!(res.status, StatusCode::BAD_REQUEST, "{target}");
     assert!(res.json()["error"].is_string(), "{target}: {}", res.text);
@@ -43,15 +43,15 @@ async fn non_http_schemes_and_relative_urls_are_rejected() {
 async fn targets_on_the_base_url_host_are_rejected_in_any_casing() {
     let app = app().await;
     for target in [
-        "https://crab.link/abc",
-        "http://CRAB.LINK/abc",
-        "https://Crab.Link:8443/",
-        "https://user@crab.link/",
+        "https://crabl.ink/abc",
+        "http://CRABL.INK/abc",
+        "https://Crabl.Ink:8443/",
+        "https://user@crabl.ink/",
     ] {
         assert_rejected(&app, target).await;
     }
     // A different host that merely contains the base host is fine.
-    app.create(json!({ "target": "https://crab.link.example.com/" }))
+    app.create(json!({ "target": "https://crabl.ink.example.com/" }))
         .await;
 }
 
@@ -98,7 +98,7 @@ async fn targets_with_whitespace_or_control_characters_are_rejected_on_edit() {
     let link = app
         .create(json!({ "target": "https://example.com/ok" }))
         .await;
-    let path = format!("/api/links/{}", link["code"].as_str().unwrap());
+    let path = format!("/links/{}", link["code"].as_str().unwrap());
     for target in WHITESPACE_OR_CONTROL {
         let res = app
             .api("PATCH", &path, Some(json!({ "target": target })))

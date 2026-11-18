@@ -1,4 +1,4 @@
-crablink is a short-link service: a Rust workspace of `crates/server` (HTTP API over SQLite), `crates/cli` (the `crablink` CLI and its TUI) and `crates/api` (the request/response types both share).
+crablink is a short-link service: a Rust workspace of `crates/server` (HTTP API over Postgres), `crates/cli` (the `crablink` CLI and its TUI) and `crates/api` (the request/response types both share).
 
 CI fails on any clippy warning, so before committing run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`.
 

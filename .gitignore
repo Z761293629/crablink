@@ -1,2 +1,5 @@
 .DS_Store
 /target
+
+# deploy/compose.yaml reads its secrets from here
+.env

@@ -10,7 +10,7 @@ async fn a_links_qr_code_is_svg_by_default() {
     app.create(json!({ "target": "https://example.com/qr" }))
         .await;
 
-    let res = app.api("GET", "/api/links/Qr00001/qr", None).await;
+    let res = app.api("GET", "/links/Qr00001/qr", None).await;
 
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
     assert_eq!(res.header("content-type"), "image/svg+xml");
@@ -23,23 +23,21 @@ async fn a_png_qr_code_decodes_to_exactly_the_short_url() {
     app.create(json!({ "target": "https://example.com/qr" }))
         .await;
 
-    let res = app
-        .api("GET", "/api/links/Qr00002/qr?format=png", None)
-        .await;
+    let res = app.api("GET", "/links/Qr00002/qr?format=png", None).await;
 
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
     assert_eq!(res.header("content-type"), "image/png");
-    assert_eq!(decode_png(&res.bytes), "https://crab.link/Qr00002");
+    assert_eq!(decode_png(&res.bytes), "https://crabl.ink/Qr00002");
 }
 
 #[tokio::test]
 async fn an_unknown_or_deleted_code_has_no_qr_code() {
     let app = app_with_codes(&["Gone001"]).await;
     app.create(json!({ "target": "https://example.com" })).await;
-    app.api("DELETE", "/api/links/Gone001", None).await;
+    app.api("DELETE", "/links/Gone001", None).await;
 
     for code in ["nope123", "Gone001"] {
-        let res = app.api("GET", &format!("/api/links/{code}/qr"), None).await;
+        let res = app.api("GET", &format!("/links/{code}/qr"), None).await;
         assert_eq!(res.status, StatusCode::NOT_FOUND, "{code}: {}", res.text);
         assert_eq!(res.json()["kind"], "link_not_found", "{}", res.text);
         assert_eq!(res.json()["error"], "link not found");
@@ -52,7 +50,7 @@ async fn an_expired_link_has_no_qr_code() {
     app.create(json!({ "target": "https://example.com", "expires_at": "2020-01-01T00:00:00Z" }))
         .await;
 
-    let res = app.api("GET", "/api/links/Old0001/qr", None).await;
+    let res = app.api("GET", "/links/Old0001/qr", None).await;
 
     assert_eq!(res.status, StatusCode::GONE, "{}", res.text);
     assert_eq!(res.json()["kind"], "link_expired", "{}", res.text);
@@ -64,9 +62,7 @@ async fn an_unknown_format_is_a_bad_request() {
     let app = app_with_codes(&["Qr00003"]).await;
     app.create(json!({ "target": "https://example.com" })).await;
 
-    let res = app
-        .api("GET", "/api/links/Qr00003/qr?format=gif", None)
-        .await;
+    let res = app.api("GET", "/links/Qr00003/qr?format=gif", None).await;
 
     assert_eq!(res.status, StatusCode::BAD_REQUEST, "{}", res.text);
     assert_eq!(res.json()["kind"], "bad_request", "{}", res.text);
@@ -74,15 +70,15 @@ async fn an_unknown_format_is_a_bad_request() {
 }
 
 #[tokio::test]
-async fn a_qr_code_needs_a_token() {
+async fn a_qr_code_needs_a_credential() {
     let app = app_with_codes(&["Qr00004"]).await;
     app.create(json!({ "target": "https://example.com" })).await;
 
-    for token in [None, Some("wrong")] {
+    for key in [None, Some("wrong")] {
         let res = app
-            .api_with_token("GET", "/api/links/Qr00004/qr", None, token)
+            .api_with_key("GET", "/links/Qr00004/qr", None, key)
             .await;
-        assert_eq!(res.status, StatusCode::UNAUTHORIZED, "token {token:?}");
+        assert_eq!(res.status, StatusCode::UNAUTHORIZED, "key {key:?}");
         assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);
     }
 }

@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// Body of `POST /api/links`.
+/// Body of `POST /api/workspaces/{slug}/links`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateLink {
     pub target: String,
@@ -15,7 +15,7 @@ pub struct CreateLink {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-/// Body of `PATCH /api/links/{code}`. An absent field is left unchanged.
+/// Body of `PATCH /api/workspaces/{slug}/links/{code}`. An absent field is left unchanged.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UpdateLink {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -39,6 +39,9 @@ fn present<'de, T: Deserialize<'de>, D: Deserializer<'de>>(d: D) -> Result<Optio
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Link {
     pub code: String,
+    /// The Domain the Link lives on, e.g. `crabl.ink`.
+    pub domain: String,
+    /// The Domain joined with the Code.
     pub short_url: String,
     pub target: String,
     pub created_at: DateTime<Utc>,
@@ -51,6 +54,245 @@ impl Link {
     /// Whether the Link's Expiry has passed at `now`: its Short URL no longer redirects.
     pub fn is_expired(&self, now: DateTime<Utc>) -> bool {
         self.expires_at.is_some_and(|t| t <= now)
+    }
+}
+
+/// Body of `POST /api/session`: signing in.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SignIn {
+    /// Matched ignoring case.
+    pub email: String,
+    pub password: String,
+}
+
+/// Body of `POST /api/me/password`.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ChangePassword {
+    pub current_password: String,
+    /// At least 8 characters.
+    pub new_password: String,
+}
+
+/// The signed-in User, as returned by sign-in and `GET /api/me`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    /// As the User was created, case included.
+    pub email: String,
+    pub instance_admin: bool,
+}
+
+/// A Workspace: the owner of Links.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Workspace {
+    /// Unique; names the Workspace in API paths: `/api/workspaces/{slug}/…`.
+    pub slug: String,
+    pub name: String,
+}
+
+/// A User's role in a Workspace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    /// Manages who is in the Workspace, its API Keys and settings, as well as its Links.
+    Owner,
+    /// Manages the Workspace's Links only.
+    Member,
+}
+
+/// A Workspace the signed-in User belongs to, as listed by `GET /api/workspaces`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Membership {
+    #[serde(flatten)]
+    pub workspace: Workspace,
+    pub role: Role,
+}
+
+/// Body of `POST /api/workspaces`: its creator becomes its Owner, and its slug
+/// comes from the name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateWorkspace {
+    /// 1-100 characters.
+    pub name: String,
+}
+
+/// Body of `PATCH /api/workspaces/{slug}`: renames it; the slug stays.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateWorkspace {
+    /// 1-100 characters.
+    pub name: String,
+}
+
+/// A User of a Workspace with their role there, Owner or Member, as listed by
+/// `GET /api/workspaces/{slug}/members`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkspaceUser {
+    /// Addresses the User in `/api/workspaces/{slug}/members/{email}`.
+    pub email: String,
+    pub role: Role,
+}
+
+/// Body of `POST /api/workspaces/{slug}/members`: adds an existing User as a Member.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddMember {
+    pub email: String,
+}
+
+/// Body of `PATCH /api/workspaces/{slug}/members/{email}`: promotes or demotes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateWorkspaceUser {
+    pub role: Role,
+}
+
+/// Response of `GET /api/me`: who the credential acts as.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Me {
+    /// A session cookie: `{ "user": { … } }`.
+    User(User),
+    /// An API Key: `{ "workspace": { … } }`, the Workspace it belongs to.
+    Workspace(Workspace),
+}
+
+/// Body of `POST /api/workspaces/{slug}/api-keys`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateApiKey {
+    /// What the key is for, e.g. `CI`; 1-100 characters.
+    pub name: String,
+}
+
+/// An API Key as listed; never its secret.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiKey {
+    /// Addresses the key in `DELETE /api/workspaces/{slug}/api-keys/{id}`.
+    pub id: i64,
+    pub name: String,
+    /// The secret's first characters, to tell keys apart.
+    pub prefix: String,
+    pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+/// Response of `POST /api/workspaces/{slug}/api-keys`: the only time the secret is shown.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct NewApiKey {
+    #[serde(flatten)]
+    pub key: ApiKey,
+    /// What a program sends as `Authorization: Bearer <secret>`.
+    pub secret: String,
+}
+
+/// Body of `POST /api/admin/invites`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateInvite {
+    /// The new User's email; no User may have it yet.
+    pub email: String,
+    /// The slug of a Workspace the new User joins as a Member.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+}
+
+/// Response of `POST /api/admin/invites`: the only time the invite link is shown.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct NewInvite {
+    /// What the Instance Admin sends the new User; its fragment is the token.
+    pub url: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// Body of `POST /api/invites/accept`; the response is the new, signed-in `User`.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct AcceptInvite {
+    /// The invite link's fragment.
+    pub token: String,
+    /// At least 8 characters.
+    pub password: String,
+}
+
+/// A User as an Instance Admin sees them, from `GET /api/admin/users`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManagedUser {
+    /// Addresses the User in `/api/admin/users/{id}`.
+    pub id: i64,
+    pub email: String,
+    pub instance_admin: bool,
+    /// A disabled User can't sign in and has no sessions.
+    pub disabled: bool,
+}
+
+/// Body of `PATCH /api/admin/users/{id}`. An absent field is left unchanged; an
+/// Instance Admin can't disable or demote themselves.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateUser {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_admin: Option<bool>,
+}
+
+/// Response of `POST /api/admin/users/{id}/password`: the only time the new
+/// password is shown.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct NewPassword {
+    pub password: String,
+}
+
+/// What `Debug` shows instead of a password, token or secret, so none reaches a log.
+const REDACTED: &str = "<redacted>";
+
+impl std::fmt::Debug for SignIn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SignIn")
+            .field("email", &self.email)
+            .field("password", &REDACTED)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ChangePassword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChangePassword")
+            .field("current_password", &REDACTED)
+            .field("new_password", &REDACTED)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for NewApiKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NewApiKey")
+            .field("key", &self.key)
+            .field("secret", &REDACTED)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for AcceptInvite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AcceptInvite")
+            .field("token", &REDACTED)
+            .field("password", &REDACTED)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for NewInvite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let page = self
+            .url
+            .split_once('#')
+            .map_or(&*self.url, |(page, _)| page);
+        f.debug_struct("NewInvite")
+            .field("url", &format_args!("{page}#{REDACTED}"))
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for NewPassword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NewPassword")
+            .field("password", &REDACTED)
+            .finish()
     }
 }
 
@@ -70,10 +312,34 @@ pub struct ErrorBody {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
-    /// Missing or wrong token.
+    /// No credential, an unknown or revoked API Key (such as a 0.2 token), or no live
+    /// session: never signed in, signed out or expired.
     Unauthorized,
-    /// No such API route.
+    /// A valid credential that may not do this: another Workspace's, an API Key where
+    /// only a User will do, or a Member where only an Owner will do.
+    Forbidden,
+    /// Sign-in with an unknown email, a wrong password or a disabled User; `error`
+    /// never says which.
+    InvalidCredentials,
+    /// A state-changing request with a session cookie whose `Origin` is missing or
+    /// isn't this host.
+    OriginMismatch,
+    /// Changing password with a wrong current password.
+    WrongPassword,
+    /// An email that doesn't look like `name@host`.
+    InvalidEmail,
+    /// A new password shorter than 8 characters.
+    PasswordTooShort,
+    /// Another User already has this email, ignoring case.
+    EmailTaken,
+    /// No such API route or API Key, or no Workspace with the slug an invite names.
     NotFound,
+    /// No invite has this token.
+    InviteNotFound,
+    /// The invite's expiry has passed.
+    InviteExpired,
+    /// The invite has already been accepted.
+    InviteUsed,
     /// No live Link has this Code.
     LinkNotFound,
     /// The Link's Expiry has passed, and only a live Link will do (e.g. its QR code).
@@ -89,6 +355,13 @@ pub enum ErrorKind {
     CodeReserved,
     /// The Code is taken on its Domain, possibly by a Deleted Link.
     CodeTaken,
+    /// No User has this email or id; on a `/members` route, none in this Workspace.
+    UserNotFound,
+    /// Adding a User who is already in the Workspace.
+    AlreadyMember,
+    /// Removing or demoting the Workspace's last Owner, themself included: it would
+    /// leave no one to manage it.
+    LastOwner,
     /// The server failed; details are in its log, never in `error`. Includes running out
     /// of free Generated Codes, where retrying may help.
     Internal,
@@ -99,7 +372,7 @@ pub enum ErrorKind {
     Unknown,
 }
 
-/// Query of `GET /api/links`. `limit` defaults to 50 and must be 1-200.
+/// Query of `GET /api/workspaces/{slug}/links`. `limit` defaults to 50 and must be 1-200.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ListLinks {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -109,14 +382,14 @@ pub struct ListLinks {
     pub cursor: Option<String>,
 }
 
-/// Response of `GET /api/links`: newest first; `next_cursor` is `None` on the last page.
+/// Response of `GET /api/workspaces/{slug}/links`: newest first; `next_cursor` is `None` on the last page.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinkPage {
     pub links: Vec<Link>,
     pub next_cursor: Option<String>,
 }
 
-/// Query of `GET /api/links/{code}/qr`: SVG when `format` is absent.
+/// Query of `GET /api/workspaces/{slug}/links/{code}/qr`: SVG when `format` is absent.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QrQuery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -155,6 +428,53 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn debug_output_never_shows_a_password_token_or_secret() {
+        let s = || "hunter2-s3cret".to_owned();
+        let key = ApiKey {
+            id: 1,
+            name: "CI".into(),
+            prefix: "crab_1234567".into(),
+            created_at: "2030-01-01T00:00:00Z".parse().unwrap(),
+            last_used_at: None,
+        };
+        for debug in [
+            format!(
+                "{:?}",
+                SignIn {
+                    email: "ada@example.com".into(),
+                    password: s()
+                }
+            ),
+            format!(
+                "{:?}",
+                ChangePassword {
+                    current_password: s(),
+                    new_password: s()
+                }
+            ),
+            format!(
+                "{:?}",
+                AcceptInvite {
+                    token: s(),
+                    password: s()
+                }
+            ),
+            format!("{:?}", NewApiKey { key, secret: s() }),
+            format!("{:?}", NewPassword { password: s() }),
+            format!(
+                "{:?}",
+                NewInvite {
+                    url: format!("https://crabl.ink/app/invite#{}", s()),
+                    expires_at: DateTime::UNIX_EPOCH
+                }
+            ),
+        ] {
+            assert!(!debug.contains("s3cret"), "{debug}");
+            assert!(debug.contains("<redacted>"), "{debug}");
+        }
+    }
+
+    #[test]
     fn update_link_expiry_is_three_state() {
         let t: DateTime<Utc> = "2030-01-01T00:00:00Z".parse().unwrap();
         for (dto, wire) in [
@@ -180,7 +500,8 @@ mod tests {
         let t: DateTime<Utc> = "2030-01-01T00:00:00Z".parse().unwrap();
         let link = |expires_at| Link {
             code: "abc".into(),
-            short_url: "https://crab.link/abc".into(),
+            domain: "crabl.ink".into(),
+            short_url: "https://crabl.ink/abc".into(),
             target: "https://example.com".into(),
             created_at: t,
             updated_at: t,

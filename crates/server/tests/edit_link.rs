@@ -1,11 +1,12 @@
 mod common;
 
 use axum::http::StatusCode;
+use chrono::TimeDelta;
 use common::*;
 use serde_json::{Value, json};
 
 async fn patch(app: &TestApp, code: &str, body: Value) -> Res {
-    app.api("PATCH", &format!("/api/links/{code}"), Some(body))
+    app.api("PATCH", &format!("/links/{code}"), Some(body))
         .await
 }
 
@@ -13,6 +14,7 @@ async fn patch(app: &TestApp, code: &str, body: Value) -> Res {
 async fn changed_target_is_used_by_redirect() {
     let app = app_with_codes(&["Edit001"]).await;
     let before = app.create(json!({ "target": "https://old.example" })).await;
+    app.advance(TimeDelta::seconds(1));
 
     let res = patch(&app, "Edit001", json!({ "target": "https://new.example/" })).await;
 
@@ -32,7 +34,7 @@ async fn invalid_target_is_rejected_and_link_unchanged() {
     let app = app_with_codes(&["Edit002"]).await;
     app.create(json!({ "target": "https://old.example" })).await;
 
-    for bad in ["javascript:alert(1)", "https://crab.link/loop", "not a url"] {
+    for bad in ["javascript:alert(1)", "https://crabl.ink/loop", "not a url"] {
         let res = patch(&app, "Edit002", json!({ "target": bad })).await;
         assert_eq!(res.status, StatusCode::BAD_REQUEST, "{bad}");
         assert!(res.json()["error"].is_string());
@@ -48,7 +50,7 @@ async fn invalid_target_is_rejected_and_link_unchanged() {
 async fn unknown_or_deleted_link_is_not_found() {
     let app = app_with_codes(&["Gone001"]).await;
     app.create(json!({ "target": "https://example.com" })).await;
-    app.api("DELETE", "/api/links/Gone001", None).await;
+    app.api("DELETE", "/links/Gone001", None).await;
 
     for code in ["Gone001", "Nope001"] {
         let res = patch(&app, code, json!({ "target": "https://new.example" })).await;
@@ -59,13 +61,13 @@ async fn unknown_or_deleted_link_is_not_found() {
 }
 
 #[tokio::test]
-async fn patch_needs_token() {
+async fn patch_needs_a_credential() {
     let app = app_with_codes(&["Auth001"]).await;
     app.create(json!({ "target": "https://example.com" })).await;
 
     let body = Some(json!({ "target": "https://new.example" }));
     let res = app
-        .api_with_token("PATCH", "/api/links/Auth001", body, None)
+        .api_with_key("PATCH", "/links/Auth001", body, None)
         .await;
     assert_eq!(res.status, StatusCode::UNAUTHORIZED);
     assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);

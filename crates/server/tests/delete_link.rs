@@ -9,7 +9,7 @@ async fn deleting_a_link_makes_its_short_url_gone() {
     let app = app_with_codes(&["Gone001"]).await;
     app.create(json!({ "target": "https://example.com" })).await;
 
-    let res = app.api("DELETE", "/api/links/Gone001", None).await;
+    let res = app.api("DELETE", "/links/Gone001", None).await;
     assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.text);
 
     assert_eq!(app.get("/Gone001").await.status, StatusCode::GONE);
@@ -19,9 +19,9 @@ async fn deleting_a_link_makes_its_short_url_gone() {
 async fn a_deleted_link_is_not_found_by_the_api() {
     let app = app_with_codes(&["Gone001"]).await;
     app.create(json!({ "target": "https://example.com" })).await;
-    app.api("DELETE", "/api/links/Gone001", None).await;
+    app.api("DELETE", "/links/Gone001", None).await;
 
-    let res = app.api("GET", "/api/links/Gone001", None).await;
+    let res = app.api("GET", "/links/Gone001", None).await;
     assert_eq!(res.status, StatusCode::NOT_FOUND, "{}", res.text);
     assert_eq!(res.json()["kind"], "link_not_found", "{}", res.text);
 }
@@ -30,9 +30,9 @@ async fn a_deleted_link_is_not_found_by_the_api() {
 async fn deleting_twice_or_deleting_an_unknown_code_is_404() {
     let app = app_with_codes(&["Gone001"]).await;
     app.create(json!({ "target": "https://example.com" })).await;
-    app.api("DELETE", "/api/links/Gone001", None).await;
+    app.api("DELETE", "/links/Gone001", None).await;
 
-    for path in ["/api/links/Gone001", "/api/links/nope123"] {
+    for path in ["/links/Gone001", "/links/nope123"] {
         let res = app.api("DELETE", path, None).await;
         assert_eq!(res.status, StatusCode::NOT_FOUND, "{path}: {}", res.text);
         assert_eq!(res.json()["kind"], "link_not_found", "{}", res.text);
@@ -44,12 +44,12 @@ async fn a_deleted_code_can_never_be_reused() {
     let app = app().await;
     app.create(json!({ "target": "https://example.com", "code": "old-code" }))
         .await;
-    app.api("DELETE", "/api/links/old-code", None).await;
+    app.api("DELETE", "/links/old-code", None).await;
 
     let res = app
         .api(
             "POST",
-            "/api/links",
+            "/links",
             Some(json!({ "target": "https://example.org", "code": "old-code" })),
         )
         .await;
@@ -59,12 +59,12 @@ async fn a_deleted_code_can_never_be_reused() {
 }
 
 #[tokio::test]
-async fn deleting_needs_a_token() {
+async fn deleting_needs_a_credential() {
     let app = app_with_codes(&["Keep001"]).await;
     app.create(json!({ "target": "https://example.com" })).await;
 
     let res = app
-        .api_with_token("DELETE", "/api/links/Keep001", None, None)
+        .api_with_key("DELETE", "/links/Keep001", None, None)
         .await;
     assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{}", res.text);
     assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);

@@ -5,15 +5,25 @@ use std::process::{Command, Output};
 
 use common::*;
 
-/// Runs `crablink qr <args>` against `server` with stdout piped, never reading the
+/// Runs `crablink qr <args>` against `srv` with stdout piped, never reading the
 /// developer's own config.
-fn crablink_qr(server: &str, args: &[&str]) -> Output {
+fn crablink_qr(srv: &TestServer, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_crablink"))
         .env("HOME", env!("CARGO_TARGET_TMPDIR"))
-        .args(["--server", server, "--token", TOKEN, "qr"])
+        .args(srv.flags())
+        .arg("qr")
         .args(args)
         .output()
         .unwrap()
+}
+
+/// Nothing listens on port 9: reaching for the server would fail with `cannot reach`.
+fn nowhere() -> TestServer {
+    TestServer {
+        url: "http://127.0.0.1:9".into(),
+        key: "crab_unused".into(),
+        workspace: "nobody".into(),
+    }
 }
 
 /// A fresh path in the test scratch directory.
@@ -29,7 +39,7 @@ fn qr_with_a_png_file_writes_a_png_of_the_short_url() {
     let link = srv.create("poster", "https://example.com/");
     let path = scratch("qr-poster.png");
 
-    let out = crablink_qr(&srv.url, &["poster", "-o", path.to_str().unwrap()]);
+    let out = crablink_qr(&srv, &["poster", "-o", path.to_str().unwrap()]);
 
     assert!(out.status.success(), "{out:?}");
     let img = image::open(&path).expect("a valid PNG").into_luma8();
@@ -48,7 +58,7 @@ fn qr_with_an_svg_file_writes_svg() {
     srv.create("poster", "https://example.com/");
     let path = scratch("qr-poster.svg");
 
-    let out = crablink_qr(&srv.url, &["poster", "-o", path.to_str().unwrap()]);
+    let out = crablink_qr(&srv, &["poster", "-o", path.to_str().unwrap()]);
 
     assert!(out.status.success(), "{out:?}");
     let svg = std::fs::read_to_string(&path).unwrap();
@@ -59,11 +69,7 @@ fn qr_with_an_svg_file_writes_svg() {
 fn qr_rejects_other_extensions_before_calling_the_server() {
     let path = scratch("qr-poster.gif");
 
-    // Nothing listens on port 9: reaching for the server would fail differently.
-    let out = crablink_qr(
-        "http://127.0.0.1:9",
-        &["poster", "-o", path.to_str().unwrap()],
-    );
+    let out = crablink_qr(&nowhere(), &["poster", "-o", path.to_str().unwrap()]);
 
     assert!(!out.status.success());
     let err = String::from_utf8(out.stderr).unwrap();
@@ -74,7 +80,7 @@ fn qr_rejects_other_extensions_before_calling_the_server() {
 
 #[test]
 fn qr_without_a_file_asks_for_one_when_stdout_is_not_a_terminal() {
-    let out = crablink_qr("http://127.0.0.1:9", &["poster"]);
+    let out = crablink_qr(&nowhere(), &["poster"]);
 
     assert!(!out.status.success());
     let err = String::from_utf8(out.stderr).unwrap();
@@ -85,7 +91,7 @@ fn qr_without_a_file_asks_for_one_when_stdout_is_not_a_terminal() {
 
 #[test]
 fn half_blocks_draw_every_module_inside_a_four_module_quiet_zone() {
-    let url = "https://crab.link/aZ3k9";
+    let url = "https://crabl.ink/aZ3k9";
 
     let rows = crablink_cli::qr::half_blocks(url);
 

@@ -1,0 +1,33 @@
+# crablink-server with Postgres. `docker compose up -d`, then
+# `curl http://localhost:8080/health`. Postgres is reachable only inside this compose network.
+services:
+  postgres:
+    # Same major version as the embedded Postgres the tests run on (crates/server/tests/common/pg.rs).
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crablink
+      POSTGRES_PASSWORD: crablink
+      POSTGRES_DB: crablink
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "crablink", "-d", "crablink"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  crablink:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CRABLINK_BASE_URL: ${CRABLINK_BASE_URL:-http://localhost:8080}
+      CRABLINK_DATABASE_URL: postgres://crablink:crablink@postgres:5432/crablink
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres:

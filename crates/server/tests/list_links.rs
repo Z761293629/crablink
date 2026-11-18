@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 
 /// `GET` a list page, asserting `200`; returns `(codes, next_cursor)`.
 async fn page(app: &TestApp, query: &str) -> (Vec<String>, Value) {
-    let res = app.api("GET", &format!("/api/links{query}"), None).await;
+    let res = app.api("GET", &format!("/links{query}"), None).await;
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
     let body = res.json();
     let codes = body["links"]
@@ -34,13 +34,13 @@ async fn links_come_back_newest_first_as_full_links() {
     let app = app().await;
     create_codes(&app, 3).await;
 
-    let res = app.api("GET", "/api/links", None).await;
+    let res = app.api("GET", "/links", None).await;
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
     let body = res.json();
     assert_eq!(body["next_cursor"], Value::Null);
     let first = &body["links"][0];
     assert_eq!(first["code"], "link002");
-    assert_eq!(first["short_url"], "https://crab.link/link002");
+    assert_eq!(first["short_url"], "https://crabl.ink/link002");
     assert_eq!(first["click_count"], 0);
 
     let (codes, _) = page(&app, "").await;
@@ -109,7 +109,7 @@ async fn limit_outside_1_to_200_or_a_bad_cursor_is_rejected() {
         "?limit=x",
         "?cursor=nonsense",
     ] {
-        let res = app.api("GET", &format!("/api/links{query}"), None).await;
+        let res = app.api("GET", &format!("/links{query}"), None).await;
         assert_eq!(res.status, StatusCode::BAD_REQUEST, "{query}: {}", res.text);
         assert!(res.json()["error"].is_string(), "{query}");
         assert_eq!(res.json()["kind"], "bad_request", "{}", res.text);
@@ -129,7 +129,7 @@ async fn deleted_links_never_appear_but_expired_ones_do() {
     }))
     .await;
     for code in ["link001", "link003"] {
-        app.api("DELETE", &format!("/api/links/{code}"), None).await;
+        app.api("DELETE", &format!("/links/{code}"), None).await;
     }
 
     let mut seen = Vec::new();
@@ -144,9 +144,25 @@ async fn deleted_links_never_appear_but_expired_ones_do() {
 }
 
 #[tokio::test]
-async fn listing_needs_a_token() {
+async fn listing_needs_a_credential() {
     let app = app().await;
-    let res = app.api_with_token("GET", "/api/links", None, None).await;
+    let res = app.api_with_key("GET", "/links", None, None).await;
     assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{}", res.text);
     assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);
+}
+
+#[tokio::test]
+async fn links_on_a_former_default_domain_are_not_listed() {
+    let app = app().await;
+    app.create(json!({ "target": "https://example.com", "code": "old" }))
+        .await;
+
+    let app = app.restarted_on("https://new.link").await;
+    app.create(json!({ "target": "https://example.com", "code": "new" }))
+        .await;
+
+    // Like every other Link endpoint, listing sees only the Default Domain's Links.
+    assert_eq!(page(&app, "").await.0, ["new"]);
+    let res = app.api("GET", "/links/old", None).await;
+    assert_eq!(res.status, StatusCode::NOT_FOUND, "{}", res.text);
 }

@@ -62,7 +62,7 @@ async fn gives_up_after_five_colliding_codes() {
     let res = app
         .api(
             "POST",
-            "/api/links",
+            "/links",
             Some(json!({ "target": "https://example.com/2" })),
         )
         .await;
