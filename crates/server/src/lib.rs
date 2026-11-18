@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::http::StatusCode;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
@@ -13,6 +13,7 @@ mod api_keys;
 mod db;
 mod error;
 mod links;
+mod members;
 mod redirect;
 mod users;
 mod workspaces;
@@ -24,9 +25,12 @@ pub use users::{create_user, set_user_disabled};
 
 use api_keys::{create_api_key, list_api_keys, revoke_api_key};
 use links::{create_link, delete_link, get_link, link_qr, list_links, update_link};
+use members::{add_member, list_members, remove_member, update_member};
 use redirect::redirect;
 use users::{change_password, me, sign_in, sign_out};
-use workspaces::{api_fallback, list_workspaces};
+use workspaces::{
+    api_fallback, create_workspace, delete_workspace, list_workspaces, rename_workspace,
+};
 
 /// Produces a candidate Generated Code. Injected so tests can script collisions.
 pub type CodeGenerator = Arc<dyn Fn() -> String + Send + Sync>;
@@ -77,10 +81,19 @@ pub async fn app(
         )
         .route("/links/{code}/qr", get(link_qr))
         .route("/api-keys", post(create_api_key).get(list_api_keys))
-        .route("/api-keys/{id}", delete(revoke_api_key));
+        .route("/api-keys/{id}", delete(revoke_api_key))
+        .route("/members", post(add_member).get(list_members))
+        .route(
+            "/members/{email}",
+            patch(update_member).delete(remove_member),
+        );
     let api = Router::new()
         .nest("/workspaces/{slug}", workspace)
-        .route("/workspaces", get(list_workspaces))
+        .route("/workspaces", get(list_workspaces).post(create_workspace))
+        .route(
+            "/workspaces/{slug}",
+            patch(rename_workspace).delete(delete_workspace),
+        )
         .route("/session", post(sign_in).delete(sign_out))
         .route("/me", get(me))
         .route("/me/password", post(change_password))

@@ -2,10 +2,11 @@
 //! credentials, and the personal Workspace each User gets on first sign-in.
 
 use axum::Json;
-use axum::extract::{FromRequestParts, State};
-use axum::http::header;
+use axum::extract::rejection::JsonRejection;
+use axum::extract::{FromRequestParts, Path, State};
 use axum::http::request::Parts;
-use crablink_api::Workspace;
+use axum::http::{StatusCode, header};
+use crablink_api::{CreateWorkspace, Membership, Role, UpdateWorkspace, Workspace};
 use sqlx::PgConnection;
 
 use crate::AppState;
@@ -80,16 +81,37 @@ impl Caller {
     }
 }
 
-/// `GET /api/workspaces`: the signed-in User's Workspaces, by name.
+const MAX_NAME_LEN: usize = 100;
+
+/// The role stored in `memberships.role`.
+pub(crate) fn role(stored: &str) -> Role {
+    match stored {
+        "owner" => Role::Owner,
+        _ => Role::Member,
+    }
+}
+
+/// A Workspace name, trimmed: 1-100 characters.
+fn valid_name(name: &str) -> Result<&str, ApiError> {
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > MAX_NAME_LEN {
+        return Err(ApiError::BadRequest(format!(
+            "name must be 1-{MAX_NAME_LEN} characters"
+        )));
+    }
+    Ok(name)
+}
+
+/// `GET /api/workspaces`: the signed-in User's Workspaces, by name, with their role.
 pub(crate) async fn list_workspaces(
     State(s): State<AppState>,
     caller: Caller,
-) -> Result<Json<Vec<Workspace>>, ApiError> {
+) -> Result<Json<Vec<Membership>>, ApiError> {
     let Caller::User(session) = caller else {
         return Err(ApiError::Forbidden);
     };
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT w.slug, w.name FROM workspaces w \
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT w.slug, w.name, m.role FROM workspaces w \
          JOIN memberships m ON m.workspace_id = w.id \
          WHERE m.user_id = $1 ORDER BY w.name, w.slug",
     )
@@ -98,9 +120,70 @@ pub(crate) async fn list_workspaces(
     .await?;
     Ok(Json(
         rows.into_iter()
-            .map(|(slug, name)| Workspace { slug, name })
+            .map(|(slug, name, r)| Membership {
+                workspace: Workspace { slug, name },
+                role: role(&r),
+            })
             .collect(),
     ))
+}
+
+/// `POST /api/workspaces`: the signed-in User becomes the new Workspace's Owner.
+pub(crate) async fn create_workspace(
+    State(s): State<AppState>,
+    caller: Caller,
+    body: Result<Json<CreateWorkspace>, JsonRejection>,
+) -> Result<(StatusCode, Json<Membership>), ApiError> {
+    let Caller::User(session) = caller else {
+        return Err(ApiError::Forbidden);
+    };
+    let Json(req) = body?;
+    let name = valid_name(&req.name)?;
+    let mut conn = s.pool.acquire().await?;
+    let workspace = create(&mut conn, session.user_id, name, name).await?;
+    let role = Role::Owner;
+    Ok((StatusCode::CREATED, Json(Membership { workspace, role })))
+}
+
+/// `PATCH /api/workspaces/{slug}`: renames it; the slug stays.
+pub(crate) async fn rename_workspace(
+    State(s): State<AppState>,
+    caller: Caller,
+    Path(slug): Path<String>,
+    body: Result<Json<UpdateWorkspace>, JsonRejection>,
+) -> Result<Json<Workspace>, ApiError> {
+    let (workspace_id, _) = caller.owner_of(&s, &slug).await?;
+    let Json(req) = body?;
+    let name = valid_name(&req.name)?.to_owned();
+    sqlx::query("UPDATE workspaces SET name = $2 WHERE id = $1")
+        .bind(workspace_id)
+        .bind(&name)
+        .execute(&s.pool)
+        .await?;
+    Ok(Json(Workspace { slug, name }))
+}
+
+/// `DELETE /api/workspaces/{slug}`: its Links become Deleted Links, their Codes
+/// staying taken (ADR-0002), and its API Keys stop working.
+pub(crate) async fn delete_workspace(
+    State(s): State<AppState>,
+    caller: Caller,
+    Path(slug): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let (workspace_id, _) = caller.owner_of(&s, &slug).await?;
+    let mut tx = s.pool.begin().await?;
+    sqlx::query("UPDATE links SET deleted_at = $2 WHERE workspace_id = $1 AND deleted_at IS NULL")
+        .bind(workspace_id)
+        .bind((s.clock)())
+        .execute(&mut *tx)
+        .await?;
+    // Takes its memberships and API Keys with it; its Links stay, with no Workspace.
+    sqlx::query("DELETE FROM workspaces WHERE id = $1")
+        .bind(workspace_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Any other `/api` path: 404, except that an unknown Bearer value gets its 401, so a
@@ -112,15 +195,26 @@ pub(crate) async fn api_fallback(caller: Result<Caller, ApiError>) -> ApiError {
     }
 }
 
-/// Creates the personal Workspace of User `user_id`, with them as its Owner. Its
-/// slug comes from the email's local part, numbered if taken: `ada`, `ada-2`, …
+/// Creates the personal Workspace of User `user_id`, named after their email.
 pub(crate) async fn create_personal(
     conn: &mut PgConnection,
     user_id: i64,
     email: &str,
 ) -> Result<(), ApiError> {
-    let local = email.split('@').next().unwrap_or_default().to_lowercase();
-    let base: String = local
+    let local = email.split('@').next().unwrap_or_default();
+    create(conn, user_id, email, local).await.map(drop)
+}
+
+/// Creates Workspace `name` with User `user_id` as its Owner. Its slug comes from
+/// `slug_from`, lowercased, numbered if taken: `ada`, `ada-2`, …
+async fn create(
+    conn: &mut PgConnection,
+    user_id: i64,
+    name: &str,
+    slug_from: &str,
+) -> Result<Workspace, ApiError> {
+    let base: String = slug_from
+        .to_lowercase()
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|w| !w.is_empty())
         .collect::<Vec<_>>()
@@ -130,7 +224,7 @@ pub(crate) async fn create_personal(
         Some(cut) => cut.trim_end_matches('-').to_owned(),
         None => base,
     };
-    // ponytail: one query per taken slug; random suffixes if same-named Users pile up.
+    // ponytail: one query per taken slug; random suffixes if same-named Workspaces pile up.
     let mut n = 1;
     loop {
         let slug = match n {
@@ -142,7 +236,7 @@ pub(crate) async fn create_personal(
             "INSERT INTO workspaces (name, slug) VALUES ($1, $2) \
              ON CONFLICT (slug) DO NOTHING RETURNING id",
         )
-        .bind(email)
+        .bind(name)
         .bind(&slug)
         .fetch_optional(&mut *conn)
         .await?;
@@ -154,7 +248,8 @@ pub(crate) async fn create_personal(
             .bind(id)
             .execute(&mut *conn)
             .await?;
-            return Ok(());
+            let name = name.to_owned();
+            return Ok(Workspace { slug, name });
         }
     }
 }

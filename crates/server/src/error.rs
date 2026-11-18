@@ -51,6 +51,12 @@ pub enum ApiError {
     CodeReserved(String),
     #[error("code already taken")]
     CodeTaken,
+    #[error("no such User")]
+    UserNotFound,
+    #[error("already a member of this Workspace")]
+    AlreadyMember,
+    #[error("a Workspace needs an Owner: make someone else Owner first")]
+    LastOwner,
     #[error("could not generate a free code, try again")]
     CodesExhausted,
     /// Details are logged, never sent.
@@ -77,6 +83,9 @@ impl ApiError {
             Self::InvalidCode => ErrorKind::InvalidCode,
             Self::CodeReserved(_) => ErrorKind::CodeReserved,
             Self::CodeTaken => ErrorKind::CodeTaken,
+            Self::UserNotFound => ErrorKind::UserNotFound,
+            Self::AlreadyMember => ErrorKind::AlreadyMember,
+            Self::LastOwner => ErrorKind::LastOwner,
             Self::CodesExhausted | Self::Internal => ErrorKind::Internal,
         }
     }
@@ -87,7 +96,7 @@ impl ApiError {
                 StatusCode::UNAUTHORIZED
             }
             Self::Forbidden | Self::OriginMismatch | Self::WrongPassword => StatusCode::FORBIDDEN,
-            Self::NotFound | Self::LinkNotFound => StatusCode::NOT_FOUND,
+            Self::NotFound | Self::LinkNotFound | Self::UserNotFound => StatusCode::NOT_FOUND,
             Self::LinkExpired => StatusCode::GONE,
             Self::BadRequest(_)
             | Self::InvalidTarget(_)
@@ -95,7 +104,9 @@ impl ApiError {
             | Self::CodeReserved(_)
             | Self::InvalidEmail
             | Self::PasswordTooShort => StatusCode::BAD_REQUEST,
-            Self::CodeTaken | Self::EmailTaken => StatusCode::CONFLICT,
+            Self::CodeTaken | Self::EmailTaken | Self::AlreadyMember | Self::LastOwner => {
+                StatusCode::CONFLICT
+            }
             Self::CodesExhausted | Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

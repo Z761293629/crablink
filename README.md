@@ -125,7 +125,16 @@ Link 属于 Workspace，都在 Default Domain 上；Code 在其 Domain 内唯一
 | `POST` / `DELETE` | `/api/session` | 用 `{ email, password }` 登录（设置 session cookie）/ 退出 |
 | `GET` | `/api/me` | session：`{ "user": … }`；API Key：`{ "workspace": … }` |
 | `POST` | `/api/me/password` | 修改密码 |
-| `GET` | `/api/workspaces` | 当前 User 所在的 Workspace |
+| `GET` | `/api/workspaces` | 当前 User 所在的 Workspace 及其角色：`[{ slug, name, role }]`，`role` 为 `owner` / `member` |
+| `POST` | `/api/workspaces` | 新建 Workspace：`{ name }`，slug 由名字生成，创建者成为 Owner |
+| `PATCH` | `/api/workspaces/{ws}` | Owner 改名：`{ name }`，slug 不变 |
+| `DELETE` | `/api/workspaces/{ws}` | Owner 删除 Workspace：其 Link 变为已删除（Code 仍被占用，Short URL 410），API Key 随之失效（401） |
+| `GET` | `/api/workspaces/{ws}/members` | Owner 列出成员：`[{ email, role }]` |
+| `POST` | `/api/workspaces/{ws}/members` | Owner 按 email 把已有 User 加为 Member：`{ email }`；无此 User 404（`user_not_found`），已在其中 409（`already_member`） |
+| `PATCH` | `/api/workspaces/{ws}/members/{email}` | Owner 升降角色：`{ role }` |
+| `DELETE` | `/api/workspaces/{ws}/members/{email}` | Owner 移除成员；Member 只能移除自己（退出） |
+
+Member 只能管理 Link；成员、API Key 和 Workspace 设置只归 Owner，Member 或 API Key 去做得到 403（`forbidden`）。最后一个 Owner 不能退出、被移除或降级，得到 409（`last_owner`）。
 
 程序用 `Authorization: Bearer <API Key>`；API Key 属于 Workspace，创建它的人离开后照样可用。带 session cookie 的写请求必须带与 Host 一致的 `Origin`。未知或已吊销的 Bearer 值（包括 0.2 的 token）得到 401，提示用 API Key 重新登录。
 

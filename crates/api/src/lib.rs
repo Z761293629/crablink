@@ -89,6 +89,59 @@ pub struct Workspace {
     pub name: String,
 }
 
+/// A User's role in a Workspace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    /// Manages the Workspace's members, API Keys and settings, as well as its Links.
+    Owner,
+    /// Manages the Workspace's Links only.
+    Member,
+}
+
+/// A Workspace the signed-in User belongs to, as listed by `GET /api/workspaces`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Membership {
+    #[serde(flatten)]
+    pub workspace: Workspace,
+    pub role: Role,
+}
+
+/// Body of `POST /api/workspaces`: its creator becomes its Owner, and its slug
+/// comes from the name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateWorkspace {
+    /// 1-100 characters.
+    pub name: String,
+}
+
+/// Body of `PATCH /api/workspaces/{slug}`: renames it; the slug stays.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateWorkspace {
+    /// 1-100 characters.
+    pub name: String,
+}
+
+/// A member of a Workspace, as listed by `GET /api/workspaces/{slug}/members`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Member {
+    /// Addresses the member in `/api/workspaces/{slug}/members/{email}`.
+    pub email: String,
+    pub role: Role,
+}
+
+/// Body of `POST /api/workspaces/{slug}/members`: adds an existing User as a Member.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddMember {
+    pub email: String,
+}
+
+/// Body of `PATCH /api/workspaces/{slug}/members/{email}`: promotes or demotes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateMember {
+    pub role: Role,
+}
+
 /// Response of `GET /api/me`: who the credential acts as.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -180,6 +233,13 @@ pub enum ErrorKind {
     CodeReserved,
     /// The Code is taken on its Domain, possibly by a Deleted Link.
     CodeTaken,
+    /// No User has this email; on a member route, none in this Workspace.
+    UserNotFound,
+    /// Adding a User who is already in the Workspace.
+    AlreadyMember,
+    /// Removing or demoting the Workspace's last Owner, themself included: it would
+    /// leave no one to manage it.
+    LastOwner,
     /// The server failed; details are in its log, never in `error`. Includes running out
     /// of free Generated Codes, where retrying may help.
     Internal,
