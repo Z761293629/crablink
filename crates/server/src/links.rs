@@ -112,7 +112,7 @@ pub(crate) async fn create_link(
     Path(slug): Path<String>,
     req: Result<Json<crablink_api::CreateLink>, JsonRejection>,
 ) -> Result<(StatusCode, Json<crablink_api::Link>), ApiError> {
-    let (workspace_id, _) = caller.workspace(&s, &slug).await?;
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Json(req) = req?;
     validate_target(&req.target, &s.base_url)?;
     if let Some(code) = &req.code {
@@ -156,7 +156,7 @@ pub(crate) async fn get_link(
     caller: Caller,
     Path((slug, code)): Path<(String, String)>,
 ) -> Result<Json<crablink_api::Link>, ApiError> {
-    let (workspace_id, _) = caller.workspace(&s, &slug).await?;
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     fetch_link(&s, workspace_id, &code).await.map(Json)
 }
 
@@ -189,7 +189,7 @@ pub(crate) async fn link_qr(
     Path((slug, code)): Path<(String, String)>,
     query: Result<Query<crablink_api::QrQuery>, QueryRejection>,
 ) -> Result<Response, ApiError> {
-    let (workspace_id, _) = caller.workspace(&s, &slug).await?;
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
     let link = fetch_link(&s, workspace_id, &code).await?;
     // Its Short URL no longer redirects, so a QR code of it would only mislead.
@@ -223,7 +223,7 @@ pub(crate) async fn update_link(
     Path((slug, code)): Path<(String, String)>,
     req: Result<Json<crablink_api::UpdateLink>, JsonRejection>,
 ) -> Result<Json<crablink_api::Link>, ApiError> {
-    let (workspace_id, _) = caller.workspace(&s, &slug).await?;
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Json(req) = req?;
     if let Some(target) = &req.target {
         validate_target(target, &s.base_url)?;
@@ -268,7 +268,7 @@ pub(crate) async fn list_links(
     Path(slug): Path<String>,
     query: Result<Query<crablink_api::ListLinks>, QueryRejection>,
 ) -> Result<Json<crablink_api::LinkPage>, ApiError> {
-    let (workspace_id, _) = caller.workspace(&s, &slug).await?;
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
     let limit = q.limit.unwrap_or(DEFAULT_PAGE);
     if !(1..=MAX_PAGE).contains(&limit) {
@@ -319,7 +319,7 @@ pub(crate) async fn delete_link(
     caller: Caller,
     Path((slug, code)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
-    let (workspace_id, _) = caller.workspace(&s, &slug).await?;
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let done = sqlx::query(
         "UPDATE links SET deleted_at = $1 \
          WHERE workspace_id = $2 AND domain_id = $3 AND code = $4 AND deleted_at IS NULL",

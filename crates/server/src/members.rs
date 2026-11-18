@@ -9,7 +9,7 @@ use crablink_api::{AddMember, Member, Role, UpdateMember};
 
 use crate::AppState;
 use crate::error::ApiError;
-use crate::workspaces::{Caller, role};
+use crate::workspaces::{Access, Caller, role};
 
 /// `GET /api/workspaces/{slug}/members`: by email.
 pub(crate) async fn list_members(
@@ -17,7 +17,7 @@ pub(crate) async fn list_members(
     caller: Caller,
     Path(slug): Path<String>,
 ) -> Result<Json<Vec<Member>>, ApiError> {
-    let (workspace_id, _) = caller.owner_of(&s, &slug).await?;
+    let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let rows: Vec<(String, String)> = sqlx::query_as(
         "SELECT u.email, m.role FROM memberships m JOIN users u ON u.id = m.user_id \
          WHERE m.workspace_id = $1 ORDER BY lower(u.email)",
@@ -43,7 +43,7 @@ pub(crate) async fn add_member(
     Path(slug): Path<String>,
     body: Result<Json<AddMember>, JsonRejection>,
 ) -> Result<(StatusCode, Json<Member>), ApiError> {
-    let (workspace_id, _) = caller.owner_of(&s, &slug).await?;
+    let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let Json(req) = body?;
     let (user_id, email): (i64, String) =
         sqlx::query_as("SELECT id, email FROM users WHERE lower(email) = lower($1)")
@@ -74,7 +74,7 @@ pub(crate) async fn update_member(
     Path((slug, email)): Path<(String, String)>,
     body: Result<Json<UpdateMember>, JsonRejection>,
 ) -> Result<Json<Member>, ApiError> {
-    let (workspace_id, _) = caller.owner_of(&s, &slug).await?;
+    let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let Json(UpdateMember { role }) = body?;
     let email = change(&s, workspace_id, &email, Some(role)).await?;
     Ok(Json(Member { email, role }))
@@ -87,7 +87,10 @@ pub(crate) async fn remove_member(
     caller: Caller,
     Path((slug, email)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
-    let (workspace_id, owner) = caller.workspace(&s, &slug).await?;
+    let Access {
+        workspace_id,
+        owner,
+    } = caller.workspace(&s, &slug).await?;
     // A Member gets 403 for anyone else before any lookup, so they can't probe who
     // is a member.
     let email = match (owner, &caller) {

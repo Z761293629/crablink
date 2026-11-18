@@ -76,6 +76,14 @@ pub(crate) async fn create_invite(
     Ok((StatusCode::CREATED, Json(NewInvite { url, expires_at })))
 }
 
+#[derive(sqlx::FromRow)]
+struct InviteRow {
+    email: String,
+    workspace_id: Option<i64>,
+    used: bool,
+    expired: bool,
+}
+
 /// `POST /api/invites/accept`: creates the invited User with the chosen password,
 /// adds them to the invite's Workspace as a Member, and signs them in. Needs this
 /// host's `Origin`, like signing in.
@@ -88,15 +96,20 @@ pub(crate) async fn accept_invite(
     let mut tx = s.pool.begin().await?;
     let now = (s.clock)();
     // FOR UPDATE: a second acceptance of the same invite waits, then sees it used.
-    let invite: Option<(String, Option<i64>, bool, bool)> = sqlx::query_as(
-        "SELECT email, workspace_id, used_at IS NOT NULL, expires_at <= $2 FROM invites \
-         WHERE token_hash = $1 FOR UPDATE",
+    let invite: Option<InviteRow> = sqlx::query_as(
+        "SELECT email, workspace_id, used_at IS NOT NULL AS used, expires_at <= $2 AS expired \
+         FROM invites WHERE token_hash = $1 FOR UPDATE",
     )
     .bind(users::token_hash(&req.token))
     .bind(now)
     .fetch_optional(&mut *tx)
     .await?;
-    let (email, workspace_id, used, expired) = invite.ok_or(ApiError::InviteNotFound)?;
+    let InviteRow {
+        email,
+        workspace_id,
+        used,
+        expired,
+    } = invite.ok_or(ApiError::InviteNotFound)?;
     if used {
         return Err(ApiError::InviteUsed);
     }

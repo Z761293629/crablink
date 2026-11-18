@@ -60,7 +60,7 @@ pub(crate) async fn create_api_key(
     Path(slug): Path<String>,
     body: Result<Json<CreateApiKey>, JsonRejection>,
 ) -> Result<(StatusCode, Json<NewApiKey>), ApiError> {
-    let (workspace_id, user_id) = caller.owner_of(&s, &slug).await?;
+    let owner = caller.owner_of(&s, &slug).await?;
     let Json(req) = body?;
     let name = req.name.trim();
     if name.is_empty() || name.chars().count() > MAX_NAME_LEN {
@@ -74,11 +74,11 @@ pub(crate) async fn create_api_key(
          VALUES ($1, $2, $3, $4, $5, $6) \
          RETURNING id, name, prefix, created_at, last_used_at",
     )
-    .bind(workspace_id)
+    .bind(owner.workspace_id)
     .bind(name)
     .bind(&secret[..VISIBLE])
     .bind(token_hash(&secret))
-    .bind(user_id)
+    .bind(owner.user_id)
     .bind((s.clock)())
     .fetch_one(&s.pool)
     .await?;
@@ -92,7 +92,7 @@ pub(crate) async fn list_api_keys(
     caller: Caller,
     Path(slug): Path<String>,
 ) -> Result<Json<Vec<ApiKey>>, ApiError> {
-    let (workspace_id, _) = caller.owner_of(&s, &slug).await?;
+    let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let rows: Vec<KeyRow> = sqlx::query_as(
         "SELECT id, name, prefix, created_at, last_used_at FROM api_keys \
          WHERE workspace_id = $1 AND revoked_at IS NULL ORDER BY id",
@@ -110,7 +110,7 @@ pub(crate) async fn revoke_api_key(
     caller: Caller,
     Path((slug, id)): Path<(String, i64)>,
 ) -> Result<StatusCode, ApiError> {
-    let (workspace_id, _) = caller.owner_of(&s, &slug).await?;
+    let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let done = sqlx::query(
         "UPDATE api_keys SET revoked_at = $3 \
          WHERE id = $1 AND workspace_id = $2 AND revoked_at IS NULL",

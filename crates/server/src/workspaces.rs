@@ -42,28 +42,38 @@ impl FromRequestParts<AppState> for Caller {
     }
 }
 
+/// A Workspace a `Caller` may act on.
+#[derive(sqlx::FromRow)]
+pub(crate) struct Access {
+    pub(crate) workspace_id: i64,
+    /// Whether the caller is the session of one of its Owners.
+    pub(crate) owner: bool,
+}
+
+/// A Workspace acted on by the session of one of its Owners.
+pub(crate) struct OwnerAccess {
+    pub(crate) workspace_id: i64,
+    pub(crate) user_id: i64,
+}
+
 impl Caller {
-    /// The id of Workspace `slug`, if this is a member's session or one of its API
-    /// Keys; with the session, whether the User is its Owner. Any other Workspace,
-    /// existing or not, is 403.
-    pub(crate) async fn workspace(
-        &self,
-        s: &AppState,
-        slug: &str,
-    ) -> Result<(i64, bool), ApiError> {
+    /// Workspace `slug`, if this is a member's session or one of its API Keys. Any
+    /// other Workspace, existing or not, is 403.
+    pub(crate) async fn workspace(&self, s: &AppState, slug: &str) -> Result<Access, ApiError> {
         let query = match self {
             Caller::User(session) => sqlx::query_as(
-                "SELECT w.id, m.role = 'owner' FROM workspaces w \
+                "SELECT w.id AS workspace_id, m.role = 'owner' AS owner FROM workspaces w \
                  JOIN memberships m ON m.workspace_id = w.id \
                  WHERE w.slug = $1 AND m.user_id = $2",
             )
             .bind(slug)
             .bind(session.user_id),
-            Caller::ApiKey { workspace_id } => {
-                sqlx::query_as("SELECT id, FALSE FROM workspaces WHERE slug = $1 AND id = $2")
-                    .bind(slug)
-                    .bind(workspace_id)
-            }
+            Caller::ApiKey { workspace_id } => sqlx::query_as(
+                "SELECT id AS workspace_id, FALSE AS owner FROM workspaces \
+                     WHERE slug = $1 AND id = $2",
+            )
+            .bind(slug)
+            .bind(workspace_id),
         };
         query
             .fetch_optional(&s.pool)
@@ -71,11 +81,20 @@ impl Caller {
             .ok_or(ApiError::Forbidden)
     }
 
-    /// `(workspace id, User id)` if this is the session of an Owner of Workspace
-    /// `slug`; 403 otherwise, API Keys included.
-    pub(crate) async fn owner_of(&self, s: &AppState, slug: &str) -> Result<(i64, i64), ApiError> {
+    /// Workspace `slug`, if this is the session of one of its Owners; 403 otherwise,
+    /// API Keys included.
+    pub(crate) async fn owner_of(&self, s: &AppState, slug: &str) -> Result<OwnerAccess, ApiError> {
         match (self, self.workspace(s, slug).await?) {
-            (Caller::User(session), (id, true)) => Ok((id, session.user_id)),
+            (
+                Caller::User(session),
+                Access {
+                    workspace_id,
+                    owner: true,
+                },
+            ) => Ok(OwnerAccess {
+                workspace_id,
+                user_id: session.user_id,
+            }),
             _ => Err(ApiError::Forbidden),
         }
     }
@@ -153,7 +172,7 @@ pub(crate) async fn rename_workspace(
     Path(slug): Path<String>,
     body: Result<Json<UpdateWorkspace>, JsonRejection>,
 ) -> Result<Json<Workspace>, ApiError> {
-    let (workspace_id, _) = caller.owner_of(&s, &slug).await?;
+    let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let Json(req) = body?;
     let name = valid_name(&req.name)?.to_owned();
     sqlx::query("UPDATE workspaces SET name = $2 WHERE id = $1")
@@ -171,7 +190,7 @@ pub(crate) async fn delete_workspace(
     caller: Caller,
     Path(slug): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let (workspace_id, _) = caller.owner_of(&s, &slug).await?;
+    let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let mut tx = s.pool.begin().await?;
     sqlx::query("UPDATE links SET deleted_at = $2 WHERE workspace_id = $1 AND deleted_at IS NULL")
         .bind(workspace_id)

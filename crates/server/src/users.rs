@@ -177,6 +177,14 @@ fn session_cookie(token: &str, max_age: i64) -> String {
     format!("{COOKIE}={token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age={max_age}")
 }
 
+#[derive(sqlx::FromRow)]
+struct SignInRow {
+    id: i64,
+    email: String,
+    instance_admin: bool,
+    password_hash: String,
+}
+
 /// `POST /api/session`: signs in, setting the session cookie; returns the User.
 /// The first sign-in also creates the User's personal Workspace. Needs this host's
 /// `Origin`, so another site can't sign a browser in as someone else.
@@ -186,25 +194,23 @@ pub(crate) async fn sign_in(
     body: Result<Json<SignIn>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let Json(req) = body?;
-    let row: Option<(i64, String, bool, String)> = sqlx::query_as(
+    let row: Option<SignInRow> = sqlx::query_as(
         "SELECT id, email, instance_admin, password_hash FROM users \
          WHERE lower(email) = lower($1) AND NOT disabled",
     )
     .bind(req.email.trim())
     .fetch_optional(&s.pool)
     .await?;
-    let hash = row.as_ref().map(|r| r.3.clone());
-    let (Some((id, email, instance_admin, _)), true) =
-        (row, verify_password(req.password, hash).await?)
-    else {
+    let hash = row.as_ref().map(|r| r.password_hash.clone());
+    let (Some(row), true) = (row, verify_password(req.password, hash).await?) else {
         return Err(ApiError::InvalidCredentials);
     };
     let mut tx = s.pool.begin().await?;
     let user = User {
-        email,
-        instance_admin,
+        email: row.email,
+        instance_admin: row.instance_admin,
     };
-    let res = start_session(&s, &mut tx, id, user).await?;
+    let res = start_session(&s, &mut tx, row.id, user).await?;
     tx.commit().await?;
     Ok(res)
 }
