@@ -80,6 +80,8 @@ pub enum ErrorKind {
     LinkExpired,
     /// Malformed body or query.
     BadRequest,
+    /// A Target that isn't an absolute `http(s)` URL of at most 2048 characters, or
+    /// that points at the service's own host; `error` says which.
     InvalidTarget,
     /// A Custom Code that isn't `[A-Za-z0-9_-]{3,64}`.
     InvalidCode,
@@ -87,6 +89,8 @@ pub enum ErrorKind {
     CodeReserved,
     /// The Code is taken on its Domain, possibly by a Deleted Link.
     CodeTaken,
+    /// The server failed; details are in its log, never in `error`. Includes running out
+    /// of free Generated Codes, where retrying may help.
     Internal,
     /// A kind this build doesn't know, sent by a newer server, or none at all, from a
     /// 0.2 server. Never sent.
