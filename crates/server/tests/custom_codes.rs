@@ -53,7 +53,7 @@ async fn malformed_custom_codes_are_rejected() {
 #[tokio::test]
 async fn reserved_words_are_rejected_in_any_casing() {
     let app = app().await;
-    for code in ["api", "API", "Admin", "HEALTH", "health"] {
+    for code in ["api", "API", "Admin", "HEALTH", "health", "app", "App"] {
         let res = app
             .api(
                 "POST",

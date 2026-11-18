@@ -88,7 +88,7 @@ fn validate_target(target: &str, base_url: &str) -> Result<(), ApiError> {
 }
 
 /// Custom Codes that would shadow the service's own routes (compared case-insensitively).
-const RESERVED_CODES: &[&str] = &["api", "admin", "health"];
+const RESERVED_CODES: &[&str] = &["api", "admin", "app", "health"];
 
 /// A Custom Code matches `[A-Za-z0-9_-]{3,64}` and is not reserved.
 fn validate_custom_code(code: &str) -> Result<(), ApiError> {
