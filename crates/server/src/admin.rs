@@ -72,7 +72,7 @@ pub(crate) async fn create_invite(
     .execute(&s.pool)
     .await?;
     // The token rides in the fragment, which browsers never send to a server.
-    let url = format!("{}/app/invite#{token}", s.base_url);
+    let url = format!("{}://{}/app/invite#{token}", s.scheme, s.default_domain);
     Ok((StatusCode::CREATED, Json(NewInvite { url, expires_at })))
 }
 

@@ -60,9 +60,9 @@ macro_rules! link_columns {
     };
 }
 
-/// A Target must be an absolute `http(s)` URL not on our own host (that would
-/// loop). It is never fetched. Shared by create and update.
-fn validate_target(target: &str, base_url: &str) -> Result<(), ApiError> {
+/// A Target must be an absolute `http(s)` URL not on `default_host`, the Default
+/// Domain's host (that would loop). It is never fetched. Shared by create and update.
+fn validate_target(target: &str, default_host: &str) -> Result<(), ApiError> {
     let bad = |msg| Err(ApiError::InvalidTarget(msg));
     if target.chars().count() > MAX_TARGET_LEN {
         return bad("target must be at most 2048 characters");
@@ -77,10 +77,9 @@ fn validate_target(target: &str, base_url: &str) -> Result<(), ApiError> {
     if !matches!(url.scheme(), "http" | "https") {
         return bad("target must be an absolute http(s) URL");
     }
-    let base_host = url::Url::parse(base_url).ok();
-    let base_host = base_host.as_ref().and_then(|u| u.host_str());
-    if let (Some(host), Some(base)) = (url.host_str(), base_host)
-        && host.eq_ignore_ascii_case(base)
+    if url
+        .host_str()
+        .is_some_and(|host| host.eq_ignore_ascii_case(default_host))
     {
         return bad("target must not point at this service's own host");
     }
@@ -114,7 +113,7 @@ pub(crate) async fn create_link(
 ) -> Result<(StatusCode, Json<crablink_api::Link>), ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Json(req) = req?;
-    validate_target(&req.target, &s.base_url)?;
+    validate_target(&req.target, &s.default_host)?;
     if let Some(code) = &req.code {
         validate_custom_code(code)?;
     }
@@ -226,7 +225,7 @@ pub(crate) async fn update_link(
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Json(req) = req?;
     if let Some(target) = &req.target {
-        validate_target(target, &s.base_url)?;
+        validate_target(target, &s.default_host)?;
     }
     sqlx::query_as::<_, LinkRow>(concat!(
         "UPDATE links l SET target = COALESCE($1, l.target), \

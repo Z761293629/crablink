@@ -45,15 +45,18 @@ struct AppState {
     pool: PgPool,
     codes: CodeGenerator,
     clock: Clock,
-    base_url: Arc<str>,
-    /// The scheme of Short URLs: `base_url`'s.
+    /// The scheme of Short URLs: `CRABLINK_BASE_URL`'s.
     scheme: Arc<str>,
+    /// The Default Domain: its host, and port if any.
+    default_domain: Arc<str>,
+    /// The Default Domain's host alone: a Target there would loop.
+    default_host: Arc<str>,
     /// The Default Domain's id: every Link lives on it for now.
     domain_id: i64,
 }
 
 /// Builds the full HTTP app, first creating the Default Domain from `base_url`
-/// (its host, and port if any) if missing.
+/// (`CRABLINK_BASE_URL`: its host, and port if any) if missing.
 pub async fn app(
     pool: PgPool,
     codes: CodeGenerator,
@@ -61,19 +64,22 @@ pub async fn app(
     base_url: &str,
 ) -> Result<Router, Box<dyn std::error::Error + Send + Sync>> {
     let url = url::Url::parse(base_url)?;
-    let host = match (url.host_str(), url.port()) {
-        (Some(host), Some(port)) => format!("{host}:{port}"),
-        (Some(host), None) => host.to_owned(),
-        (None, _) => return Err(format!("{base_url} has no host").into()),
+    let Some(default_host) = url.host_str() else {
+        return Err(format!("{base_url} has no host").into());
     };
-    let domain_id = db::default_domain(&pool, &host).await?;
+    let default_domain = match url.port() {
+        Some(port) => format!("{default_host}:{port}"),
+        None => default_host.to_owned(),
+    };
+    let domain_id = db::default_domain(&pool, &default_domain).await?;
     std::sync::LazyLock::force(&users::DUMMY);
     let state = AppState {
         pool,
         codes,
         clock,
-        base_url: base_url.trim_end_matches('/').into(),
         scheme: url.scheme().into(),
+        default_domain: default_domain.into(),
+        default_host: default_host.into(),
         domain_id,
     };
     let workspace = Router::new()
