@@ -139,8 +139,9 @@ pub(crate) async fn create_workspace(
     };
     let Json(req) = body?;
     let name = valid_name(&req.name)?;
-    let mut conn = s.pool.acquire().await?;
-    let workspace = create(&mut conn, session.user_id, name, name).await?;
+    let mut tx = s.pool.begin().await?;
+    let workspace = create(&mut tx, session.user_id, name, name).await?;
+    tx.commit().await?;
     let role = Role::Owner;
     Ok((StatusCode::CREATED, Json(Membership { workspace, role })))
 }
@@ -205,7 +206,8 @@ pub(crate) async fn create_personal(
     create(conn, user_id, email, local).await.map(drop)
 }
 
-/// Creates Workspace `name` with User `user_id` as its Owner. Its slug comes from
+/// Creates Workspace `name` with User `user_id` as its Owner, on `conn`: run it in a
+/// transaction, or a failure can leave a Workspace with no Owner. Its slug comes from
 /// `slug_from`, lowercased, numbered if taken: `ada`, `ada-2`, …
 async fn create(
     conn: &mut PgConnection,

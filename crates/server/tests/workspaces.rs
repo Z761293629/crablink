@@ -29,6 +29,40 @@ async fn a_user_creates_a_workspace_and_becomes_its_owner() {
 }
 
 #[tokio::test]
+async fn a_workspace_is_not_created_unless_its_owner_is_added_with_it() {
+    let app = app().await;
+    // Stands in for a request dropped between the two inserts.
+    sqlx::raw_sql(
+        "CREATE FUNCTION fail() RETURNS trigger AS $$ BEGIN RAISE 'no'; END $$ LANGUAGE plpgsql; \
+         CREATE TRIGGER fail BEFORE INSERT ON memberships FOR EACH ROW EXECUTE FUNCTION fail();",
+    )
+    .execute(&app.pool)
+    .await
+    .unwrap();
+    let body = Some(json!({ "name": "Ops" }));
+    let res = app
+        .as_user("POST", "/api/workspaces", body.clone(), &app.owner.cookie)
+        .await;
+    assert_eq!(
+        res.status,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "{}",
+        res.text
+    );
+    sqlx::raw_sql("DROP TRIGGER fail ON memberships")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+
+    let res = app
+        .as_user("POST", "/api/workspaces", body, &app.owner.cookie)
+        .await;
+
+    // Had the first attempt left an Owner-less Workspace, this slug would be `ops-2`.
+    assert_eq!(res.json()["slug"], "ops", "{}", res.text);
+}
+
+#[tokio::test]
 async fn an_owner_renames_a_workspace_and_its_slug_stays() {
     let app = app().await;
     let path = format!("/api/workspaces/{}", app.owner.slug);
