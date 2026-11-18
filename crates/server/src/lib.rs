@@ -5,10 +5,11 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::http::StatusCode;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
+mod admin;
 mod api_keys;
 mod db;
 mod error;
@@ -22,6 +23,7 @@ pub use error::ApiError;
 pub use links::random_code;
 pub use users::{create_user, set_user_disabled};
 
+use admin::{accept_invite, create_invite, list_users, reset_password, update_user};
 use api_keys::{create_api_key, list_api_keys, revoke_api_key};
 use links::{create_link, delete_link, get_link, link_qr, list_links, update_link};
 use redirect::redirect;
@@ -78,8 +80,15 @@ pub async fn app(
         .route("/links/{code}/qr", get(link_qr))
         .route("/api-keys", post(create_api_key).get(list_api_keys))
         .route("/api-keys/{id}", delete(revoke_api_key));
+    let admin = Router::new()
+        .route("/invites", post(create_invite))
+        .route("/users", get(list_users))
+        .route("/users/{id}", patch(update_user))
+        .route("/users/{id}/password", post(reset_password));
     let api = Router::new()
         .nest("/workspaces/{slug}", workspace)
+        .nest("/admin", admin)
+        .route("/invites/accept", post(accept_invite))
         .route("/workspaces", get(list_workspaces))
         .route("/session", post(sign_in).delete(sign_out))
         .route("/me", get(me))

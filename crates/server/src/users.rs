@@ -16,7 +16,7 @@ use axum::response::{IntoResponse, Response};
 use chrono::TimeDelta;
 use crablink_api::{ChangePassword, Me, SignIn, User, Workspace};
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use crate::AppState;
 use crate::error::ApiError;
@@ -34,6 +34,36 @@ pub async fn create_user(
     password: &str,
     instance_admin: bool,
 ) -> Result<(), ApiError> {
+    insert_user(&mut *pool.acquire().await?, email, password, instance_admin)
+        .await
+        .map(drop)
+}
+
+/// `create_user` on `conn`; returns the new User's id.
+pub(crate) async fn insert_user(
+    conn: &mut PgConnection,
+    email: &str,
+    password: &str,
+    instance_admin: bool,
+) -> Result<i64, ApiError> {
+    let email = valid_email(email)?;
+    let hash = hash_password(password).await?;
+    let res = sqlx::query_scalar(
+        "INSERT INTO users (email, password_hash, instance_admin) VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind(email)
+    .bind(hash)
+    .bind(instance_admin)
+    .fetch_one(conn)
+    .await;
+    match res {
+        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => Err(ApiError::EmailTaken),
+        res => res.map_err(Into::into),
+    }
+}
+
+/// `email` trimmed, if it looks like `name@host`.
+pub(crate) fn valid_email(email: &str) -> Result<&str, ApiError> {
     let email = email.trim();
     let valid = email
         .split_once('@')
@@ -41,36 +71,54 @@ pub async fn create_user(
     if !valid || email.len() > 254 || email.chars().any(char::is_whitespace) {
         return Err(ApiError::InvalidEmail);
     }
-    let hash = hash_password(password).await?;
-    let res =
-        sqlx::query("INSERT INTO users (email, password_hash, instance_admin) VALUES ($1, $2, $3)")
-            .bind(email)
-            .bind(hash)
-            .bind(instance_admin)
-            .execute(pool)
-            .await;
-    match res {
-        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => Err(ApiError::EmailTaken),
-        res => res.map(drop).map_err(Into::into),
-    }
+    Ok(email)
 }
 
-/// Disables or re-enables the User with `email` (ignoring case). A disabled User
-/// can't sign in, and their sessions stop working.
+/// Disables or re-enables the User with `email` (ignoring case), as `set_disabled`.
 pub async fn set_user_disabled(pool: &PgPool, email: &str, disabled: bool) -> Result<(), ApiError> {
-    let res = sqlx::query("UPDATE users SET disabled = $2 WHERE lower(email) = lower($1)")
+    let id = sqlx::query_scalar("SELECT id FROM users WHERE lower(email) = lower($1)")
         .bind(email.trim())
+        .fetch_optional(pool)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let mut tx = pool.begin().await?;
+    set_disabled(&mut tx, id, disabled).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Disables or re-enables User `id`. A disabled User can't sign in, and their
+/// sessions end, so re-enabling them doesn't bring those back.
+pub(crate) async fn set_disabled(
+    conn: &mut PgConnection,
+    id: i64,
+    disabled: bool,
+) -> Result<(), ApiError> {
+    let res = sqlx::query("UPDATE users SET disabled = $2 WHERE id = $1")
+        .bind(id)
         .bind(disabled)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
-    match res.rows_affected() {
-        0 => Err(ApiError::NotFound),
-        _ => Ok(()),
+    if res.rows_affected() == 0 {
+        return Err(ApiError::NotFound);
     }
+    if disabled {
+        end_sessions(conn, id).await?;
+    }
+    Ok(())
+}
+
+/// Ends every session of User `id`.
+pub(crate) async fn end_sessions(conn: &mut PgConnection, id: i64) -> Result<(), ApiError> {
+    sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+        .bind(id)
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 /// argon2id with a random salt, off the async threads: it is slow on purpose.
-async fn hash_password(password: &str) -> Result<String, ApiError> {
+pub(crate) async fn hash_password(password: &str) -> Result<String, ApiError> {
     if password.chars().count() < MIN_PASSWORD_LEN {
         return Err(ApiError::PasswordTooShort);
     }
@@ -149,29 +197,41 @@ pub(crate) async fn sign_in(
     else {
         return Err(ApiError::InvalidCredentials);
     };
-
-    let token = random_token();
     let mut tx = s.pool.begin().await?;
+    let user = User {
+        email,
+        instance_admin,
+    };
+    let res = start_session(&s, &mut tx, id, user).await?;
+    tx.commit().await?;
+    Ok(res)
+}
+
+/// Signs in User `id` on `conn`: creates their personal Workspace the first time,
+/// and a session. The response sets its cookie and returns `user`, once `conn`'s
+/// transaction commits.
+pub(crate) async fn start_session(
+    s: &AppState,
+    conn: &mut PgConnection,
+    id: i64,
+    user: User,
+) -> Result<Response, ApiError> {
     let first = sqlx::query("UPDATE users SET signed_in = TRUE WHERE id = $1 AND NOT signed_in")
         .bind(id)
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
     if first.rows_affected() == 1 {
-        workspaces::create_personal(&mut tx, id, &email).await?;
+        workspaces::create_personal(conn, id, &user.email).await?;
     }
+    let token = random_token();
     // ponytail: expired sessions are never swept; add a cleanup if the table grows.
     sqlx::query("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)")
         .bind(token_hash(&token))
         .bind(id)
         .bind((s.clock)() + SESSION_TTL)
-        .execute(&mut *tx)
+        .execute(conn)
         .await?;
-    tx.commit().await?;
     let cookie = session_cookie(&token, SESSION_TTL.num_seconds());
-    let user = User {
-        email,
-        instance_admin,
-    };
     Ok(([(header::SET_COOKIE, cookie)], Json(user)).into_response())
 }
 
@@ -240,7 +300,7 @@ pub(crate) async fn change_password(
 pub(crate) struct Session {
     pub(crate) user_id: i64,
     token_hash: Vec<u8>,
-    user: User,
+    pub(crate) user: User,
 }
 
 impl FromRequestParts<AppState> for Session {

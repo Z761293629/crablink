@@ -127,6 +127,61 @@ pub struct NewApiKey {
     pub secret: String,
 }
 
+/// Body of `POST /api/admin/invites`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateInvite {
+    /// The new User's email; no User may have it yet.
+    pub email: String,
+    /// The slug of a Workspace the new User joins as a Member.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+}
+
+/// Response of `POST /api/admin/invites`: the only time the invite link is shown.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewInvite {
+    /// What the Instance Admin sends the new User; its fragment is the token.
+    pub url: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// Body of `POST /api/invites/accept`; the response is the new, signed-in `User`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcceptInvite {
+    /// The invite link's fragment.
+    pub token: String,
+    /// At least 8 characters.
+    pub password: String,
+}
+
+/// A User as an Instance Admin sees them, from `GET /api/admin/users`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManagedUser {
+    /// Addresses the User in `/api/admin/users/{id}`.
+    pub id: i64,
+    pub email: String,
+    pub instance_admin: bool,
+    /// A disabled User can't sign in and has no sessions.
+    pub disabled: bool,
+}
+
+/// Body of `PATCH /api/admin/users/{id}`. An absent field is left unchanged; an
+/// Instance Admin can't disable or demote themselves.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateUser {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_admin: Option<bool>,
+}
+
+/// Response of `POST /api/admin/users/{id}/password`: the only time the new
+/// password is shown.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewPassword {
+    pub password: String,
+}
+
 /// Body of every management API error response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorBody {
@@ -163,8 +218,14 @@ pub enum ErrorKind {
     PasswordTooShort,
     /// Another User already has this email, ignoring case.
     EmailTaken,
-    /// No such API route, or no such API Key.
+    /// No such API route, API Key or User, or no Workspace with the slug an invite names.
     NotFound,
+    /// No invite has this token.
+    InviteNotFound,
+    /// The invite's expiry has passed.
+    InviteExpired,
+    /// The invite has already been accepted.
+    InviteUsed,
     /// No live Link has this Code.
     LinkNotFound,
     /// The Link's Expiry has passed, and only a live Link will do (e.g. its QR code).

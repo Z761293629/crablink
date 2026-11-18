@@ -35,6 +35,12 @@ pub enum ApiError {
     EmailTaken,
     #[error("not found")]
     NotFound,
+    #[error("no such invite")]
+    InviteNotFound,
+    #[error("invite has expired")]
+    InviteExpired,
+    #[error("invite has already been used")]
+    InviteUsed,
     /// A Code with no live Link (missing or deleted).
     #[error("link not found")]
     LinkNotFound,
@@ -70,6 +76,9 @@ impl ApiError {
             Self::PasswordTooShort => ErrorKind::PasswordTooShort,
             Self::EmailTaken => ErrorKind::EmailTaken,
             Self::NotFound => ErrorKind::NotFound,
+            Self::InviteNotFound => ErrorKind::InviteNotFound,
+            Self::InviteExpired => ErrorKind::InviteExpired,
+            Self::InviteUsed => ErrorKind::InviteUsed,
             Self::LinkNotFound => ErrorKind::LinkNotFound,
             Self::LinkExpired => ErrorKind::LinkExpired,
             Self::BadRequest(_) => ErrorKind::BadRequest,
@@ -87,8 +96,8 @@ impl ApiError {
                 StatusCode::UNAUTHORIZED
             }
             Self::Forbidden | Self::OriginMismatch | Self::WrongPassword => StatusCode::FORBIDDEN,
-            Self::NotFound | Self::LinkNotFound => StatusCode::NOT_FOUND,
-            Self::LinkExpired => StatusCode::GONE,
+            Self::NotFound | Self::LinkNotFound | Self::InviteNotFound => StatusCode::NOT_FOUND,
+            Self::LinkExpired | Self::InviteExpired | Self::InviteUsed => StatusCode::GONE,
             Self::BadRequest(_)
             | Self::InvalidTarget(_)
             | Self::InvalidCode
