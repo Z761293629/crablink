@@ -4,7 +4,7 @@ use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use chrono::Utc;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 use crate::AppState;
 use crate::error::ApiError;
@@ -20,10 +20,10 @@ pub(crate) async fn redirect(State(s): State<AppState>, Path(code): Path<String>
 }
 
 /// Redirects to the Target of a live (not deleted, not expired) Link, counting the click.
-async fn follow(pool: &SqlitePool, code: &str) -> Result<Response, ApiError> {
+async fn follow(pool: &PgPool, code: &str) -> Result<Response, ApiError> {
     let target: Option<String> = sqlx::query_scalar(
         "UPDATE links SET click_count = click_count + 1 \
-         WHERE code = ? AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > ?) \
+         WHERE code = $1 AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > $2) \
          RETURNING target",
     )
     .bind(code)
@@ -37,7 +37,7 @@ async fn follow(pool: &SqlitePool, code: &str) -> Result<Response, ApiError> {
         ];
         return Ok((StatusCode::FOUND, headers).into_response());
     }
-    let exists = sqlx::query("SELECT 1 FROM links WHERE code = ?")
+    let exists = sqlx::query("SELECT 1 FROM links WHERE code = $1")
         .bind(code)
         .fetch_optional(pool)
         .await?

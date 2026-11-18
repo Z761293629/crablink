@@ -15,24 +15,13 @@ fn required(name: &str) -> String {
 async fn main() {
     let base_url = required("CRABLINK_BASE_URL");
     let token = required("CRABLINK_TOKEN");
-    let db_url =
-        std::env::var("CRABLINK_DATABASE_URL").unwrap_or_else(|_| "sqlite:crablink.db".into());
+    let db_url = required("CRABLINK_DATABASE_URL");
     let listen = std::env::var("CRABLINK_LISTEN").unwrap_or_else(|_| "0.0.0.0:8080".into());
 
     let pool = crablink_server::connect(&db_url).await.unwrap_or_else(|e| {
-        eprintln!("crablink-server: cannot open database {db_url}: {e}");
+        // Not the URL itself: it usually carries the database password.
+        eprintln!("crablink-server: cannot open the database: {e}");
         exit(1);
-    });
-    // ponytail: fixed 10 s; at the ~7k clicks/s a laptop sustains that caps the WAL near 300 MB.
-    let checkpoints = pool.clone();
-    let checkpointer = tokio::spawn(async move {
-        let mut every = tokio::time::interval(std::time::Duration::from_secs(10));
-        loop {
-            every.tick().await;
-            if let Err(e) = crablink_server::checkpoint(&checkpoints).await {
-                eprintln!("crablink-server: WAL checkpoint failed: {e}");
-            }
-        }
     });
     let app = crablink_server::app(
         pool.clone(),
@@ -54,9 +43,6 @@ async fn main() {
         eprintln!("crablink-server: server error: {e}");
         exit(1);
     }
-    // Stopped first, so a tick during `close` can't log a spurious "pool closed" failure.
-    checkpointer.abort();
-    // Closing the last connection checkpoints the WAL into the database.
     pool.close().await;
     eprintln!("crablink-server stopped");
 }

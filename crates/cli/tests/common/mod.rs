@@ -1,9 +1,12 @@
 //! Shared CLI test harness: starts a real `crablink-server` (built through
-//! `crablink_server::app` with a fresh in-memory database) on `127.0.0.1:0`,
+//! `crablink_server::app` with a fresh Postgres database) on `127.0.0.1:0`,
 //! served on a background runtime. The CLI itself stays synchronous.
 //!
 //! Use from a test file with `mod common;` then `use common::*;`.
 #![allow(dead_code)]
+
+#[path = "../../../server/tests/common/pg.rs"]
+mod pg;
 
 use std::sync::{Arc, mpsc};
 
@@ -30,7 +33,9 @@ pub fn server() -> TestServer {
         rt.block_on(async move {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let url = format!("http://{}", listener.local_addr().unwrap());
-            let pool = crablink_server::connect("sqlite::memory:").await.unwrap();
+            let pool = crablink_server::connect(&pg::database_url().await)
+                .await
+                .unwrap();
             let app =
                 crablink_server::app(pool, Arc::new(crablink_server::random_code), TOKEN, &url);
             tx.send(url).unwrap();

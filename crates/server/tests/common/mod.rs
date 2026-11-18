@@ -1,8 +1,10 @@
 //! Shared test harness: builds the real app through `crablink_server::app`
-//! with a fresh in-memory database, and sends requests in process.
+//! with a fresh Postgres database, and sends requests in process.
 //!
 //! Use from a test file with `mod common;` then `use common::*;`.
 #![allow(dead_code)]
+
+mod pg;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -25,7 +27,9 @@ pub async fn app() -> TestApp {
 
 /// App whose Code generator yields `codes` in order, then random Codes.
 pub async fn app_with_codes(codes: &[&str]) -> TestApp {
-    let pool = crablink_server::connect("sqlite::memory:").await.unwrap();
+    let pool = crablink_server::connect(&pg::database_url().await)
+        .await
+        .unwrap();
     let script = Mutex::new(codes.iter().map(|c| c.to_string()).collect::<VecDeque<_>>());
     let generator: crablink_server::CodeGenerator = Arc::new(move || {
         script

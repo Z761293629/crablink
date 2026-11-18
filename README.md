@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center">用 Rust 写的自托管短链服务：一个 server，一个 CLI，一个 SQLite 文件。</p>
+<p align="center">用 Rust 写的自托管短链服务：一个 server，一个 CLI，一个 Postgres。</p>
 
 ---
 
@@ -18,41 +18,39 @@
 - **随机 Code 或 Custom Code**：默认 7 位随机 base62，不可枚举；也可以自定义 `/rust-meetup`。
 - **可选 Expiry**：到期返回 410；把 Expiry 改回未来即可恢复。
 - **Click Count**：每个 Link 一个总点击数。
-- **零运维**：单个二进制 + 单个 SQLite 文件，备份就是复制文件（[ADR-0001](docs/adr/0001-sqlite-for-storage.md)）。
+- **自托管**：`docker compose up` 起 server + Postgres（[ADR-0007](docs/adr/0007-postgres-only.md)）。
 
 ## 快速开始
 
-### Server（Docker）
+### Server（Docker Compose）
+
+server 把数据存在 Postgres 里（[ADR-0007](docs/adr/0007-postgres-only.md)）。仓库根目录的 `compose.yaml` 同时起 server 和官方 `postgres:18` 镜像：
 
 ```bash
-docker run -d --name crablink --restart unless-stopped \
-  -p 8080:8080 -v crablink:/data \
-  -e CRABLINK_BASE_URL=https://crab.link \
-  -e CRABLINK_TOKEN=change-me \
-  ghcr.io/z761293629/crablink-server
+CRABLINK_TOKEN=change-me CRABLINK_BASE_URL=https://crab.link docker compose up -d
 curl http://localhost:8080/health   # → ok
 ```
 
-镜像公开发布在 `ghcr.io/z761293629/crablink-server`（`linux/amd64` 与 `linux/arm64`，Apple 芯片 Mac 原生运行），无需登录即可拉取。`latest` 跟随最新稳定版；生产环境建议钉住版本号，如 `ghcr.io/z761293629/crablink-server:0.1.0`，回滚只需换回旧版本号。也可以从源码构建：`docker build -t crablink-server .`。
+Postgres 只在 compose 网络内可达，数据在卷 `postgres` 里，删掉或重建容器数据都还在。
 
-镜像以非 root 用户运行 `crablink-server`，数据库在卷 `/data/crablink.db` 里，删掉或重建容器数据都还在。镜像自带 `HEALTHCHECK`（每 30 秒请求 `/health`），`docker ps` 能看到 `healthy`。缺少 `CRABLINK_BASE_URL` 或 `CRABLINK_TOKEN` 时容器会打印 `crablink-server: CRABLINK_TOKEN must be set and non-empty` 并以退出码 2 退出（`docker logs crablink` 查看）。
+镜像公开发布在 `ghcr.io/z761293629/crablink-server`（`linux/amd64` 与 `linux/arm64`，Apple 芯片 Mac 原生运行），无需登录即可拉取。`latest` 跟随最新稳定版；生产环境建议钉住版本号，如 `ghcr.io/z761293629/crablink-server:0.1.0`，回滚只需换回旧版本号。`compose.yaml` 默认从源码构建（`build: .`），想用发布的镜像就把它换成 `image:`。已有 Postgres 的话也可以只跑这个镜像，用 `CRABLINK_DATABASE_URL` 指过去。
+
+镜像以非 root 用户运行 `crablink-server`，自带 `HEALTHCHECK`（每 30 秒请求 `/health`），`docker ps` 能看到 `healthy`。缺少 `CRABLINK_BASE_URL`、`CRABLINK_TOKEN` 或 `CRABLINK_DATABASE_URL` 时会打印 `crablink-server: CRABLINK_TOKEN must be set and non-empty` 并以退出码 2 退出。
 
 | 环境变量 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
 | `CRABLINK_BASE_URL` | 是 | — | 对外域名，用于拼 Short URL |
 | `CRABLINK_TOKEN` | 是 | — | 管理 API 的 Bearer token |
-| `CRABLINK_DATABASE_URL` | 否 | 镜像内 `sqlite:///data/crablink.db`；直接运行二进制时为当前目录 `sqlite:crablink.db` | SQLite 路径，不存在会自动创建 |
-| `CRABLINK_LISTEN` | 否 | `0.0.0.0:8080` | 监听地址（改端口的话 `-p` 和健康检查端口要一起改） |
+| `CRABLINK_DATABASE_URL` | 是 | compose 里已设好 | Postgres URL，如 `postgres://user:pass@host:5432/crablink`；启动时自动建表 |
+| `CRABLINK_LISTEN` | 否 | `0.0.0.0:8080` | 监听地址（改端口的话 `ports` 和健康检查端口要一起改） |
 
-**备份**：数据库开启了 WAL，最近的写入可能还在 `crablink.db-wal` 里。先停容器，再把 `crablink.db*` 一起复制出来：
+**备份**：用 `pg_dump`，不用停服务：
 
 ```bash
-docker stop crablink
-docker run --rm -v crablink:/data -v "$PWD/backup":/backup alpine sh -c 'cp /data/crablink.db* /backup/'
-docker start crablink
+docker compose exec postgres pg_dump -U crablink crablink > crablink.sql
 ```
 
-恢复时停掉容器，把这些文件复制回卷里再启动。
+**从 0.2 / 0.3 升级**：SQLite 数据不会迁移过来，新实例从空的 Postgres 开始。
 
 ### CLI
 
@@ -118,7 +116,7 @@ crablink qr rust-meetup -o poster.png        # 存为文件，格式看扩展名
 **以后再说**（有真实需求再做）：
 
 - 多用户 / 公网开放注册
-- Postgres 与多实例部署
+- 多实例部署
 - 点击明细统计（时间、来源、地区）
 - Web 管理界面
 

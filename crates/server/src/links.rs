@@ -111,7 +111,7 @@ pub(crate) async fn create_link(
     // Insert and let the unique constraint reject a taken Code; never check first (ADR-0003).
     for _ in 0..MAX_CODE_ATTEMPTS {
         let inserted = sqlx::query_as::<_, LinkRow>(concat!(
-            "INSERT INTO links (code, target, created_at, updated_at, expires_at) VALUES (?, ?, ?, ?, ?) RETURNING ",
+            "INSERT INTO links (code, target, created_at, updated_at, expires_at) VALUES ($1, $2, $3, $4, $5) RETURNING ",
             link_columns!()
         ))
         .bind(req.code.clone().unwrap_or_else(|| (s.codes)()))
@@ -147,7 +147,7 @@ async fn fetch_link(s: &AppState, code: &str) -> Result<crablink_api::Link, ApiE
     sqlx::query_as::<_, LinkRow>(concat!(
         "SELECT ",
         link_columns!(),
-        " FROM links WHERE code = ? AND deleted_at IS NULL"
+        " FROM links WHERE code = $1 AND deleted_at IS NULL"
     ))
     .bind(code)
     .fetch_optional(&s.pool)
@@ -199,9 +199,9 @@ pub(crate) async fn update_link(
         validate_target(target, &s.base_url)?;
     }
     sqlx::query_as::<_, LinkRow>(concat!(
-        "UPDATE links SET target = COALESCE(?, target), \
-         expires_at = CASE WHEN ? THEN ? ELSE expires_at END, updated_at = ? \
-         WHERE code = ? AND deleted_at IS NULL RETURNING ",
+        "UPDATE links SET target = COALESCE($1, target), \
+         expires_at = CASE WHEN $2 THEN $3 ELSE expires_at END, updated_at = $4 \
+         WHERE code = $5 AND deleted_at IS NULL RETURNING ",
         link_columns!()
     ))
     .bind(&req.target)
@@ -248,10 +248,10 @@ pub(crate) async fn list_links(
     let mut rows = sqlx::query_as::<_, ListRow>(concat!(
         "SELECT id, ",
         link_columns!(),
-        " FROM links WHERE deleted_at IS NULL AND id < ? ORDER BY id DESC LIMIT ?"
+        " FROM links WHERE deleted_at IS NULL AND id < $1 ORDER BY id DESC LIMIT $2"
     ))
     .bind(before)
-    .bind(limit + 1)
+    .bind(i64::from(limit) + 1)
     .fetch_all(&s.pool)
     .await?;
     let next_cursor = if rows.len() > limit as usize {
@@ -275,11 +275,12 @@ pub(crate) async fn delete_link(
     State(s): State<AppState>,
     Path(code): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let done = sqlx::query("UPDATE links SET deleted_at = ? WHERE code = ? AND deleted_at IS NULL")
-        .bind(Utc::now())
-        .bind(&code)
-        .execute(&s.pool)
-        .await?;
+    let done =
+        sqlx::query("UPDATE links SET deleted_at = $1 WHERE code = $2 AND deleted_at IS NULL")
+            .bind(Utc::now())
+            .bind(&code)
+            .execute(&s.pool)
+            .await?;
     if done.rows_affected() == 0 {
         return Err(ApiError::LinkNotFound);
     }

@@ -9,7 +9,7 @@ use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use subtle::ConstantTimeEq;
 
 mod db;
@@ -17,7 +17,7 @@ mod error;
 mod links;
 mod redirect;
 
-pub use db::{checkpoint, connect};
+pub use db::connect;
 pub use links::random_code;
 
 use error::ApiError;
@@ -29,14 +29,14 @@ pub type CodeGenerator = Arc<dyn Fn() -> String + Send + Sync>;
 
 #[derive(Clone)]
 struct AppState {
-    pool: SqlitePool,
+    pool: PgPool,
     codes: CodeGenerator,
     token: Arc<str>,
     base_url: Arc<str>,
 }
 
 /// Builds the full HTTP app.
-pub fn app(pool: SqlitePool, codes: CodeGenerator, token: &str, base_url: &str) -> Router {
+pub fn app(pool: PgPool, codes: CodeGenerator, token: &str, base_url: &str) -> Router {
     let state = AppState {
         pool,
         codes,

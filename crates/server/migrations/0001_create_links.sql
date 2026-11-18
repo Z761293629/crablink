@@ -1,7 +1,5 @@
--- Timestamps are bound from Rust (chrono DateTime<Utc>), never defaulted in SQL,
--- so every stored value has the same text format and compares correctly.
 CREATE TABLE links (
-    id          INTEGER PRIMARY KEY, -- Postgres: BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     code        TEXT NOT NULL UNIQUE,
     target      TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL,
