@@ -87,7 +87,9 @@ impl TestApp {
 pub struct Res {
     pub status: StatusCode,
     pub headers: axum::http::HeaderMap,
+    /// The body as text; lossy, so a binary body (a PNG) doesn't panic.
     pub text: String,
+    pub bytes: Vec<u8>,
 }
 
 impl Res {
@@ -98,7 +100,8 @@ impl Res {
         Res {
             status,
             headers,
-            text: String::from_utf8(bytes.to_vec()).unwrap(),
+            text: String::from_utf8_lossy(&bytes).into_owned(),
+            bytes: bytes.to_vec(),
         }
     }
 

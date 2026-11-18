@@ -82,11 +82,16 @@ crablink get rust-meetup
 crablink edit rust-meetup --target https://rustconf.com/2027
 crablink edit rust-meetup --no-expires       # 或 --expires 30d / RFC 3339，二者互斥
 crablink rm rust-meetup
+crablink ls --json | jq -r '.[].short_url'   # create / ls / get / edit 加 --json 打印 API 原样的 JSON
+crablink qr rust-meetup                      # 在终端里显示 Short URL 的 QR 码，可直接扫
+crablink qr rust-meetup -o poster.png        # 存为文件，格式看扩展名：.png 或 .svg
 ```
+
+`--json` 输出与 HTTP API 的响应格式一致（`ls` 为跨所有分页的一个数组，新的在前），API 变它就跟着变；出错时仍只在 stderr 打印错误并以非零码退出，stdout 不输出 JSON。
 
 服务器地址和 token 按字段逐个取，优先级从高到低：`--server` / `--token` 参数 > 环境变量 `CRABLINK_URL` / `CRABLINK_TOKEN` > `~/.config/crablink/config.toml`。`login` 先用 token 请求一次服务器，通过后才写配置文件，权限为 `0600`（仅本人可读写）。非终端环境下 `login` 从 stdin 读 token：`echo "$TOKEN" | crablink login --server https://crab.link`。
 
-不带参数运行 `crablink` 会在终端里打开全屏 TUI 浏览 Link（stdout 不是终端时只打印帮助）。左侧边栏顶部通过终端图像协议显示 crablink logo，并按终端背景自动选浅色/深色版本：Ghostty、kitty、WezTerm、iTerm2 及其他支持 kitty / iTerm2 / sixel 图像协议的终端会显示；macOS Terminal.app 等不支持图像协议的终端不显示 logo，其余照常可用。TUI 运行中切换终端主题，logo 约 1 秒内跟着换版本，按 `r` 可立即重新检测（tmux 内不跟随）。
+不带参数运行 `crablink` 会在终端里打开全屏 TUI 浏览 Link（stdout 不是终端时只打印帮助）。左侧边栏顶部通过终端图像协议显示 crablink logo，并按终端背景自动选浅色/深色版本：Ghostty、kitty、WezTerm、iTerm2 及其他支持 kitty / iTerm2 / sixel 图像协议的终端会显示；macOS Terminal.app 等不支持图像协议的终端不显示 logo，其余照常可用。TUI 运行中切换终端主题，logo 约 1 秒内跟着换版本，按 `r` 可立即重新检测（tmux 内不跟随）。在选中的 Link 上按 `v` 弹出它的 QR 码（白底黑码，与终端主题无关），`Esc` 关闭；终端放不下时显示所需的最小尺寸。
 
 ### HTTP API
 
@@ -98,6 +103,7 @@ crablink rm rust-meetup
 | `GET` | `/api/links/{code}` | 查看单个 Link |
 | `PATCH` | `/api/links/{code}` | 修改 `target` / `expires_at` |
 | `DELETE` | `/api/links/{code}` | 删除（不可恢复） |
+| `GET` | `/api/links/{code}/qr?format=svg\|png` | Short URL 的 QR 码，默认 SVG；已过期 410（`link_expired`） |
 
 `/api/*` 需要 `Authorization: Bearer <token>`。
 

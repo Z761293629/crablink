@@ -12,6 +12,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
+use crablink_api::ErrorKind;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use subtle::ConstantTimeEq;
@@ -82,7 +83,8 @@ pub fn app(pool: SqlitePool, codes: CodeGenerator, token: &str, base_url: &str) 
             "/links/{code}",
             get(get_link).patch(update_link).delete(delete_link),
         )
-        .fallback(|| async { ApiError(StatusCode::NOT_FOUND, "not found".into()) });
+        .route("/links/{code}/qr", get(link_qr))
+        .fallback(|| async { ApiError::NotFound });
     Router::new()
         .nest("/api", api)
         .route("/health", get(|| async { "ok" }))
@@ -108,42 +110,100 @@ async fn require_token(State(s): State<AppState>, req: Request, next: Next) -> R
     if !s.token.is_empty() && bool::from(given.as_bytes().ct_eq(s.token.as_bytes())) {
         next.run(req).await
     } else {
-        ApiError(StatusCode::UNAUTHORIZED, "missing or invalid token".into()).into_response()
+        ApiError::Unauthorized.into_response()
     }
 }
 
-/// A management API error: JSON `{ "error": "..." }`.
-struct ApiError(StatusCode, String);
+/// A management API error: JSON `{ "kind": "...", "error": "..." }`, where
+/// `error` is the `Display` message.
+#[derive(Debug, thiserror::Error)]
+enum ApiError {
+    #[error("missing or invalid token")]
+    Unauthorized,
+    #[error("not found")]
+    NotFound,
+    /// A Code with no live Link (missing or deleted).
+    #[error("link not found")]
+    LinkNotFound,
+    /// A Link whose Expiry has passed, where only a live one will do.
+    #[error("link has expired")]
+    LinkExpired,
+    #[error("{0}")]
+    BadRequest(String),
+    #[error("{0}")]
+    InvalidTarget(&'static str),
+    #[error("code must be 3-64 characters of A-Z, a-z, 0-9, _ or -")]
+    InvalidCode,
+    #[error("code {0:?} is reserved")]
+    CodeReserved(String),
+    #[error("code already taken")]
+    CodeTaken,
+    #[error("could not generate a free code, try again")]
+    CodesExhausted,
+    /// Details are logged, never sent.
+    #[error("internal error")]
+    Internal,
+}
+
+impl ApiError {
+    fn kind(&self) -> ErrorKind {
+        match self {
+            Self::Unauthorized => ErrorKind::Unauthorized,
+            Self::NotFound => ErrorKind::NotFound,
+            Self::LinkNotFound => ErrorKind::LinkNotFound,
+            Self::LinkExpired => ErrorKind::LinkExpired,
+            Self::BadRequest(_) => ErrorKind::BadRequest,
+            Self::InvalidTarget(_) => ErrorKind::InvalidTarget,
+            Self::InvalidCode => ErrorKind::InvalidCode,
+            Self::CodeReserved(_) => ErrorKind::CodeReserved,
+            Self::CodeTaken => ErrorKind::CodeTaken,
+            Self::CodesExhausted | Self::Internal => ErrorKind::Internal,
+        }
+    }
+
+    fn status(&self) -> StatusCode {
+        match self {
+            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::NotFound | Self::LinkNotFound => StatusCode::NOT_FOUND,
+            Self::LinkExpired => StatusCode::GONE,
+            Self::BadRequest(_)
+            | Self::InvalidTarget(_)
+            | Self::InvalidCode
+            | Self::CodeReserved(_) => StatusCode::BAD_REQUEST,
+            Self::CodeTaken => StatusCode::CONFLICT,
+            Self::CodesExhausted | Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.0, Json(crablink_api::ErrorBody { error: self.1 })).into_response()
+        let body = crablink_api::ErrorBody {
+            kind: self.kind(),
+            error: self.to_string(),
+        };
+        (self.status(), Json(body)).into_response()
     }
-}
-
-/// The 404 for a Code with no live Link (missing or deleted).
-fn link_not_found() -> ApiError {
-    ApiError(StatusCode::NOT_FOUND, "link not found".into())
 }
 
 /// A body that doesn't match the DTO (e.g. a malformed `expires_at`) is a 400, not axum's 422.
 impl From<JsonRejection> for ApiError {
     fn from(e: JsonRejection) -> Self {
-        ApiError(StatusCode::BAD_REQUEST, e.body_text())
+        ApiError::BadRequest(e.body_text())
     }
 }
 
 /// A malformed query string (e.g. `limit=x`) is a JSON 400 like any other API error.
 impl From<QueryRejection> for ApiError {
     fn from(e: QueryRejection) -> Self {
-        ApiError(StatusCode::BAD_REQUEST, e.body_text())
+        ApiError::BadRequest(e.body_text())
     }
 }
 
 impl From<sqlx::Error> for ApiError {
     fn from(e: sqlx::Error) -> Self {
         eprintln!("database error: {e}");
-        ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
+        ApiError::Internal
     }
 }
 
@@ -181,7 +241,7 @@ macro_rules! link_columns {
 /// A Target must be an absolute `http(s)` URL not on our own host (that would
 /// loop). It is never fetched. Shared by create and update.
 fn validate_target(target: &str, base_url: &str) -> Result<(), ApiError> {
-    let bad = |msg: &str| Err(ApiError(StatusCode::BAD_REQUEST, msg.into()));
+    let bad = |msg| Err(ApiError::InvalidTarget(msg));
     if target.chars().count() > MAX_TARGET_LEN {
         return bad("target must be at most 2048 characters");
     }
@@ -215,16 +275,10 @@ fn validate_custom_code(code: &str) -> Result<(), ApiError> {
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
     if !well_formed {
-        return Err(ApiError(
-            StatusCode::BAD_REQUEST,
-            "code must be 3-64 characters of A-Z, a-z, 0-9, _ or -".into(),
-        ));
+        return Err(ApiError::InvalidCode);
     }
     if RESERVED_CODES.iter().any(|r| r.eq_ignore_ascii_case(code)) {
-        return Err(ApiError(
-            StatusCode::BAD_REQUEST,
-            format!("code {code:?} is reserved"),
-        ));
+        return Err(ApiError::CodeReserved(code.into()));
     }
     Ok(())
 }
@@ -256,16 +310,13 @@ async fn create_link(
             Ok(row) => return Ok((StatusCode::CREATED, Json(row.into_dto(&s.base_url)))),
             // A taken Custom Code is the caller's to fix: never overwrite, never retry.
             Err(sqlx::Error::Database(e)) if e.is_unique_violation() && req.code.is_some() => {
-                return Err(ApiError(StatusCode::CONFLICT, "code already taken".into()));
+                return Err(ApiError::CodeTaken);
             }
             Err(sqlx::Error::Database(e)) if e.is_unique_violation() => continue,
             Err(e) => return Err(e.into()),
         }
     }
-    Err(ApiError(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "could not generate a free code, try again".into(),
-    ))
+    Err(ApiError::CodesExhausted)
 }
 
 /// `GET /api/links/{code}`: one Link; 404 if missing or deleted.
@@ -273,16 +324,52 @@ async fn get_link(
     State(s): State<AppState>,
     Path(code): Path<String>,
 ) -> Result<Json<crablink_api::Link>, ApiError> {
+    fetch_link(&s, &code).await.map(Json)
+}
+
+/// The live or expired Link with this Code; 404 if missing or deleted.
+async fn fetch_link(s: &AppState, code: &str) -> Result<crablink_api::Link, ApiError> {
     sqlx::query_as::<_, LinkRow>(concat!(
         "SELECT ",
         link_columns!(),
         " FROM links WHERE code = ? AND deleted_at IS NULL"
     ))
-    .bind(&code)
+    .bind(code)
     .fetch_optional(&s.pool)
     .await?
-    .map(|row| Json(row.into_dto(&s.base_url)))
-    .ok_or_else(link_not_found)
+    .map(|row| row.into_dto(&s.base_url))
+    .ok_or(ApiError::LinkNotFound)
+}
+
+/// `GET /api/links/{code}/qr?format=svg|png`: the QR code of the Link's Short URL.
+async fn link_qr(
+    State(s): State<AppState>,
+    Path(code): Path<String>,
+    query: Result<Query<crablink_api::QrQuery>, QueryRejection>,
+) -> Result<Response, ApiError> {
+    let Query(q) = query?;
+    let link = fetch_link(&s, &code).await?;
+    // Its Short URL no longer redirects, so a QR code of it would only mislead.
+    if link.is_expired(Utc::now()) {
+        return Err(ApiError::LinkExpired);
+    }
+    let format = q.format.unwrap_or(crablink_api::QrFormat::Svg);
+    let internal = |what: &str, e: &dyn std::fmt::Display| {
+        eprintln!("cannot {what} the QR code of {:?}: {e}", link.short_url);
+        ApiError::Internal
+    };
+    let qr = qrcode::QrCode::new(&link.short_url).map_err(|e| internal("encode", &e))?;
+    let body = match format {
+        crablink_api::QrFormat::Svg => qr.render::<qrcode::render::svg::Color>().build().into(),
+        crablink_api::QrFormat::Png => {
+            let img = qr.render::<image::Luma<u8>>().build();
+            let mut png = std::io::Cursor::new(Vec::new());
+            img.write_to(&mut png, image::ImageFormat::Png)
+                .map_err(|e| internal("write", &e))?;
+            png.into_inner()
+        }
+    };
+    Ok(([(header::CONTENT_TYPE, format.content_type())], body).into_response())
 }
 
 /// `PATCH /api/links/{code}`: changes Target and/or Expiry, never the Code;
@@ -310,7 +397,7 @@ async fn update_link(
     .fetch_optional(&s.pool)
     .await?
     .map(|row| Json(row.into_dto(&s.base_url)))
-    .ok_or_else(link_not_found)
+    .ok_or(ApiError::LinkNotFound)
 }
 
 const DEFAULT_PAGE: u32 = 50;
@@ -332,16 +419,15 @@ async fn list_links(
     let Query(q) = query?;
     let limit = q.limit.unwrap_or(DEFAULT_PAGE);
     if !(1..=MAX_PAGE).contains(&limit) {
-        return Err(ApiError(
-            StatusCode::BAD_REQUEST,
-            format!("limit must be between 1 and {MAX_PAGE}"),
-        ));
+        return Err(ApiError::BadRequest(format!(
+            "limit must be between 1 and {MAX_PAGE}"
+        )));
     }
     let before = match q.cursor {
         None => i64::MAX,
         Some(c) => c
             .parse()
-            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid cursor".into()))?,
+            .map_err(|_| ApiError::BadRequest("invalid cursor".into()))?,
     };
     // Fetch one extra row to learn whether another page follows.
     let mut rows = sqlx::query_as::<_, ListRow>(concat!(
@@ -380,7 +466,7 @@ async fn delete_link(
         .execute(&s.pool)
         .await?;
     if done.rows_affected() == 0 {
-        return Err(link_not_found());
+        return Err(ApiError::LinkNotFound);
     }
     Ok(StatusCode::NO_CONTENT)
 }
@@ -392,7 +478,7 @@ async fn redirect(State(s): State<AppState>, Path(code): Path<String>) -> Respon
     // Unlike the management API, redirect error bodies are plain text.
     follow(&s.pool, &code)
         .await
-        .unwrap_or_else(|ApiError(status, msg)| (status, msg).into_response())
+        .unwrap_or_else(|e| (e.status(), e.to_string()).into_response())
 }
 
 /// Redirects to the Target of a live (not deleted, not expired) Link, counting the click.
