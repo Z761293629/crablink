@@ -78,13 +78,18 @@ pub(crate) fn valid_email(email: &str) -> Result<&str, ApiError> {
 
 /// Disables or re-enables the User with `email` (ignoring case), as `set_disabled`.
 pub async fn set_user_disabled(pool: &PgPool, email: &str, disabled: bool) -> Result<(), ApiError> {
-    let id = sqlx::query_scalar("SELECT id FROM users WHERE lower(email) = lower($1)")
-        .bind(email.trim())
-        .fetch_optional(pool)
-        .await?
-        .ok_or(ApiError::UserNotFound)?;
     let mut tx = pool.begin().await?;
-    set_disabled(&mut tx, id, disabled).await?;
+    let id = sqlx::query_scalar(
+        "UPDATE users SET disabled = $2 WHERE lower(email) = lower($1) RETURNING id",
+    )
+    .bind(email.trim())
+    .bind(disabled)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(ApiError::UserNotFound)?;
+    if disabled {
+        end_sessions(&mut tx, id, None).await?;
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -195,10 +200,12 @@ pub(crate) fn token_hash(token: &str) -> Vec<u8> {
 
 /// 32 random bytes as 64 hex characters.
 pub(crate) fn random_token() -> String {
-    rand::random::<[u8; 32]>()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    use std::fmt::Write;
+    let mut hex = String::with_capacity(64);
+    for b in rand::random::<[u8; 32]>() {
+        write!(hex, "{b:02x}").expect("writing to a String never fails");
+    }
+    hex
 }
 
 fn session_cookie(token: &str, max_age: i64) -> String {
