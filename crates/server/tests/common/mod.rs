@@ -13,12 +13,19 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use axum::response::Response;
+use chrono::{DateTime, TimeDelta, Utc};
 use http_body_util::BodyExt;
 use serde_json::Value;
+use sqlx::PgPool;
 use tower::ServiceExt;
 
 pub const TOKEN: &str = "test-token";
 pub const BASE_URL: &str = "https://crab.link";
+/// The `Host` and `Origin` a browser on `BASE_URL` sends.
+pub const HOST: &str = "crab.link";
+pub const ORIGIN: &str = BASE_URL;
+/// The password `TestApp::create_user` gives every User.
+pub const PASSWORD: &str = "correct horse battery";
 
 /// App with random Generated Codes.
 pub async fn app() -> TestApp {
@@ -38,15 +45,95 @@ pub async fn app_with_codes(codes: &[&str]) -> TestApp {
             .pop_front()
             .unwrap_or_else(crablink_server::random_code)
     });
-    TestApp(crablink_server::app(pool, generator, TOKEN, BASE_URL))
+    let now = Arc::new(Mutex::new(Utc::now()));
+    let clock = now.clone();
+    let clock: crablink_server::Clock = Arc::new(move || *clock.lock().unwrap());
+    TestApp {
+        router: crablink_server::app(pool.clone(), generator, clock, TOKEN, BASE_URL),
+        pool,
+        now,
+    }
 }
 
-pub struct TestApp(pub Router);
+pub struct TestApp {
+    pub router: Router,
+    pub pool: PgPool,
+    /// What the app's clock reads; starts at the real time.
+    now: Arc<Mutex<DateTime<Utc>>>,
+}
 
 impl TestApp {
     pub async fn send(&self, req: Request<Body>) -> Res {
-        let resp = self.0.clone().oneshot(req).await.unwrap();
+        let resp = self.router.clone().oneshot(req).await.unwrap();
         Res::read(resp).await
+    }
+
+    /// Moves the app's clock forward.
+    pub fn advance(&self, by: TimeDelta) {
+        *self.now.lock().unwrap() += by;
+    }
+
+    /// Creates a User, not an Instance Admin, whose password is `PASSWORD`.
+    pub async fn create_user(&self, email: &str) {
+        crablink_server::create_user(&self.pool, email, PASSWORD, false)
+            .await
+            .unwrap();
+    }
+
+    /// Signs in, asserting `200`; returns the `Cookie` header value to send back.
+    pub async fn sign_in(&self, email: &str, password: &str) -> String {
+        let res = self.sign_in_res(email, password).await;
+        assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+        let set_cookie = res.header("set-cookie");
+        set_cookie.split(';').next().unwrap().to_string()
+    }
+
+    /// `POST /api/session` with `email` and `password`, from the app's own origin.
+    pub async fn sign_in_res(&self, email: &str, password: &str) -> Res {
+        let body = serde_json::json!({ "email": email, "password": password });
+        self.request("POST", "/api/session", Some(body), &[("origin", ORIGIN)])
+            .await
+    }
+
+    /// A browser request carrying the session `cookie`, from the app's own origin.
+    pub async fn as_user(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<Value>,
+        cookie: &str,
+    ) -> Res {
+        self.request(
+            method,
+            path,
+            body,
+            &[("cookie", cookie), ("origin", ORIGIN)],
+        )
+        .await
+    }
+
+    /// A request to `HOST` with `headers` and an optional JSON body.
+    pub async fn request(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<Value>,
+        headers: &[(&str, &str)],
+    ) -> Res {
+        let mut req = Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::HOST, HOST);
+        for (name, value) in headers {
+            req = req.header(*name, *value);
+        }
+        let req = match body {
+            Some(json) => req
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json.to_string())),
+            None => req.body(Body::empty()),
+        };
+        self.send(req.unwrap()).await
     }
 
     /// Unauthenticated GET, e.g. a visitor following a Short URL.

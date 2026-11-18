@@ -54,6 +54,30 @@ impl Link {
     }
 }
 
+/// Body of `POST /api/session`: signing in.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignIn {
+    /// Matched ignoring case.
+    pub email: String,
+    pub password: String,
+}
+
+/// Body of `POST /api/me/password`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangePassword {
+    pub current_password: String,
+    /// At least 8 characters.
+    pub new_password: String,
+}
+
+/// The signed-in User, as returned by sign-in and `GET /api/me`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    /// As the User was created, case included.
+    pub email: String,
+    pub instance_admin: bool,
+}
+
 /// Body of every management API error response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorBody {
@@ -70,8 +94,22 @@ pub struct ErrorBody {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
-    /// Missing or wrong token.
+    /// Missing or wrong token, or no live session: never signed in, signed out or expired.
     Unauthorized,
+    /// Sign-in with an unknown email, a wrong password or a disabled User; `error`
+    /// never says which.
+    InvalidCredentials,
+    /// A state-changing request with a session cookie whose `Origin` is missing or
+    /// isn't this host.
+    OriginMismatch,
+    /// Changing password with a wrong current password.
+    WrongPassword,
+    /// An email that doesn't look like `name@host`.
+    InvalidEmail,
+    /// A new password shorter than 8 characters.
+    PasswordTooShort,
+    /// Another User already has this email, ignoring case.
+    EmailTaken,
     /// No such API route.
     NotFound,
     /// No live Link has this Code.

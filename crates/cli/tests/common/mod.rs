@@ -36,8 +36,13 @@ pub fn server() -> TestServer {
             let pool = crablink_server::connect(&pg::database_url().await)
                 .await
                 .unwrap();
-            let app =
-                crablink_server::app(pool, Arc::new(crablink_server::random_code), TOKEN, &url);
+            let app = crablink_server::app(
+                pool,
+                Arc::new(crablink_server::random_code),
+                Arc::new(chrono::Utc::now),
+                TOKEN,
+                &url,
+            );
             tx.send(url).unwrap();
             axum::serve(listener, app).await.unwrap();
         });

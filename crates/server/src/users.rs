@@ -1,0 +1,279 @@
+//! Users and their sessions: creating Users (and so the first Instance Admin),
+//! signing in and out, `/api/me` and changing password.
+
+use std::sync::LazyLock;
+
+use argon2::Argon2;
+use argon2::password_hash::phc::PasswordHash;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
+use axum::Json;
+use axum::extract::rejection::JsonRejection;
+use axum::extract::{FromRequestParts, State};
+use axum::http::request::Parts;
+use axum::http::{Method, StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use chrono::TimeDelta;
+use crablink_api::{ChangePassword, SignIn, User};
+use sha2::{Digest, Sha256};
+use sqlx::PgPool;
+
+use crate::AppState;
+use crate::error::ApiError;
+
+const COOKIE: &str = "crablink_session";
+const SESSION_TTL: TimeDelta = TimeDelta::days(30);
+const MIN_PASSWORD_LEN: usize = 8;
+
+/// Creates a User who signs in with `email` and `password`, as an Instance Admin
+/// when `instance_admin`. This is what `crablink-server admin create` runs.
+pub async fn create_user(
+    pool: &PgPool,
+    email: &str,
+    password: &str,
+    instance_admin: bool,
+) -> Result<(), ApiError> {
+    let email = email.trim();
+    let valid = email
+        .split_once('@')
+        .is_some_and(|(name, host)| !name.is_empty() && !host.is_empty() && !host.contains('@'));
+    if !valid || email.len() > 254 || email.chars().any(char::is_whitespace) {
+        return Err(ApiError::InvalidEmail);
+    }
+    let hash = hash_password(password).await?;
+    let res =
+        sqlx::query("INSERT INTO users (email, password_hash, instance_admin) VALUES ($1, $2, $3)")
+            .bind(email)
+            .bind(hash)
+            .bind(instance_admin)
+            .execute(pool)
+            .await;
+    match res {
+        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => Err(ApiError::EmailTaken),
+        res => res.map(drop).map_err(Into::into),
+    }
+}
+
+/// Disables or re-enables the User with `email` (ignoring case). A disabled User
+/// can't sign in, and their sessions stop working.
+pub async fn set_user_disabled(pool: &PgPool, email: &str, disabled: bool) -> Result<(), ApiError> {
+    let res = sqlx::query("UPDATE users SET disabled = $2 WHERE lower(email) = lower($1)")
+        .bind(email.trim())
+        .bind(disabled)
+        .execute(pool)
+        .await?;
+    match res.rows_affected() {
+        0 => Err(ApiError::NotFound),
+        _ => Ok(()),
+    }
+}
+
+/// argon2id with a random salt, off the async threads: it is slow on purpose.
+async fn hash_password(password: &str) -> Result<String, ApiError> {
+    if password.chars().count() < MIN_PASSWORD_LEN {
+        return Err(ApiError::PasswordTooShort);
+    }
+    let password = password.to_owned();
+    tokio::task::spawn_blocking(move || {
+        Argon2::default()
+            .hash_password(password.as_bytes())
+            .map(|h| h.to_string())
+    })
+    .await
+    .map_err(internal)?
+    .map_err(internal)
+}
+
+/// Whether `password` matches `hash`. With no `hash` (no such User) it checks a
+/// dummy one, so a wrong email takes as long as a wrong password.
+async fn verify_password(password: String, hash: Option<String>) -> Result<bool, ApiError> {
+    static DUMMY: LazyLock<String> = LazyLock::new(|| {
+        Argon2::default()
+            .hash_password(b"not anyone's password")
+            .unwrap()
+            .to_string()
+    });
+    tokio::task::spawn_blocking(move || {
+        let hash = hash.as_deref().unwrap_or(&DUMMY);
+        PasswordHash::new(hash).is_ok_and(|h| {
+            Argon2::default()
+                .verify_password(password.as_bytes(), &h)
+                .is_ok()
+        })
+    })
+    .await
+    .map_err(internal)
+}
+
+fn internal(e: impl std::fmt::Display) -> ApiError {
+    eprintln!("password hashing error: {e}");
+    ApiError::Internal
+}
+
+fn token_hash(token: &str) -> Vec<u8> {
+    Sha256::digest(token.as_bytes()).to_vec()
+}
+
+fn session_cookie(token: &str, max_age: i64) -> String {
+    format!("{COOKIE}={token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age={max_age}")
+}
+
+/// `POST /api/session`: signs in, setting the session cookie; returns the User.
+pub(crate) async fn sign_in(
+    State(s): State<AppState>,
+    body: Result<Json<SignIn>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let Json(req) = body?;
+    let row: Option<(i64, String, bool, String)> = sqlx::query_as(
+        "SELECT id, email, instance_admin, password_hash FROM users \
+         WHERE lower(email) = lower($1) AND NOT disabled",
+    )
+    .bind(req.email.trim())
+    .fetch_optional(&s.pool)
+    .await?;
+    let hash = row.as_ref().map(|r| r.3.clone());
+    let (Some((id, email, instance_admin, _)), true) =
+        (row, verify_password(req.password, hash).await?)
+    else {
+        return Err(ApiError::InvalidCredentials);
+    };
+
+    let token: String = rand::random::<[u8; 32]>()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    // ponytail: expired sessions are never swept; add a cleanup if the table grows.
+    sqlx::query("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)")
+        .bind(token_hash(&token))
+        .bind(id)
+        .bind((s.clock)() + SESSION_TTL)
+        .execute(&s.pool)
+        .await?;
+    let cookie = session_cookie(&token, SESSION_TTL.num_seconds());
+    let user = User {
+        email,
+        instance_admin,
+    };
+    Ok(([(header::SET_COOKIE, cookie)], Json(user)).into_response())
+}
+
+/// `DELETE /api/session`: signs out, ending the session and clearing the cookie.
+pub(crate) async fn sign_out(
+    State(s): State<AppState>,
+    session: Session,
+) -> Result<Response, ApiError> {
+    sqlx::query("DELETE FROM sessions WHERE token_hash = $1")
+        .bind(&session.token_hash)
+        .execute(&s.pool)
+        .await?;
+    Ok((
+        StatusCode::NO_CONTENT,
+        [(header::SET_COOKIE, session_cookie("", 0))],
+    )
+        .into_response())
+}
+
+/// `GET /api/me`: the signed-in User.
+pub(crate) async fn me(session: Session) -> Json<User> {
+    Json(session.user)
+}
+
+/// `POST /api/me/password`: needs the current password; ends the User's other sessions.
+pub(crate) async fn change_password(
+    State(s): State<AppState>,
+    session: Session,
+    body: Result<Json<ChangePassword>, JsonRejection>,
+) -> Result<StatusCode, ApiError> {
+    let Json(req) = body?;
+    let hash: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1")
+        .bind(session.user_id)
+        .fetch_one(&s.pool)
+        .await?;
+    if !verify_password(req.current_password, Some(hash)).await? {
+        return Err(ApiError::WrongPassword);
+    }
+    let hash = hash_password(&req.new_password).await?;
+    let mut tx = s.pool.begin().await?;
+    sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1")
+        .bind(session.user_id)
+        .bind(hash)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2")
+        .bind(session.user_id)
+        .bind(&session.token_hash)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A live session of an enabled User, from the session cookie. A state-changing
+/// request must also come from this host's `Origin`, which is what stops CSRF.
+pub(crate) struct Session {
+    user_id: i64,
+    token_hash: Vec<u8>,
+    user: User,
+}
+
+impl FromRequestParts<AppState> for Session {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, s: &AppState) -> Result<Self, ApiError> {
+        let token = parts
+            .headers
+            .get_all(header::COOKIE)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .flat_map(|v| v.split(';'))
+            .find_map(|c| c.trim().strip_prefix(COOKIE)?.strip_prefix('='))
+            .filter(|t| !t.is_empty())
+            .ok_or(ApiError::NotSignedIn)?;
+        let safe = matches!(parts.method, Method::GET | Method::HEAD | Method::OPTIONS);
+        if !safe && !same_origin(parts) {
+            return Err(ApiError::OriginMismatch);
+        }
+        let token_hash = token_hash(token);
+        let (user_id, email, instance_admin): (i64, String, bool) = sqlx::query_as(
+            "SELECT u.id, u.email, u.instance_admin FROM sessions s \
+             JOIN users u ON u.id = s.user_id \
+             WHERE s.token_hash = $1 AND s.expires_at > $2 AND NOT u.disabled",
+        )
+        .bind(&token_hash)
+        .bind((s.clock)())
+        .fetch_optional(&s.pool)
+        .await?
+        .ok_or(ApiError::NotSignedIn)?;
+        Ok(Session {
+            user_id,
+            token_hash,
+            user: User {
+                email,
+                instance_admin,
+            },
+        })
+    }
+}
+
+/// Whether the `Origin` header names the host the request was sent to.
+fn same_origin(parts: &Parts) -> bool {
+    let host = parts
+        .headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .or_else(|| parts.uri.authority().map(|a| a.as_str()));
+    let origin = parts
+        .headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|o| url::Url::parse(o).ok());
+    let (Some(host), Some(origin)) = (host, origin) else {
+        return false;
+    };
+    let Some(origin_host) = origin.host_str() else {
+        return false;
+    };
+    match origin.port() {
+        Some(port) => host.eq_ignore_ascii_case(&format!("{origin_host}:{port}")),
+        None => host.eq_ignore_ascii_case(origin_host),
+    }
+}

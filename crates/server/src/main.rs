@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::process::exit;
 use std::sync::Arc;
 
@@ -13,19 +14,59 @@ fn required(name: &str) -> String {
 
 #[tokio::main]
 async fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
+        [] => serve().await,
+        ["admin", "create", "--email", email] => admin_create(email).await,
+        _ => {
+            eprintln!("usage: crablink-server [admin create --email <email>]");
+            exit(2);
+        }
+    }
+}
+
+/// `admin create`: creates an Instance Admin, reading the password from a prompt,
+/// or from stdin's first line when it isn't a terminal.
+async fn admin_create(email: &str) {
+    let db_url = required("CRABLINK_DATABASE_URL");
+    let password = if std::io::stdin().is_terminal() {
+        rpassword::prompt_password("Password: ")
+    } else {
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line).map(|_| line)
+    };
+    let password = password.unwrap_or_else(|e| {
+        eprintln!("crablink-server: cannot read the password: {e}");
+        exit(1);
+    });
+    let pool = open_database(&db_url).await;
+    let password = password.trim_end_matches(['\r', '\n']);
+    if let Err(e) = crablink_server::create_user(&pool, email, password, true).await {
+        eprintln!("crablink-server: {e}");
+        exit(1);
+    }
+    eprintln!("crablink-server: created Instance Admin {email}");
+}
+
+async fn open_database(db_url: &str) -> sqlx::PgPool {
+    crablink_server::connect(db_url).await.unwrap_or_else(|e| {
+        // Not the URL itself: it usually carries the database password.
+        eprintln!("crablink-server: cannot open the database: {e}");
+        exit(1);
+    })
+}
+
+async fn serve() {
     let base_url = required("CRABLINK_BASE_URL");
     let token = required("CRABLINK_TOKEN");
     let db_url = required("CRABLINK_DATABASE_URL");
     let listen = std::env::var("CRABLINK_LISTEN").unwrap_or_else(|_| "0.0.0.0:8080".into());
 
-    let pool = crablink_server::connect(&db_url).await.unwrap_or_else(|e| {
-        // Not the URL itself: it usually carries the database password.
-        eprintln!("crablink-server: cannot open the database: {e}");
-        exit(1);
-    });
+    let pool = open_database(&db_url).await;
     let app = crablink_server::app(
         pool.clone(),
         Arc::new(crablink_server::random_code),
+        Arc::new(chrono::Utc::now),
         &token,
         &base_url,
     );

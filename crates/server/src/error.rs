@@ -9,9 +9,23 @@ use crablink_api::ErrorKind;
 /// A management API error: JSON `{ "kind": "...", "error": "..." }`, where
 /// `error` is the `Display` message.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum ApiError {
+pub enum ApiError {
     #[error("missing or invalid token")]
     Unauthorized,
+    #[error("not signed in, or the session has expired")]
+    NotSignedIn,
+    #[error("wrong email or password")]
+    InvalidCredentials,
+    #[error("Origin header must match the host")]
+    OriginMismatch,
+    #[error("current password is wrong")]
+    WrongPassword,
+    #[error("email must look like name@host")]
+    InvalidEmail,
+    #[error("password must be at least 8 characters")]
+    PasswordTooShort,
+    #[error("email already taken")]
+    EmailTaken,
     #[error("not found")]
     NotFound,
     /// A Code with no live Link (missing or deleted).
@@ -40,7 +54,13 @@ pub(crate) enum ApiError {
 impl ApiError {
     fn kind(&self) -> ErrorKind {
         match self {
-            Self::Unauthorized => ErrorKind::Unauthorized,
+            Self::Unauthorized | Self::NotSignedIn => ErrorKind::Unauthorized,
+            Self::InvalidCredentials => ErrorKind::InvalidCredentials,
+            Self::OriginMismatch => ErrorKind::OriginMismatch,
+            Self::WrongPassword => ErrorKind::WrongPassword,
+            Self::InvalidEmail => ErrorKind::InvalidEmail,
+            Self::PasswordTooShort => ErrorKind::PasswordTooShort,
+            Self::EmailTaken => ErrorKind::EmailTaken,
             Self::NotFound => ErrorKind::NotFound,
             Self::LinkNotFound => ErrorKind::LinkNotFound,
             Self::LinkExpired => ErrorKind::LinkExpired,
@@ -55,14 +75,19 @@ impl ApiError {
 
     pub(crate) fn status(&self) -> StatusCode {
         match self {
-            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Unauthorized | Self::NotSignedIn | Self::InvalidCredentials => {
+                StatusCode::UNAUTHORIZED
+            }
+            Self::OriginMismatch | Self::WrongPassword => StatusCode::FORBIDDEN,
             Self::NotFound | Self::LinkNotFound => StatusCode::NOT_FOUND,
             Self::LinkExpired => StatusCode::GONE,
             Self::BadRequest(_)
             | Self::InvalidTarget(_)
             | Self::InvalidCode
-            | Self::CodeReserved(_) => StatusCode::BAD_REQUEST,
-            Self::CodeTaken => StatusCode::CONFLICT,
+            | Self::CodeReserved(_)
+            | Self::InvalidEmail
+            | Self::PasswordTooShort => StatusCode::BAD_REQUEST,
+            Self::CodeTaken | Self::EmailTaken => StatusCode::CONFLICT,
             Self::CodesExhausted | Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
