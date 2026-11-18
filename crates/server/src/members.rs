@@ -76,7 +76,7 @@ pub(crate) async fn update_member(
 ) -> Result<Json<Member>, ApiError> {
     let (workspace_id, _) = caller.owner_of(&s, &slug).await?;
     let Json(UpdateMember { role }) = body?;
-    let email = change(&s, workspace_id, &email, None, Some(role)).await?;
+    let email = change(&s, workspace_id, &email, Some(role)).await?;
     Ok(Json(Member { email, role }))
 }
 
@@ -88,23 +88,28 @@ pub(crate) async fn remove_member(
     Path((slug, email)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     let (workspace_id, owner) = caller.workspace(&s, &slug).await?;
-    let only = match (owner, &caller) {
-        (true, _) => None,
-        (false, Caller::User(session)) => Some(session.user_id),
-        (false, Caller::ApiKey { .. }) => return Err(ApiError::Forbidden),
+    // A Member gets 403 for anyone else before any lookup, so they can't probe who
+    // is a member.
+    let email = match (owner, &caller) {
+        (true, _) => email,
+        (false, Caller::User(session))
+            if session.user.email.to_lowercase() == email.to_lowercase() =>
+        {
+            session.user.email.clone()
+        }
+        _ => return Err(ApiError::Forbidden),
     };
-    change(&s, workspace_id, &email, only, None).await?;
+    change(&s, workspace_id, &email, None).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// Gives member `email` (ignoring case) of the Workspace `role`, or removes them
-/// when `None`, unless that would leave it without an Owner. With `only`, they
-/// must be that User, or it is 403. Returns their email as stored.
+/// when `None`, unless that would leave it without an Owner. Returns their email
+/// as stored.
 async fn change(
     s: &AppState,
     workspace_id: i64,
     email: &str,
-    only: Option<i64>,
     role: Option<Role>,
 ) -> Result<String, ApiError> {
     let mut tx = s.pool.begin().await?;
@@ -123,9 +128,6 @@ async fn change(
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(ApiError::UserNotFound)?;
-    if only.is_some_and(|only| only != user_id) {
-        return Err(ApiError::Forbidden);
-    }
     let query = match role {
         Some(role) => {
             sqlx::query("UPDATE memberships SET role = $3 WHERE workspace_id = $1 AND user_id = $2")

@@ -332,6 +332,9 @@ async fn members_and_api_keys_cannot_manage_the_workspace() {
         ("PATCH", owner.clone(), Some(json!({ "role": "member" }))),
         ("DELETE", carol.clone(), None),
         ("DELETE", owner.clone(), None),
+        // Not members: a Member can't tell them from members by the answer.
+        ("DELETE", member_path(&app, "eve@example.com"), None),
+        ("DELETE", member_path(&app, "nobody@example.com"), None),
         ("GET", keys.clone(), None),
         ("POST", keys.clone(), name()),
     ];
