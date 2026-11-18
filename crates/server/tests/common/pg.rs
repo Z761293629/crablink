@@ -13,6 +13,11 @@ const MAJOR: &str = "=18";
 static PG: Mutex<Option<PostgreSQL>> = Mutex::const_new(None);
 static NEXT_DB: AtomicUsize = AtomicUsize::new(0);
 
+// SAFETY: this matches C's `int atexit(void (*)(void))`, so declaring it `safe` is
+// sound: every `extern "C" fn()` is a valid argument. `stop_postgres` only drops the
+// `PostgreSQL`, whose `Drop` runs `pg_ctl stop` synchronously, needing no runtime.
+// atexit never runs on SIGINT or SIGKILL, so an interrupted test run leaks its
+// Postgres process and data directory.
 unsafe extern "C" {
     safe fn atexit(f: extern "C" fn()) -> std::ffi::c_int;
 }
