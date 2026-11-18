@@ -71,6 +71,37 @@ impl TestServer {
     }
 }
 
+/// Reads a QR code drawn in half blocks (`█ ▀ ▄`, space for two light modules) back
+/// into modules and decodes it. Rows may differ in length; anything missing is light.
+pub fn decode_half_blocks(rows: &[&str]) -> String {
+    const PX: usize = 4; // pixels per module
+    const MARGIN: usize = 4; // modules of extra light border, in case `rows` was cropped
+    let cols = rows.iter().map(|r| r.chars().count()).max().unwrap_or(0);
+    let (w, h) = (cols + 2 * MARGIN, rows.len() * 2 + 2 * MARGIN);
+    let dark = |x: usize, y: usize| -> bool {
+        let (Some(x), Some(y)) = (x.checked_sub(MARGIN), y.checked_sub(MARGIN)) else {
+            return false;
+        };
+        let cell = rows.get(y / 2).and_then(|r| r.chars().nth(x));
+        match (cell, y % 2) {
+            (Some('█'), _) | (Some('▀'), 0) | (Some('▄'), 1) => true,
+            (None | Some(' ' | '▀' | '▄'), _) => false,
+            (Some(c), _) => panic!("not a half block: {c:?}"),
+        }
+    };
+    let mut img = rqrr::PreparedImage::prepare_from_greyscale(w * PX, h * PX, |x, y| {
+        if dark(x / PX, y / PX) { 0 } else { 255 }
+    });
+    let grids = img.detect_grids();
+    assert_eq!(
+        grids.len(),
+        1,
+        "expected one QR code in:\n{}",
+        rows.join("\n")
+    );
+    grids[0].decode().expect("a decodable QR code").1
+}
+
 /// The TUI app fed key events and rendered to ratatui's in-memory `TestBackend`.
 pub struct Tui {
     pub app: App,
