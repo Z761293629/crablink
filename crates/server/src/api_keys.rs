@@ -11,13 +11,12 @@ use crablink_api::{ApiKey, CreateApiKey, NewApiKey};
 use crate::AppState;
 use crate::error::ApiError;
 use crate::users::{random_token, token_hash};
-use crate::workspaces::Caller;
+use crate::workspaces::{Caller, valid_name};
 
 /// Every secret starts with this, so a leaked one is recognisable.
 const SECRET_PREFIX: &str = "crab_";
 /// Characters of the secret kept visible: `crab_` and 7 more.
 const VISIBLE: usize = 12;
-const MAX_NAME_LEN: usize = 100;
 
 /// The Workspace of the live API Key `secret`, recording that it was used now.
 pub(crate) async fn workspace_of(s: &AppState, secret: &str) -> Result<Option<i64>, ApiError> {
@@ -62,12 +61,7 @@ pub(crate) async fn create_api_key(
 ) -> Result<(StatusCode, Json<NewApiKey>), ApiError> {
     let owner = caller.owner_of(&s, &slug).await?;
     let Json(req) = body?;
-    let name = req.name.trim();
-    if name.is_empty() || name.chars().count() > MAX_NAME_LEN {
-        return Err(ApiError::BadRequest(format!(
-            "name must be 1-{MAX_NAME_LEN} characters"
-        )));
-    }
+    let name = valid_name(&req.name)?;
     let secret = format!("{SECRET_PREFIX}{}", random_token());
     let row: KeyRow = sqlx::query_as(
         "INSERT INTO api_keys (workspace_id, name, prefix, secret_hash, created_by, created_at) \

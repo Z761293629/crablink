@@ -64,6 +64,17 @@ async fn a_disabled_user_cant_sign_in() {
 }
 
 #[tokio::test]
+async fn disabling_an_unknown_email_is_user_not_found() {
+    let app = app().await;
+
+    let err = crablink_server::set_user_disabled(&app.pool, "nobody@example.com", true)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, ApiError::UserNotFound), "{err}");
+}
+
+#[tokio::test]
 async fn a_disabled_users_sessions_stop_working() {
     let app = app().await;
     app.create_user("ada@example.com").await;

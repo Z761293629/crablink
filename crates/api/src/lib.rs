@@ -318,7 +318,7 @@ pub enum ErrorKind {
     PasswordTooShort,
     /// Another User already has this email, ignoring case.
     EmailTaken,
-    /// No such API route, API Key or User, or no Workspace with the slug an invite names.
+    /// No such API route or API Key, or no Workspace with the slug an invite names.
     NotFound,
     /// No invite has this token.
     InviteNotFound,
@@ -341,7 +341,7 @@ pub enum ErrorKind {
     CodeReserved,
     /// The Code is taken on its Domain, possibly by a Deleted Link.
     CodeTaken,
-    /// No User has this email; on a member route, none in this Workspace.
+    /// No User has this email or id; on a member route, none in this Workspace.
     UserNotFound,
     /// Adding a User who is already in the Workspace.
     AlreadyMember,

@@ -80,7 +80,7 @@ pub async fn set_user_disabled(pool: &PgPool, email: &str, disabled: bool) -> Re
         .bind(email.trim())
         .fetch_optional(pool)
         .await?
-        .ok_or(ApiError::NotFound)?;
+        .ok_or(ApiError::UserNotFound)?;
     let mut tx = pool.begin().await?;
     set_disabled(&mut tx, id, disabled).await?;
     tx.commit().await?;
@@ -100,18 +100,42 @@ pub(crate) async fn set_disabled(
         .execute(&mut *conn)
         .await?;
     if res.rows_affected() == 0 {
-        return Err(ApiError::NotFound);
+        return Err(ApiError::UserNotFound);
     }
     if disabled {
-        end_sessions(conn, id).await?;
+        end_sessions(conn, id, None).await?;
     }
     Ok(())
 }
 
-/// Ends every session of User `id`.
-pub(crate) async fn end_sessions(conn: &mut PgConnection, id: i64) -> Result<(), ApiError> {
-    sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+/// Gives User `id` the password hashed as `hash`, ending all their sessions but
+/// `keep` (a session's token hash).
+pub(crate) async fn set_password(
+    conn: &mut PgConnection,
+    id: i64,
+    hash: String,
+    keep: Option<&[u8]>,
+) -> Result<(), ApiError> {
+    let res = sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1")
         .bind(id)
+        .bind(hash)
+        .execute(&mut *conn)
+        .await?;
+    if res.rows_affected() == 0 {
+        return Err(ApiError::UserNotFound);
+    }
+    end_sessions(conn, id, keep).await
+}
+
+/// Ends every session of User `id` but `keep` (a session's token hash).
+async fn end_sessions(
+    conn: &mut PgConnection,
+    id: i64,
+    keep: Option<&[u8]>,
+) -> Result<(), ApiError> {
+    sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND token_hash IS DISTINCT FROM $2")
+        .bind(id)
+        .bind(keep)
         .execute(conn)
         .await?;
     Ok(())
@@ -289,16 +313,7 @@ pub(crate) async fn change_password(
     }
     let hash = hash_password(&req.new_password).await?;
     let mut tx = s.pool.begin().await?;
-    sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1")
-        .bind(session.user_id)
-        .bind(hash)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2")
-        .bind(session.user_id)
-        .bind(&session.token_hash)
-        .execute(&mut *tx)
-        .await?;
+    set_password(&mut tx, session.user_id, hash, Some(&session.token_hash)).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }

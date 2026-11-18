@@ -137,7 +137,7 @@ async fn an_unknown_user_is_not_found() {
 
     for res in [patch, reset] {
         assert_eq!(res.status, StatusCode::NOT_FOUND, "{}", res.text);
-        assert_eq!(res.json()["kind"], "not_found");
+        assert_eq!(res.json()["kind"], "user_not_found");
     }
 }
 

@@ -191,7 +191,7 @@ pub(crate) async fn update_user(
         .bind(id)
         .fetch_optional(&mut *tx)
         .await?
-        .ok_or(ApiError::NotFound)?;
+        .ok_or(ApiError::UserNotFound)?;
     tx.commit().await?;
     Ok(Json(managed_user(row)))
 }
@@ -207,15 +207,7 @@ pub(crate) async fn reset_password(
     let password = users::random_token()[..20].to_owned();
     let hash = users::hash_password(&password).await?;
     let mut tx = s.pool.begin().await?;
-    let res = sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1")
-        .bind(id)
-        .bind(hash)
-        .execute(&mut *tx)
-        .await?;
-    if res.rows_affected() == 0 {
-        return Err(ApiError::NotFound);
-    }
-    users::end_sessions(&mut tx, id).await?;
+    users::set_password(&mut tx, id, hash, None).await?;
     tx.commit().await?;
     Ok(Json(NewPassword { password }))
 }

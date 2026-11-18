@@ -123,8 +123,8 @@ pub(crate) fn stored_role(role: Role) -> &'static str {
     }
 }
 
-/// A Workspace name, trimmed: 1-100 characters.
-fn valid_name(name: &str) -> Result<&str, ApiError> {
+/// A Workspace or API Key name, trimmed: 1-100 characters.
+pub(crate) fn valid_name(name: &str) -> Result<&str, ApiError> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > MAX_NAME_LEN {
         return Err(ApiError::BadRequest(format!(
