@@ -586,7 +586,7 @@ impl App {
                 }
             }
             // Over the whole screen, sidebar included: a QR code needs all the room it can get.
-            Mode::Qr(url) => render_qr(f, area, url),
+            Mode::Qr(short_url) => render_qr(f, area, short_url),
             Mode::List | Mode::Filter => {}
         }
     }

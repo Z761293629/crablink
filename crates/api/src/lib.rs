@@ -140,6 +140,7 @@ impl QrFormat {
         }
     }
 
+    /// The `Content-Type` the server sends a QR code of this format with.
     pub fn content_type(self) -> &'static str {
         match self {
             QrFormat::Svg => "image/svg+xml",
