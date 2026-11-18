@@ -59,7 +59,7 @@ pub enum ApiError {
     CodeTaken,
     #[error("no such User")]
     UserNotFound,
-    #[error("already a member of this Workspace")]
+    #[error("already in this Workspace")]
     AlreadyMember,
     #[error("a Workspace needs an Owner: make someone else Owner first")]
     LastOwner,

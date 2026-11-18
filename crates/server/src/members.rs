@@ -1,22 +1,22 @@
-//! `/api/workspaces/{slug}/members`: Owners add Users by email, promote, demote and
-//! remove them; any member can leave. A Workspace always keeps an Owner.
+//! `/api/workspaces/{slug}/members`: Owners add Users by email as Members, promote,
+//! demote and remove them; anyone can leave. A Workspace always keeps an Owner.
 
 use axum::Json;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use crablink_api::{AddMember, Member, Role, UpdateMember};
+use crablink_api::{AddMember, Role, UpdateWorkspaceUser, WorkspaceUser};
 
 use crate::AppState;
 use crate::error::ApiError;
 use crate::workspaces::{Access, Caller, role, stored_role};
 
 /// `GET /api/workspaces/{slug}/members`: by email.
-pub(crate) async fn list_members(
+pub(crate) async fn list_workspace_users(
     State(s): State<AppState>,
     caller: Caller,
     Path(slug): Path<String>,
-) -> Result<Json<Vec<Member>>, ApiError> {
+) -> Result<Json<Vec<WorkspaceUser>>, ApiError> {
     let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let rows: Vec<(String, String)> = sqlx::query_as(
         "SELECT u.email, m.role FROM memberships m JOIN users u ON u.id = m.user_id \
@@ -26,7 +26,7 @@ pub(crate) async fn list_members(
     .fetch_all(&s.pool)
     .await?;
     let members = rows.into_iter().map(|(email, r)| {
-        Ok(Member {
+        Ok(WorkspaceUser {
             email,
             role: role(&r)?,
         })
@@ -41,7 +41,7 @@ pub(crate) async fn add_member(
     caller: Caller,
     Path(slug): Path<String>,
     body: Result<Json<AddMember>, JsonRejection>,
-) -> Result<(StatusCode, Json<Member>), ApiError> {
+) -> Result<(StatusCode, Json<WorkspaceUser>), ApiError> {
     let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let Json(req) = body?;
     let (user_id, email): (i64, String) =
@@ -63,26 +63,26 @@ pub(crate) async fn add_member(
         return Err(ApiError::AlreadyMember);
     }
     let role = Role::Member;
-    Ok((StatusCode::CREATED, Json(Member { email, role })))
+    Ok((StatusCode::CREATED, Json(WorkspaceUser { email, role })))
 }
 
 /// `PATCH /api/workspaces/{slug}/members/{email}`: promotes or demotes, Owners themselves
 /// included.
-pub(crate) async fn update_member(
+pub(crate) async fn update_workspace_user(
     State(s): State<AppState>,
     caller: Caller,
     Path((slug, email)): Path<(String, String)>,
-    body: Result<Json<UpdateMember>, JsonRejection>,
-) -> Result<Json<Member>, ApiError> {
+    body: Result<Json<UpdateWorkspaceUser>, JsonRejection>,
+) -> Result<Json<WorkspaceUser>, ApiError> {
     let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
-    let Json(UpdateMember { role }) = body?;
+    let Json(UpdateWorkspaceUser { role }) = body?;
     let email = change(&s, workspace_id, &email, Some(role)).await?;
-    Ok(Json(Member { email, role }))
+    Ok(Json(WorkspaceUser { email, role }))
 }
 
 /// `DELETE /api/workspaces/{slug}/members/{email}`: an Owner removes anyone; a
 /// Member only themself, i.e. leaves.
-pub(crate) async fn remove_member(
+pub(crate) async fn remove_workspace_user(
     State(s): State<AppState>,
     caller: Caller,
     Path((slug, email)): Path<(String, String)>,
@@ -92,7 +92,7 @@ pub(crate) async fn remove_member(
         owner,
     } = caller.workspace(&s, &slug).await?;
     // A Member gets 403 for anyone else before any lookup, so they can't probe who
-    // is a member.
+    // belongs to the Workspace.
     let email = match (owner, &caller) {
         (true, _) => email,
         (false, Caller::User(session))
@@ -106,7 +106,7 @@ pub(crate) async fn remove_member(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Gives member `email` (ignoring case) of the Workspace `role`, or removes them
+/// Gives the Workspace's User `email` (ignoring case) `role`, or removes them
 /// when `None`, unless that would leave it without an Owner. Returns their email
 /// as stored.
 async fn change(

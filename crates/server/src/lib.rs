@@ -27,7 +27,7 @@ pub use users::{create_user, set_user_disabled};
 use admin::{accept_invite, create_invite, list_users, reset_password, update_user};
 use api_keys::{create_api_key, list_api_keys, revoke_api_key};
 use links::{create_link, delete_link, get_link, link_qr, list_links, update_link};
-use members::{add_member, list_members, remove_member, update_member};
+use members::{add_member, list_workspace_users, remove_workspace_user, update_workspace_user};
 use redirect::redirect;
 use users::{change_password, me, sign_in, sign_out};
 use workspaces::{
@@ -91,10 +91,10 @@ pub async fn app(
         .route("/links/{code}/qr", get(link_qr))
         .route("/api-keys", post(create_api_key).get(list_api_keys))
         .route("/api-keys/{id}", delete(revoke_api_key))
-        .route("/members", post(add_member).get(list_members))
+        .route("/members", post(add_member).get(list_workspace_users))
         .route(
             "/members/{email}",
-            patch(update_member).delete(remove_member),
+            patch(update_workspace_user).delete(remove_workspace_user),
         );
     let admin = Router::new()
         .route("/invites", post(create_invite))

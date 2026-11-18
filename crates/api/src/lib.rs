@@ -93,7 +93,7 @@ pub struct Workspace {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
-    /// Manages the Workspace's members, API Keys and settings, as well as its Links.
+    /// Manages who is in the Workspace, its API Keys and settings, as well as its Links.
     Owner,
     /// Manages the Workspace's Links only.
     Member,
@@ -122,10 +122,11 @@ pub struct UpdateWorkspace {
     pub name: String,
 }
 
-/// A member of a Workspace, as listed by `GET /api/workspaces/{slug}/members`.
+/// A User of a Workspace with their role there, Owner or Member, as listed by
+/// `GET /api/workspaces/{slug}/members`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Member {
-    /// Addresses the member in `/api/workspaces/{slug}/members/{email}`.
+pub struct WorkspaceUser {
+    /// Addresses the User in `/api/workspaces/{slug}/members/{email}`.
     pub email: String,
     pub role: Role,
 }
@@ -138,7 +139,7 @@ pub struct AddMember {
 
 /// Body of `PATCH /api/workspaces/{slug}/members/{email}`: promotes or demotes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateMember {
+pub struct UpdateWorkspaceUser {
     pub role: Role,
 }
 
@@ -341,7 +342,7 @@ pub enum ErrorKind {
     CodeReserved,
     /// The Code is taken on its Domain, possibly by a Deleted Link.
     CodeTaken,
-    /// No User has this email or id; on a member route, none in this Workspace.
+    /// No User has this email or id; on a `/members` route, none in this Workspace.
     UserNotFound,
     /// Adding a User who is already in the Workspace.
     AlreadyMember,
