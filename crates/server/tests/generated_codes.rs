@@ -69,4 +69,5 @@ async fn gives_up_after_five_colliding_codes() {
 
     assert_eq!(res.status, StatusCode::INTERNAL_SERVER_ERROR);
     assert!(res.json()["error"].is_string());
+    assert_eq!(res.json()["kind"], "internal", "{}", res.text);
 }

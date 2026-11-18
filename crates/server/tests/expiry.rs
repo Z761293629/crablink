@@ -46,5 +46,6 @@ async fn malformed_expiry_is_rejected() {
             .await;
         assert_eq!(res.status, StatusCode::BAD_REQUEST, "{bad}");
         assert!(res.json()["error"].is_string(), "{}", res.text);
+        assert_eq!(res.json()["kind"], "bad_request", "{}", res.text);
     }
 }

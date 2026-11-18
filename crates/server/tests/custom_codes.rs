@@ -41,6 +41,7 @@ async fn malformed_custom_codes_are_rejected() {
             .await;
         assert_eq!(res.status, StatusCode::BAD_REQUEST, "code {code:?}");
         assert!(res.json()["error"].is_string(), "{}", res.text);
+        assert_eq!(res.json()["kind"], "invalid_code", "{}", res.text);
     }
     // The boundaries are accepted.
     app.create(json!({ "target": "https://example.com/", "code": "a_-" }))
@@ -62,6 +63,7 @@ async fn reserved_words_are_rejected_in_any_casing() {
             .await;
         assert_eq!(res.status, StatusCode::BAD_REQUEST, "code {code:?}");
         assert!(res.json()["error"].is_string(), "{}", res.text);
+        assert_eq!(res.json()["kind"], "code_reserved", "{}", res.text);
     }
     assert_eq!(app.get("/health").await.status, StatusCode::OK);
 }
@@ -101,6 +103,7 @@ async fn reusing_a_taken_custom_code_conflicts_and_keeps_the_original() {
 
     assert_eq!(res.status, StatusCode::CONFLICT);
     assert!(res.json()["error"].is_string(), "{}", res.text);
+    assert_eq!(res.json()["kind"], "code_taken", "{}", res.text);
     assert_eq!(
         app.get("/taken").await.header("location"),
         "https://example.com/first"

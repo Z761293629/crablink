@@ -32,6 +32,7 @@ async fn viewing_an_unknown_code_is_not_found() {
 
     assert_eq!(res.status, StatusCode::NOT_FOUND);
     assert!(res.json()["error"].is_string());
+    assert_eq!(res.json()["kind"], "link_not_found", "{}", res.text);
 }
 
 #[tokio::test]
@@ -44,5 +45,6 @@ async fn viewing_a_link_needs_a_token() {
             .api_with_token("GET", "/api/links/View001", None, token)
             .await;
         assert_eq!(res.status, StatusCode::UNAUTHORIZED, "token {token:?}");
+        assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);
     }
 }

@@ -10,6 +10,7 @@ async fn assert_rejected(app: &TestApp, target: &str) {
         .await;
     assert_eq!(res.status, StatusCode::BAD_REQUEST, "{target}");
     assert!(res.json()["error"].is_string(), "{target}: {}", res.text);
+    assert_eq!(res.json()["kind"], "invalid_target", "{}", res.text);
 }
 
 #[tokio::test]

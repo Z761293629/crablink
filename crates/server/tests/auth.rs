@@ -15,6 +15,7 @@ async fn api_rejects_missing_or_wrong_token() {
             .await;
         assert_eq!(res.status, StatusCode::UNAUTHORIZED, "token {token:?}");
         assert!(res.json()["error"].is_string());
+        assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);
     }
 }
 
@@ -33,7 +34,19 @@ async fn unknown_api_paths_and_methods_also_need_a_token() {
         let res = app.api_with_token(method, path, None, None).await;
         assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{method} {path}");
         assert!(res.json()["error"].is_string(), "{method} {path}");
+        assert_eq!(res.json()["kind"], "unauthorized", "{}", res.text);
     }
+}
+
+#[tokio::test]
+async fn unknown_api_paths_with_a_token_are_not_found() {
+    let app = app().await;
+
+    let res = app.api("GET", "/api/nope", None).await;
+
+    assert_eq!(res.status, StatusCode::NOT_FOUND);
+    assert_eq!(res.json()["kind"], "not_found", "{}", res.text);
+    assert_eq!(res.json()["error"], "not found");
 }
 
 #[tokio::test]
