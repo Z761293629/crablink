@@ -29,8 +29,34 @@ async fn invite(app: &TestApp, admin: &str, body: Value) -> String {
 
 async fn accept(app: &TestApp, token: &str, password: &str) -> Res {
     let body = json!({ "token": token, "password": password });
-    app.request("POST", "/api/invites/accept", Some(body), &[])
-        .await
+    app.request(
+        "POST",
+        "/api/invites/accept",
+        Some(body),
+        &[("origin", ORIGIN)],
+    )
+    .await
+}
+
+#[tokio::test]
+async fn accepting_an_invite_needs_this_hosts_origin() {
+    let app = app().await;
+    let admin = instance_admin(&app).await;
+    let token = invite(&app, &admin, json!({ "email": "ada@example.com" })).await;
+    let body = json!({ "token": token, "password": "ada's password" });
+
+    for origin in [Some("https://evil.example"), None] {
+        let headers: Vec<_> = origin.map(|o| ("origin", o)).into_iter().collect();
+        let res = app
+            .request("POST", "/api/invites/accept", Some(body.clone()), &headers)
+            .await;
+        assert_eq!(res.status, StatusCode::FORBIDDEN, "{origin:?}");
+        assert_eq!(res.json()["kind"], "origin_mismatch", "{}", res.text);
+    }
+
+    // The invite still works from this host.
+    let res = accept(&app, &token, "ada's password").await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.text);
 }
 
 #[tokio::test]

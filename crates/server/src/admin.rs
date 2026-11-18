@@ -14,7 +14,7 @@ use crablink_api::{
 
 use crate::AppState;
 use crate::error::ApiError;
-use crate::users::{self, Session};
+use crate::users::{self, SameOrigin, Session};
 use crate::workspaces::Caller;
 
 const INVITE_TTL: TimeDelta = TimeDelta::days(7);
@@ -77,9 +77,11 @@ pub(crate) async fn create_invite(
 }
 
 /// `POST /api/invites/accept`: creates the invited User with the chosen password,
-/// adds them to the invite's Workspace as a Member, and signs them in.
+/// adds them to the invite's Workspace as a Member, and signs them in. Needs this
+/// host's `Origin`, like signing in.
 pub(crate) async fn accept_invite(
     State(s): State<AppState>,
+    _: SameOrigin,
     body: Result<Json<AcceptInvite>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let Json(req) = body?;
