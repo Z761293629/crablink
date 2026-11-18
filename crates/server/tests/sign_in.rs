@@ -4,6 +4,7 @@ use axum::http::StatusCode;
 use chrono::TimeDelta;
 use common::*;
 use crablink_server::ApiError;
+use serde_json::json;
 
 #[tokio::test]
 async fn a_signed_in_user_sees_themselves_at_me() {
@@ -141,6 +142,23 @@ async fn a_cookie_request_that_changes_state_needs_this_hosts_origin() {
         .request("GET", "/api/me", None, &[("cookie", cookie.as_str())])
         .await;
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+}
+
+#[tokio::test]
+async fn signing_in_needs_this_hosts_origin() {
+    let app = app().await;
+    app.create_user("ada@example.com").await;
+    let body = json!({ "email": "ada@example.com", "password": PASSWORD });
+
+    for origin in [Some("https://evil.example"), None] {
+        let headers: Vec<_> = origin.map(|o| ("origin", o)).into_iter().collect();
+        let res = app
+            .request("POST", "/api/session", Some(body.clone()), &headers)
+            .await;
+        assert_eq!(res.status, StatusCode::FORBIDDEN, "{origin:?}");
+        assert_eq!(res.json()["kind"], "origin_mismatch", "{}", res.text);
+        assert_eq!(res.header("set-cookie"), "", "{origin:?}");
+    }
 }
 
 #[tokio::test]

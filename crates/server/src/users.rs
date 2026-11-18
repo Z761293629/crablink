@@ -178,9 +178,11 @@ fn session_cookie(token: &str, max_age: i64) -> String {
 }
 
 /// `POST /api/session`: signs in, setting the session cookie; returns the User.
-/// The first sign-in also creates the User's personal Workspace.
+/// The first sign-in also creates the User's personal Workspace. Needs this host's
+/// `Origin`, so another site can't sign a browser in as someone else.
 pub(crate) async fn sign_in(
     State(s): State<AppState>,
+    _: SameOrigin,
     body: Result<Json<SignIn>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let Json(req) = body?;
@@ -339,6 +341,20 @@ impl FromRequestParts<AppState> for Session {
                 instance_admin,
             },
         })
+    }
+}
+
+/// A request whose `Origin` header names the host it was sent to: what a request
+/// that signs someone in, or changes state with a session, needs against CSRF.
+pub(crate) struct SameOrigin;
+
+impl<S: Sync> FromRequestParts<S> for SameOrigin {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, ApiError> {
+        same_origin(parts)
+            .then_some(SameOrigin)
+            .ok_or(ApiError::OriginMismatch)
     }
 }
 
