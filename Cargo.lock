@@ -506,7 +506,7 @@ dependencies = [
 
 [[package]]
 name = "crablink-api"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "serde",
@@ -515,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "crablink-cli"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -539,7 +539,7 @@ dependencies = [
 
 [[package]]
 name = "crablink-server"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "axum",
  "chrono",
