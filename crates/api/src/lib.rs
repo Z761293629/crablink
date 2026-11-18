@@ -57,7 +57,9 @@ impl Link {
 /// Body of every management API error response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorBody {
-    /// Stable and machine-readable: branch on this, not on `error`.
+    /// Stable and machine-readable: branch on this, not on `error`. `Unknown` when
+    /// absent, as from a 0.2 server.
+    #[serde(default)]
     pub kind: ErrorKind,
     /// English message for people.
     pub error: String,
@@ -65,7 +67,7 @@ pub struct ErrorBody {
 
 /// What went wrong, as `ErrorBody::kind`. Named `kind`, never `code`, so it
 /// can't be read as a Link's Code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
     /// Missing or wrong token.
@@ -86,7 +88,9 @@ pub enum ErrorKind {
     /// The Code is taken on its Domain, possibly by a Deleted Link.
     CodeTaken,
     Internal,
-    /// A kind this build doesn't know, sent by a newer server. Never sent.
+    /// A kind this build doesn't know, sent by a newer server, or none at all, from a
+    /// 0.2 server. Never sent.
+    #[default]
     #[serde(other)]
     Unknown,
 }
@@ -204,5 +208,12 @@ mod tests {
                 .unwrap();
         assert_eq!(body.kind, ErrorKind::Unknown);
         assert_eq!(body.error, "pending");
+    }
+
+    #[test]
+    fn a_body_from_a_0_2_server_without_a_kind_still_yields_the_message() {
+        let body: ErrorBody = serde_json::from_value(json!({ "error": "link not found" })).unwrap();
+        assert_eq!(body.kind, ErrorKind::Unknown);
+        assert_eq!(body.error, "link not found");
     }
 }
