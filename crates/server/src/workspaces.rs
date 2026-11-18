@@ -29,7 +29,9 @@ impl FromRequestParts<AppState> for Caller {
             .headers
             .get(header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "));
+            .and_then(|v| v.split_once(' '))
+            .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
+            .map(|(_, secret)| secret);
         match bearer {
             Some(secret) => crate::api_keys::workspace_of(s, secret.trim())
                 .await?

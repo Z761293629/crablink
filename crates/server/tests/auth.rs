@@ -57,6 +57,20 @@ async fn the_workspaces_api_key_manages_its_links() {
 }
 
 #[tokio::test]
+async fn the_bearer_scheme_is_matched_ignoring_case() {
+    let app = app().await;
+    let path = format!("/api/workspaces/{}/links", app.owner.slug);
+
+    for scheme in ["bearer", "BEARER"] {
+        let auth = format!("{scheme} {}", app.owner.key);
+        let res = app
+            .request("GET", &path, None, &[("authorization", &auth)])
+            .await;
+        assert_eq!(res.status, StatusCode::OK, "{scheme}: {}", res.text);
+    }
+}
+
+#[tokio::test]
 async fn another_workspaces_session_or_api_key_gets_403() {
     let app = app().await;
     app.create(json!({ "target": "https://example.com", "code": "mine" }))
