@@ -34,25 +34,27 @@ pub async fn create_user(
     password: &str,
     instance_admin: bool,
 ) -> Result<(), ApiError> {
-    insert_user(&mut *pool.acquire().await?, email, password, instance_admin)
+    valid_email(email)?;
+    let hash = hash_password(password).await?;
+    insert_user(&mut *pool.acquire().await?, email, &hash, instance_admin)
         .await
         .map(drop)
 }
 
-/// `create_user` on `conn`; returns the new User's id.
+/// Inserts a User whose password hashes to `password_hash` (from `hash_password`,
+/// done beforehand so no lock is held meanwhile); returns their id.
 pub(crate) async fn insert_user(
     conn: &mut PgConnection,
     email: &str,
-    password: &str,
+    password_hash: &str,
     instance_admin: bool,
 ) -> Result<i64, ApiError> {
     let email = valid_email(email)?;
-    let hash = hash_password(password).await?;
     let res = sqlx::query_scalar(
         "INSERT INTO users (email, password_hash, instance_admin) VALUES ($1, $2, $3) RETURNING id",
     )
     .bind(email)
-    .bind(hash)
+    .bind(password_hash)
     .bind(instance_admin)
     .fetch_one(conn)
     .await;
@@ -157,15 +159,17 @@ pub(crate) async fn hash_password(password: &str) -> Result<String, ApiError> {
     .map_err(internal)
 }
 
-/// Whether `password` matches `hash`. With no `hash` (no such User) it checks a
-/// dummy one, so a wrong email takes as long as a wrong password.
+/// What `verify_password` checks when there is no User, so a wrong email takes as
+/// long as a wrong password. `app` forces it, so no sign-in pays for hashing it.
+pub(crate) static DUMMY: LazyLock<String> = LazyLock::new(|| {
+    Argon2::default()
+        .hash_password(b"not anyone's password")
+        .expect("hashing a constant password with default argon2 parameters")
+        .to_string()
+});
+
+/// Whether `password` matches `hash`, or `DUMMY` with no `hash` (no such User).
 async fn verify_password(password: String, hash: Option<String>) -> Result<bool, ApiError> {
-    static DUMMY: LazyLock<String> = LazyLock::new(|| {
-        Argon2::default()
-            .hash_password(b"not anyone's password")
-            .unwrap()
-            .to_string()
-    });
     tokio::task::spawn_blocking(move || {
         let hash = hash.as_deref().unwrap_or(&DUMMY);
         PasswordHash::new(hash).is_ok_and(|h| {

@@ -67,6 +67,7 @@ pub async fn app(
         (None, _) => return Err(format!("{base_url} has no host").into()),
     };
     let domain_id = db::default_domain(&pool, &host).await?;
+    std::sync::LazyLock::force(&users::DUMMY);
     let state = AppState {
         pool,
         codes,

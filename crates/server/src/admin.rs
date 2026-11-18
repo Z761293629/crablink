@@ -93,6 +93,8 @@ pub(crate) async fn accept_invite(
     body: Result<Json<AcceptInvite>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let Json(req) = body?;
+    // Hashed before taking the invite's row lock, which it would hold up otherwise.
+    let hash = users::hash_password(&req.password).await?;
     let mut tx = s.pool.begin().await?;
     let now = (s.clock)();
     // FOR UPDATE: a second acceptance of the same invite waits, then sees it used.
@@ -116,7 +118,7 @@ pub(crate) async fn accept_invite(
     if expired {
         return Err(ApiError::InviteExpired);
     }
-    let id = users::insert_user(&mut tx, &email, &req.password, false).await?;
+    let id = users::insert_user(&mut tx, &email, &hash, false).await?;
     if let Some(workspace_id) = workspace_id {
         sqlx::query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, $3)")
             .bind(id)
