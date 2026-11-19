@@ -43,11 +43,41 @@
   },
   "nav": {
     "links": "链接",
+    "clicks": "点击",
     "domains": "域名",
     "admin": "管理",
     "switcher": "工作区",
     "workspace": "管理工作区",
     "account": "账户"
+  },
+  "clicks": {
+    "clicks": "点击",
+    "workspaceTitle": "工作区点击",
+    "linkTitle": "{{url}} 的点击",
+    "range": "时间范围",
+    "ranges": {
+      "24h": "最近 24 小时",
+      "7d": "最近 7 天",
+      "30d": "最近 30 天",
+      "90d": "最近 90 天"
+    },
+    "overTime": "点击趋势",
+    "total_one": "{{count}} 次点击",
+    "total_other": "{{count}} 次点击",
+    "max": "峰值 {{value}}",
+    "topLinks": "热门链接",
+    "none": "此时间范围内没有点击。",
+    "referrers": "来源",
+    "countries": "国家或地区",
+    "devices": "设备",
+    "browsers": "浏览器",
+    "direct": "直接访问或未知",
+    "unknown": "未知",
+    "device": {
+      "desktop": "桌面",
+      "mobile": "手机",
+      "tablet": "平板"
+    }
   },
   "invite": {
     "title": "接受邀请",

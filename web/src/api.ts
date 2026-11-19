@@ -62,6 +62,31 @@ export interface ManagedDomain {
   workspace: string;
 }
 
+/** The Clicks in the bucket starting at `time`. */
+export interface ClickBucket {
+  time: string;
+  count: number;
+}
+
+/** The Clicks sharing one `value` (null where none or unknown). */
+export interface ClickBreakdown {
+  value: string | null;
+  count: number;
+}
+
+export interface ClickStats {
+  series: ClickBucket[];
+  referrers: ClickBreakdown[];
+  countries: ClickBreakdown[];
+  devices: ClickBreakdown[];
+  browsers: ClickBreakdown[];
+}
+
+export interface WorkspaceClicks {
+  series: ClickBucket[];
+  top_links: { code: string; domain: string; short_url: string; count: number }[];
+}
+
 export interface ManagedUser {
   id: number;
   email: string;

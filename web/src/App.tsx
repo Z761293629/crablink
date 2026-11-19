@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AcceptInvite, ChangePassword } from './Account';
 import { Admin } from './Admin';
 import { api, type Membership, type User } from './api';
+import { Clicks } from './Clicks';
 import { Domains } from './Domains';
 import { Links } from './Links';
 import { errorMessage, languages, setLanguage } from './i18n';
@@ -12,7 +13,7 @@ import { ManageWorkspace } from './Workspace';
 const page = location.pathname.replace(/^\/app\/?/, '').replace(/\/$/, '');
 
 /** The pages about one Workspace, the one the switcher picks. */
-const workspacePages = ['', 'domains', 'workspace'];
+const workspacePages = ['', 'clicks', 'domains', 'workspace'];
 
 // The switcher's pick, kept across the reload a page link makes.
 const pickKey = 'crablink.workspace';
@@ -80,6 +81,7 @@ export function App() {
   else if (page === 'workspace')
     main = <ManageWorkspace key={slug} workspace={workspace} email={user.email} onChanged={refresh} />;
   else if (!workspace) main = <p>{t('workspace.none')}</p>;
+  else if (page === 'clicks') main = <Clicks key={slug} slug={workspace.slug} />;
   else if (page === 'domains') main = <Domains key={slug} workspace={workspace} />;
   else
     main = (
@@ -116,6 +118,7 @@ export function App() {
             </span>
           )}
           <a href="/app/">{t('nav.links')}</a>
+          <a href="/app/clicks">{t('nav.clicks')}</a>
           <a href="/app/domains">{t('nav.domains')}</a>
           <a href="/app/workspace">{t('nav.workspace')}</a>
           <a href="/app/account">{t('nav.account')}</a>

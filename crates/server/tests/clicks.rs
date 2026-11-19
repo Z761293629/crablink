@@ -229,3 +229,64 @@ async fn a_click_stores_neither_the_ip_nor_the_user_agent() {
         }
     }
 }
+
+#[tokio::test]
+async fn workspace_clicks_total_its_links_and_rank_the_top_links() {
+    let app = app().await;
+    for code in ["one", "two", "three"] {
+        app.create(json!({ "code": code, "target": "https://example.com" }))
+            .await;
+    }
+    let other = app.account("other@example.com").await;
+    let path = format!("/api/workspaces/{}/links", other.slug);
+    let body = json!({ "code": "theirs", "target": "https://example.com" });
+    let res = app
+        .bearer("POST", &path, Some(body), Some(&other.key))
+        .await;
+    assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
+    let visits = [
+        ("2026-03-01T10:00:00Z", "/one"),
+        ("2026-03-01T11:00:00Z", "/two"),
+        ("2026-03-01T12:00:00Z", "/two"),
+        ("2026-03-02T09:00:00Z", "/two"),
+        ("2026-03-02T09:30:00Z", "/three"),
+        ("2026-03-02T10:00:00Z", "/three"),
+        ("2026-03-02T10:00:00Z", "/theirs"),
+        // After the range below.
+        ("2026-03-03T00:00:00Z", "/one"),
+        ("2026-03-03T00:00:00Z", "/one"),
+    ];
+    for (at, path) in visits {
+        app.set_now(at);
+        let res = app.visit(path, &[("user-agent", BROWSER_UA)]).await;
+        assert_eq!(res.status, StatusCode::FOUND, "{path}");
+    }
+
+    let res = app
+        .api(
+            "GET",
+            "/clicks?from=2026-03-01T00:00:00Z&to=2026-03-03T00:00:00Z",
+            None,
+        )
+        .await;
+
+    assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+    let link = |code: &str, count: i64| {
+        json!({
+            "code": code,
+            "domain": HOST,
+            "short_url": format!("{BASE_URL}/{code}"),
+            "count": count,
+        })
+    };
+    assert_eq!(
+        res.json(),
+        json!({
+            "series": [
+                { "time": "2026-03-01T00:00:00Z", "count": 3 },
+                { "time": "2026-03-02T00:00:00Z", "count": 3 },
+            ],
+            "top_links": [link("two", 3), link("three", 2), link("one", 1)],
+        })
+    );
+}
