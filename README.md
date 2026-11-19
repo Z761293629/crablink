@@ -5,11 +5,11 @@
   </picture>
 </p>
 
-<p align="center">用 Rust 写的自托管短链服务：一个 server，一个 CLI，一个 Postgres。</p>
+<p align="center">用 Rust 写的自托管短链服务：一个 server（内置 Web UI），一个 CLI，一个 Postgres。</p>
 
 ---
 
-> **状态：server 与 CLI 已实现，0.4 起支持多用户与 Workspace，Web UI 尚未上线。** 规格见 [#1](https://github.com/Z761293629/crablink/issues/1) 与 [#47](https://github.com/Z761293629/crablink/issues/47)，打版本 tag 后 server 镜像自动发布到 GHCR，CLI 预编译二进制附在 GitHub Release 上。
+> **状态：server、CLI 与 Web UI 已实现，0.4 起支持多用户与 Workspace。** 规格见 [#1](https://github.com/Z761293629/crablink/issues/1) 与 [#47](https://github.com/Z761293629/crablink/issues/47)，打版本 tag 后 server 镜像自动发布到 GHCR，CLI 预编译二进制附在 GitHub Release 上。
 
 ## 特性
 
@@ -17,7 +17,11 @@
 - **Code 永不复用**：删除的 Link 保留墓碑，旧二维码不会被指向别处（[ADR-0002](docs/adr/0002-codes-are-never-reused.md)）。
 - **随机 Code 或 Custom Code**：默认 7 位随机 base62，不可枚举；也可以自定义 `/rust-meetup`。
 - **可选 Expiry**：到期返回 410；把 Expiry 改回未来即可恢复。
-- **Click Count**：每个 Link 一个总点击数。
+- **Click 与图表**：每次真人跳转记一个 Click（不存 IP），按小时 / 天看趋势，按 Referrer、国家、设备、浏览器看分布，也能看整个 Workspace 的 Click 和排名靠前的 Link。
+- **Tag 与搜索**：给 Link 打 Tag，按 Tag 过滤，按 Code 或 Target 搜索。
+- **自定义 Domain**：Workspace 可以用自己的 Domain，如 `go.example.com`，Instance Admin 批准后生效。
+- **CSV 导入导出**：导出 Workspace 的全部 Link，或从 CSV 批量创建。
+- **Web UI**：同一个 server 在 `/app` 提供中英文界面，适配手机和深色模式，覆盖 CLI 能做的一切，外加 Workspace、成员、Domain、API Key 管理和 Click 图表。
 - **多用户与 Workspace**：Link 属于 Workspace，成员分 Owner / Member；Instance Admin 邀请 User；程序用 Workspace 的 API Key（[ADR-0005](docs/adr/0005-workspaces-own-links-on-domains.md)）。
 - **自托管**：`docker compose up` 起 server + Postgres（[ADR-0007](docs/adr/0007-postgres-only.md)）。
 
@@ -74,12 +78,24 @@ docker compose exec crablink crablink-server admin create --email you@example.co
 
 `POSTGRES_PASSWORD` 只在 Postgres 卷第一次初始化时写入，之后改 `.env` 不会改掉库里的密码。升级时改 `compose.yaml` 里的镜像版本号，再 `docker compose pull && docker compose up -d`，schema 在启动时自动升级。备份见下方「备份与恢复」，命令在同一目录里执行；把备份文件复制到这台主机以外。
 
+### Web UI
+
+Web UI 由 server 自己在 `/app` 提供（如 `https://crabl.ink/app`），与 API 同源，不用另外部署；用 email 和密码登录，session cookie 30 天有效。界面有英文和简体中文，默认跟随浏览器语言，可以在右上角切换并记在本浏览器里；跟随系统的浅色 / 深色主题，手机上也能用。
+
+- **Link**：创建（Generated 或 Custom Code、Domain、Expiry、Tag）、改 Target / Expiry / Tag、确认后删除、一键复制 Short URL、下载 SVG 或 PNG 二维码；按 Tag 过滤，按 Code 或 Target 搜索，分页加载。
+- **CSV**：在 Link 页导出 `links.csv`，或选一个同格式的文件导入，逐行显示建好的 Short URL 或跳过的原因。
+- **Click**：每个 Link 的 Click 图表（最近 24 小时按小时，7 / 30 / 90 天按天）和 Referrer、国家、设备、浏览器分布；Workspace Clicks 页看整个 Workspace 的趋势和排名前 10 的 Link。已删除 Link 的 Click 仍计入 Workspace 的总数。
+- **Workspace**：切换、新建、改名、删除 Workspace；Owner 管理成员和 API Key（`secret` 只显示一次），添加自定义 Domain 并看到它的审批状态和 DNS 指向。
+- **实例管理**：Instance Admin 生成邀请链接、批准或拒绝自定义 Domain、停用 / 启用 User、设为或撤销 Instance Admin、重置密码；最后一个启用的 Instance Admin 不能被停用或撤销。
+
+server 构建时会把 `web/dist` 打进二进制（Docker 镜像和 Release 已包含）；从源码构建前先在 `web/` 里 `pnpm install && pnpm build`，没构建的话 server 照样能编译，`/app` 只显示一句说明。
+
 ### 自定义 Domain
 
-Workspace 可以用自己的 Domain，比如 `go.example.com`。Owner 添加后它处于 pending，Instance Admin 批准后才会跳转、才能在上面建 Link、Caddy 才会为它申请证书；被拒绝或未批准的 Domain 一律 404。
+Workspace 可以用自己的 Domain，比如 `go.example.com`。Owner 在 Web UI 的 Domain 页或用 API 添加后它处于 pending，Instance Admin 批准后才会跳转、才能在上面建 Link、Caddy 才会为它申请证书；被拒绝或未批准的 Domain 一律 404。
 
 1. Owner 把 `go.example.com` 的 CNAME 指向 Default Domain（或 A / AAAA 指向这台主机），然后添加：`POST /api/workspaces/{ws}/domains`，`{ "domain": "go.example.com" }`。
-2. Instance Admin 在 `GET /api/admin/domains` 里看到它，`PATCH /api/admin/domains/go.example.com` 设 `{ "status": "approved" }`（或 `rejected`）。
+2. Instance Admin 在 Web UI 的实例管理页批准，或在 `GET /api/admin/domains` 里看到它，`PATCH /api/admin/domains/go.example.com` 设 `{ "status": "approved" }`（或 `rejected`）。
 3. 在上面建 Link：`crablink create https://example.com/sale --code sale --domain go.example.com`。同一个 Code 可以同时存在于不同 Domain。
 
 `deploy/Caddyfile` 用 Caddy 的 on-demand TLS：某个 host 第一次有 HTTPS 请求时，Caddy 先问 crablink 的 `GET /internal/domain-allowed?domain=<host>`，只有 Default Domain 和已批准的 Domain 得到 200，其余 404，所以别人把任意域名指过来也无法让这台主机去申请证书。crablink 自己从不处理 TLS。
@@ -88,7 +104,7 @@ Owner 移除 Domain 后，它上面的 Link 变为已删除；之后无论哪个
 
 ### 邀请与管理 User
 
-没有公开注册：Instance Admin 登录后生成邀请链接，发给对方。`workspace` 可省略，给了就让对方以 Member 加入这个 Workspace：
+没有公开注册：Instance Admin 在 Web UI 的实例管理页生成邀请链接，发给对方；对方打开链接、设好密码就注册并登录了。也可以用 API 生成，`workspace`（Workspace slug）可省略，给了就让对方以 Member 加入这个 Workspace：
 
 ```bash
 curl -c jar -H 'Origin: https://crabl.ink' -H 'Content-Type: application/json' \
@@ -98,7 +114,7 @@ curl -b jar -H 'Origin: https://crabl.ink' -H 'Content-Type: application/json' \
 # → {"url":"https://crabl.ink/app/invite#<token>","expires_at":"…"}
 ```
 
-邀请 7 天有效、只能用一次。Web UI 上线前，对方取 `#` 后面的 token，自己设密码完成注册（同时登录）：
+邀请 7 天有效、只能用一次。不用浏览器的话，取 `#` 后面的 token，自己设密码完成注册（同时登录）：
 
 ```bash
 curl -c jar -H 'Content-Type: application/json' \
@@ -153,7 +169,7 @@ crablink --version
 
 macOS 上用 `curl` 下载不会带隔离属性，因此不会触发 Gatekeeper 拦截；用浏览器下载的话需先 `xattr -d com.apple.quarantine crablink`。也可以从源码安装：`cargo install --path crates/cli`。
 
-CLI 用 Workspace 的 API Key 登录。每个 User 首次登录时会得到一个个人 Workspace（自己是 Owner，slug 取自 email `@` 前的部分）；在 Web UI 上线前，用 curl 登录并建一个 API Key：
+CLI 用 Workspace 的 API Key 登录。每个 User 首次登录时会得到一个个人 Workspace（自己是 Owner，Workspace slug 取自 email `@` 前的部分）。在 Web UI 的 Manage Workspace 页建一个 API Key，或者用 curl：
 
 ```bash
 curl -c jar -H 'Origin: https://crabl.ink' -H 'Content-Type: application/json' \
@@ -168,8 +184,10 @@ crablink login --server https://crabl.ink   # 提示输入 API Key，向服务�
 crablink create https://example.com/a/very/long/path
 crablink create https://rustconf.com --code rust-meetup --expires 7d
 crablink create https://example.com/sale --domain go.example.com   # 建在 Workspace 已批准的自定义 Domain 上
+crablink create https://example.com/spring --tag promo --tag spring  # --tag 可重复
 crablink rm sale --domain go.example.com     # get / edit / rm / qr 同样用 --domain 指定 Domain，默认 Default Domain
 crablink ls                                  # 全部 Link：Short URL、Click Count、Expiry、Target
+crablink ls --tag promo --search spring      # 只列带这个 Tag、Code 或 Target 含这段文字（不区分大小写）的 Link
 crablink get rust-meetup
 crablink edit rust-meetup --target https://rustconf.com/2027
 crablink edit rust-meetup --no-expires       # 或 --expires 30d / RFC 3339，二者互斥
@@ -187,23 +205,27 @@ crablink qr rust-meetup -o poster.png        # 存为文件，格式看扩展名
 
 ### HTTP API
 
-Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自定义 Domain 上；Code 在其 Domain 内唯一，删除后也不再复用。`{ws}` 是 Workspace 的 slug，`/api/workspaces/{ws}/links…` 接受该 Workspace 成员的 session cookie 或它的 API Key，其他凭据一律 403（`forbidden`）。单个 Link 用 Code 加 `?domain=<host>` 定位，省略 `domain` 即 Default Domain。
+Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自定义 Domain 上；Code 在其 Domain 内唯一，删除后也不再复用。`{ws}` 是 Workspace 的 slug，`/api/workspaces/{ws}/links…` 接受该 Workspace 成员的 session cookie 或它的 API Key，其他凭据一律 403（`forbidden`）。单个 Link 用 Code 加 `?domain=<Domain>` 定位，省略 `domain` 即 Default Domain。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/{code}` | 按 `Host` 找 Domain 再 302 跳转；未知或未批准的 Domain、不存在的 Code 404；已删除或已过期 410 |
 | `GET` | `/internal/domain-allowed?domain=` | 无需凭据，供 Caddy 询问：Default Domain 和已批准的 Domain 200，其余 404 |
-| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain? }`；`domain` 不可用 400（`domain_not_approved`）；返回的 Link 带 `domain` 和 `short_url` |
-| `GET` | `/api/workspaces/{ws}/links` | 列表（所有 Domain），新的在前，游标分页 |
+| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain?, tags? }`；`domain` 不可用 400（`domain_not_approved`）；返回的 Link 带 `domain`、`short_url` 和 `tags` |
+| `GET` | `/api/workspaces/{ws}/links?tag=&q=` | 列表（所有 Domain），新的在前，游标分页；`tag` 按 Tag 过滤，`q` 搜 Code 或 Target（不区分大小写） |
+| `GET` | `/api/workspaces/{ws}/links.csv` | 导出 CSV：Code、Domain、Target、Expiry、Tags（逗号分隔）、Click Count |
+| `POST` | `/api/workspaces/{ws}/links.csv` | 导入同格式的 CSV，逐行建 Link（不改已有 Link，空 Code 用 Generated Code，忽略 Click Count）；返回每行的 `short_url` 或 `skipped: { kind, error }` |
+| `GET` | `/api/workspaces/{ws}/tags` | Workspace 里有 Link 在用的 Tag |
 | `GET` | `/api/workspaces/{ws}/links/{code}?domain=` | 查看单个 Link |
-| `PATCH` | `/api/workspaces/{ws}/links/{code}?domain=` | 修改 `target` / `expires_at` |
+| `PATCH` | `/api/workspaces/{ws}/links/{code}?domain=` | 修改 `target` / `expires_at` / `tags`（整体替换） |
 | `DELETE` | `/api/workspaces/{ws}/links/{code}?domain=` | 删除（不可恢复） |
 | `GET` | `/api/workspaces/{ws}/links/{code}/qr?format=svg\|png&domain=` | Short URL 的 QR 码，默认 SVG；已过期 410（`link_expired`） |
 | `GET` | `/api/workspaces/{ws}/links/{code}/clicks?from=&to=&interval=hour\|day&domain=` | `[from, to)` 内的 Click：`series` 按 UTC 小时 / 天分桶（默认天，空桶也列出，最多 1000 个），`referrers` / `countries` / `devices` / `browsers` 为 `[{ value, count }]`，多的在前，未知为 `null` |
-| `GET` | `/api/workspaces/{ws}/domains` | 列出 Default Domain 和本 Workspace 的自定义 Domain：`[{ host, status, default }]`，`status` 为 `pending` / `approved` / `rejected` |
-| `POST` | `/api/workspaces/{ws}/domains` | Owner 添加自定义 Domain：`{ host }`，状态 pending；不是合法 host 400（`invalid_domain`），是 Default Domain 或别的 Workspace 的 409（`domain_taken`） |
+| `GET` | `/api/workspaces/{ws}/clicks?from=&to=&interval=hour\|day` | 整个 Workspace 的 Click（含已删除 Link 的）按桶统计，以及区间内 Click 最多的 10 个 Link：`top_links: [{ code, domain, short_url, count }]` |
+| `GET` | `/api/workspaces/{ws}/domains` | 列出 Default Domain 和本 Workspace 的自定义 Domain：`[{ domain, status, default }]`，`status` 为 `pending` / `approved` / `rejected` |
+| `POST` | `/api/workspaces/{ws}/domains` | Owner 添加自定义 Domain：`{ domain }`，状态 pending；不是合法 host 名 400（`invalid_domain`），是 Default Domain 或别的 Workspace 的 409（`domain_taken`） |
 | `DELETE` | `/api/workspaces/{ws}/domains/{domain}` | Owner 移除 Domain：其 Link 变为已删除，Code 仍被占用；不属于本 Workspace 404（`domain_not_found`） |
-| `GET` | `/api/admin/domains` | Instance Admin 列出各 Workspace 的自定义 Domain：`[{ host, status, workspace }]` |
+| `GET` | `/api/admin/domains` | Instance Admin 列出各 Workspace 的自定义 Domain：`[{ domain, status, workspace_slug }]` |
 | `PATCH` | `/api/admin/domains/{domain}` | Instance Admin 批准或拒绝：`{ status }` |
 | `POST` | `/api/workspaces/{ws}/api-keys` | Owner 建 API Key：`{ name }`；`secret` 只在这次返回，服务器只存哈希 |
 | `GET` | `/api/workspaces/{ws}/api-keys` | Owner 列出未吊销的 API Key：`name`、`prefix`、`created_at`、`last_used_at` |
@@ -222,7 +244,7 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `POST` | `/api/admin/invites` | Instance Admin 邀请：`{ email, workspace? }`，返回一次性 `url`（7 天有效）；email 已注册 409（`email_taken`） |
 | `POST` | `/api/invites/accept` | 无需凭据：`{ token, password }` 建 User 并登录；`invite_not_found` / `invite_used` / `invite_expired` |
 | `GET` | `/api/admin/users` | Instance Admin 列出 User：`[{ id, email, instance_admin, disabled }]` |
-| `PATCH` | `/api/admin/users/{id}` | Instance Admin 改 `disabled` / `instance_admin`，不能对自己停用或撤销；停用即结束其 session |
+| `PATCH` | `/api/admin/users/{id}` | Instance Admin 改 `disabled` / `instance_admin`；会让实例没有启用的 Instance Admin 时 409（`last_instance_admin`）；停用即结束其 session |
 | `POST` | `/api/admin/users/{id}/password` | Instance Admin 重置为随机密码：`{ password }` 只返回这一次，并结束其 session |
 
 Member 只能管理 Link；成员、API Key 和 Workspace 设置只归 Owner，Member 或 API Key 去做得到 403（`forbidden`）。`/api/admin` 只接受 Instance Admin 的 session，其他凭据 403。最后一个 Owner 不能退出、被移除或降级，得到 409（`last_owner`）。
@@ -238,6 +260,7 @@ Member 只能管理 Link；成员、API Key 和 Workspace 设置只归 Owner，M
 - [x] **Homebrew tap**：发布稳定版时自动更新 tap 里的 formula，`brew upgrade crablink` 即可升级
 - [x] **0.3**：API 错误带 `kind`、CLI `--json`、QR 码
 - [x] **0.4 多用户地基**：Postgres、User 登录、Workspace 与 API Key、成员与角色、邀请与 User 管理（[#47](https://github.com/Z761293629/crablink/issues/47)）
+- [x] **团队日常使用**：自定义 Domain、Web UI、Click 图表、Tag 与搜索、CSV 导入导出（[#47](https://github.com/Z761293629/crablink/issues/47)，未发布）
 
 接下来做什么见 [Issues](https://github.com/Z761293629/crablink/issues)。
 
