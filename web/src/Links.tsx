@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type Domain, type Link, type LinkPage } from './api';
+import { clicksHref } from './Clicks';
 import { errorMessage } from './i18n';
 
 /** A Workspace's Links: create, filter by Tag, search, list a page at a time, edit, delete. */
@@ -284,6 +285,7 @@ function LinkRow({
           <td>{link.expires_at ? date.format(new Date(link.expires_at)) : t('links.never')}</td>
           <td className="actions" key="viewing">
             <button onClick={copy}>{t(copied ? 'links.copied' : 'links.copy')}</button>
+            <a href={clicksHref(link)}>{t('clicks.clicks')}</a>
             {!expired &&
               ['svg', 'png'].map((format) => (
                 <a

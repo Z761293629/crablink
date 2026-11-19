@@ -108,6 +108,7 @@ pub async fn app(
         )
         .route("/links/{code}/qr", get(link_qr))
         .route("/links/{code}/clicks", get(clicks::link_clicks))
+        .route("/clicks", get(clicks::workspace_clicks))
         .route("/tags", get(list_tags))
         .route("/api-keys", post(create_api_key).get(list_api_keys))
         .route("/api-keys/{id}", delete(revoke_api_key))

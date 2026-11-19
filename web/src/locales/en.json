@@ -7,7 +7,17 @@
     "submit": "Sign in"
   },
   "signOut": "Sign out",
-  "workspace": "Workspace",
+  "workspace": {
+    "none": "You're not in any Workspace yet. Create one to start.",
+    "name": "Name",
+    "rename": "Rename",
+    "newName": "New Workspace name",
+    "create": "Create Workspace",
+    "leave": "Leave Workspace",
+    "confirmLeave": "Leave {{name}}? You lose access to its Links.",
+    "delete": "Delete Workspace",
+    "confirmDelete": "Delete {{name}}? Its Links become Deleted Links, keeping their Codes taken, and its API Keys stop working."
+  },
   "links": {
     "title": "Links",
     "shortUrl": "Short URL",
@@ -39,8 +49,41 @@
   },
   "nav": {
     "links": "Links",
+    "clicks": "Clicks",
     "domains": "Domains",
-    "admin": "Admin"
+    "admin": "Admin",
+    "switcher": "Workspace",
+    "workspace": "Manage Workspace",
+    "account": "Account"
+  },
+  "clicks": {
+    "clicks": "Clicks",
+    "workspaceTitle": "Workspace Clicks",
+    "linkTitle": "Clicks on {{url}}",
+    "range": "Time range",
+    "ranges": {
+      "24h": "Last 24 hours",
+      "7d": "Last 7 days",
+      "30d": "Last 30 days",
+      "90d": "Last 90 days"
+    },
+    "overTime": "Clicks over time",
+    "total_one": "{{count}} Click",
+    "total_other": "{{count}} Clicks",
+    "max": "Peak {{value}}",
+    "topLinks": "Top Links",
+    "none": "No Clicks in this time range.",
+    "referrers": "Referrers",
+    "countries": "Countries",
+    "devices": "Devices",
+    "browsers": "Browsers",
+    "direct": "Direct or unknown",
+    "unknown": "Unknown",
+    "device": {
+      "desktop": "Desktop",
+      "mobile": "Mobile",
+      "tablet": "Tablet"
+    }
   },
   "invite": {
     "title": "Accept invite",
@@ -93,6 +136,44 @@
       "resetPassword": "Reset password",
       "newPassword": "New password:"
     }
+  },
+  "members": {
+    "title": "Members",
+    "email": "Email",
+    "role": "Role",
+    "addEmail": "Member's email",
+    "add": "Add member",
+    "makeOwner": "Make Owner",
+    "makeMember": "Make Member",
+    "remove": "Remove",
+    "confirmRemove": "Remove {{email}} from this Workspace?"
+  },
+  "roles": {
+    "owner": "Owner",
+    "member": "Member"
+  },
+  "apiKeys": {
+    "title": "API Keys",
+    "empty": "No API Keys yet.",
+    "name": "Name",
+    "prefix": "Starts with",
+    "createdAt": "Created",
+    "lastUsed": "Last used",
+    "never": "Never",
+    "revoke": "Revoke",
+    "confirmRevoke": "Revoke {{name}}? Programs using it stop working at once.",
+    "newName": "API Key name",
+    "create": "Create API Key",
+    "secret": "Secret",
+    "copy": "Copy",
+    "secretOnce": "The secret of {{name}}: copy it now, it won't be shown again."
+  },
+  "account": {
+    "title": "Account",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "change": "Change password",
+    "changed": "Password changed."
   },
   "errors": {
     "network": "Can't reach the server. Check your connection and try again.",

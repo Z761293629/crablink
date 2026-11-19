@@ -561,6 +561,35 @@ pub struct ClickBreakdown {
     pub count: i64,
 }
 
+/// Query of `GET /api/workspaces/{slug}/clicks`: Clicks at or after `from` and
+/// before `to`, counted per `interval` (a day when absent, in UTC).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceClicksQuery {
+    pub from: DateTime<Utc>,
+    pub to: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval: Option<Interval>,
+}
+
+/// Response of `GET /api/workspaces/{slug}/clicks`: the Clicks of all the Workspace's
+/// Links.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceClicks {
+    /// Every bucket from the one holding `from` up to `to`, empty ones included.
+    pub series: Vec<ClickBucket>,
+    /// The Links with the most Clicks in the range, most first; at most 10.
+    pub top_links: Vec<TopLink>,
+}
+
+/// A Link and its Clicks in the range.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TopLink {
+    pub code: String,
+    pub domain: String,
+    pub short_url: String,
+    pub count: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

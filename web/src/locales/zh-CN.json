@@ -7,7 +7,17 @@
     "submit": "登录"
   },
   "signOut": "退出登录",
-  "workspace": "工作区",
+  "workspace": {
+    "none": "你还不在任何工作区中。先创建一个吧。",
+    "name": "名称",
+    "rename": "重命名",
+    "newName": "新工作区名称",
+    "create": "创建工作区",
+    "leave": "退出工作区",
+    "confirmLeave": "退出 {{name}}？你将无法再访问它的链接。",
+    "delete": "删除工作区",
+    "confirmDelete": "删除 {{name}}？它的链接将变为已删除链接，短码仍被占用；它的 API 密钥将失效。"
+  },
   "links": {
     "title": "链接",
     "shortUrl": "短网址",
@@ -39,8 +49,41 @@
   },
   "nav": {
     "links": "链接",
+    "clicks": "点击",
     "domains": "域名",
-    "admin": "管理"
+    "admin": "管理",
+    "switcher": "工作区",
+    "workspace": "管理工作区",
+    "account": "账户"
+  },
+  "clicks": {
+    "clicks": "点击",
+    "workspaceTitle": "工作区点击",
+    "linkTitle": "{{url}} 的点击",
+    "range": "时间范围",
+    "ranges": {
+      "24h": "最近 24 小时",
+      "7d": "最近 7 天",
+      "30d": "最近 30 天",
+      "90d": "最近 90 天"
+    },
+    "overTime": "点击趋势",
+    "total_one": "{{count}} 次点击",
+    "total_other": "{{count}} 次点击",
+    "max": "峰值 {{value}}",
+    "topLinks": "热门链接",
+    "none": "此时间范围内没有点击。",
+    "referrers": "来源",
+    "countries": "国家或地区",
+    "devices": "设备",
+    "browsers": "浏览器",
+    "direct": "直接访问或未知",
+    "unknown": "未知",
+    "device": {
+      "desktop": "桌面",
+      "mobile": "手机",
+      "tablet": "平板"
+    }
   },
   "invite": {
     "title": "接受邀请",
@@ -93,6 +136,44 @@
       "resetPassword": "重置密码",
       "newPassword": "新密码："
     }
+  },
+  "members": {
+    "title": "成员",
+    "email": "邮箱",
+    "role": "角色",
+    "addEmail": "成员邮箱",
+    "add": "添加成员",
+    "makeOwner": "设为所有者",
+    "makeMember": "设为成员",
+    "remove": "移除",
+    "confirmRemove": "将 {{email}} 移出此工作区？"
+  },
+  "roles": {
+    "owner": "所有者",
+    "member": "成员"
+  },
+  "apiKeys": {
+    "title": "API 密钥",
+    "empty": "还没有 API 密钥。",
+    "name": "名称",
+    "prefix": "开头",
+    "createdAt": "创建时间",
+    "lastUsed": "最近使用",
+    "never": "从未",
+    "revoke": "吊销",
+    "confirmRevoke": "吊销 {{name}}？使用它的程序将立即失效。",
+    "newName": "API 密钥名称",
+    "create": "创建 API 密钥",
+    "secret": "密钥",
+    "copy": "复制",
+    "secretOnce": "{{name}} 的密钥：请立即复制，之后不会再显示。"
+  },
+  "account": {
+    "title": "账户",
+    "currentPassword": "当前密码",
+    "newPassword": "新密码",
+    "change": "修改密码",
+    "changed": "密码已修改。"
   },
   "errors": {
     "network": "无法连接服务器，请检查网络后重试。",
