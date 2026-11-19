@@ -1,9 +1,20 @@
-# Build a static musl binary, then ship it on plain Alpine: busybox wget does the health check,
-# tini forwards SIGTERM (a bare Rust binary as PID 1 would ignore it).
+# Build the web UI, embed it in a static musl binary (ADR-0008), then ship that on plain Alpine:
+# busybox wget does the health check, tini forwards SIGTERM (a bare Rust binary as PID 1 would
+# ignore it).
+FROM node:24-alpine AS web
+# Keep in step with packageManager in web/package.json.
+RUN npm install -g pnpm@12.21.0
+WORKDIR /web
+COPY web/package.json web/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY web/ ./
+RUN pnpm build
+
 FROM rust:1.100-alpine AS build
 RUN apk add --no-cache musl-dev
 WORKDIR /src
 COPY . .
+COPY --from=web /web/dist web/dist
 RUN cargo build --release --locked -p crablink-server
 
 # The DB-IP Lite country database (CC BY 4.0, no key needed) for Clicks' countries (ADR-0006).
