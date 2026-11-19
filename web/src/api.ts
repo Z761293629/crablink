@@ -96,6 +96,15 @@ export interface ManagedUser {
   disabled: boolean;
 }
 
+/**
+ * The API path of a Link of Workspace `slug`, or of its `sub` resource (e.g. `/qr`),
+ * addressed by its Domain; it ends in `?domain=…`, so add more query with `&`.
+ */
+export function linkPath(slug: string, link: { code: string; domain: string }, sub = ''): string {
+  const code = encodeURIComponent(link.code);
+  return `/workspaces/${encodeURIComponent(slug)}/links/${code}${sub}?domain=${encodeURIComponent(link.domain)}`;
+}
+
 /** An error response: `kind` is stable, `message` is the server's English text. */
 export class ApiError extends Error {
   constructor(
