@@ -132,3 +132,63 @@ label.inline input {
 td button + button {
   margin-left: 0.5rem;
 }
+
+/* Click charts: one hue, its own step per theme. */
+.chart,
+.breakdowns {
+  --series: light-dark(#2a78d6, #3987e5);
+  --muted: color-mix(in srgb, CanvasText 60%, transparent);
+}
+
+.chart {
+  margin: 1rem 0;
+}
+
+.chart figcaption {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.chart svg {
+  display: block;
+  width: 100%;
+  height: 10rem;
+  fill: var(--series);
+}
+
+.chart svg rect:hover:not([fill]) {
+  opacity: 0.8;
+}
+
+.chart .axis {
+  stroke: color-mix(in srgb, CanvasText 25%, transparent);
+}
+
+.chart-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.breakdowns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0 2rem;
+}
+
+.breakdowns td {
+  white-space: normal;
+}
+
+.breakdowns td.count {
+  width: 1%;
+  text-align: right;
+}
+
+.breakdowns .bar {
+  height: 4px;
+  margin-top: 0.25rem;
+  border-radius: 2px;
+  background: var(--series);
+}

@@ -9,7 +9,10 @@ use axum::extract::rejection::QueryRejection;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, header};
 use chrono::{DateTime, Utc};
-use crablink_api::{ClickBreakdown, ClickBucket, ClickStats, ClicksQuery, Interval};
+use crablink_api::{
+    ClickBreakdown, ClickBucket, ClickStats, ClicksQuery, Interval, TopLink, WorkspaceClicks,
+    WorkspaceClicksQuery,
+};
 
 use crate::error::ApiError;
 use crate::workspaces::Caller;
@@ -111,6 +114,65 @@ fn device(ua: &str) -> &'static str {
 /// The most buckets one request may ask for: about six weeks by hour.
 const MAX_BUCKETS: i64 = 1000;
 
+/// The `date_trunc` unit of buckets over `[from, to)`, refusing a range that ends
+/// before it starts or holds too many buckets.
+fn bucket_unit(
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+    interval: Option<Interval>,
+) -> Result<&'static str, ApiError> {
+    let (unit, secs) = match interval.unwrap_or(Interval::Day) {
+        Interval::Hour => ("hour", 3600),
+        Interval::Day => ("day", 86400),
+    };
+    if from >= to {
+        return Err(ApiError::BadRequest("from must be before to".into()));
+    }
+    if (to - from).num_seconds() / secs >= MAX_BUCKETS {
+        return Err(ApiError::BadRequest(format!(
+            "at most {MAX_BUCKETS} buckets: shorten the range or use a longer interval"
+        )));
+    }
+    Ok(unit)
+}
+
+/// Clicks per `$1` bucket in `[$2, $3)`, empty buckets included, of the Clicks whose
+/// `link_id` matches `$filter` (which may use `$4`).
+macro_rules! series_sql {
+    ($filter:literal) => {
+        concat!(
+            "WITH counts AS (SELECT date_trunc($1, at, 'UTC') AS t, count(*) AS n FROM clicks \
+             WHERE link_id ",
+            $filter,
+            " AND at >= $2 AND at < $3 GROUP BY 1) \
+             SELECT g.t, COALESCE(counts.n, 0) FROM generate_series(\
+             date_trunc($1, $2, 'UTC'), $3 - interval '1 microsecond', ('1 ' || $1)::interval) g(t) \
+             LEFT JOIN counts USING (t) ORDER BY g.t"
+        )
+    };
+}
+
+/// Runs a `series_sql!` with `$4` bound to `id`.
+async fn series(
+    s: &AppState,
+    sql: &'static str,
+    unit: &str,
+    (from, to): (DateTime<Utc>, DateTime<Utc>),
+    id: i64,
+) -> Result<Vec<ClickBucket>, ApiError> {
+    let rows: Vec<(DateTime<Utc>, i64)> = sqlx::query_as(sql)
+        .bind(unit)
+        .bind(from)
+        .bind(to)
+        .bind(id)
+        .fetch_all(&s.pool)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(time, count)| ClickBucket { time, count })
+        .collect())
+}
+
 /// A breakdown of one Link's Clicks in `[$2, $3)` by column `$col`, most first.
 macro_rules! breakdown_sql {
     ($col:literal) => {
@@ -133,18 +195,7 @@ pub(crate) async fn link_clicks(
 ) -> Result<Json<ClickStats>, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
-    let (unit, secs) = match q.interval.unwrap_or(Interval::Day) {
-        Interval::Hour => ("hour", 3600),
-        Interval::Day => ("day", 86400),
-    };
-    if q.from >= q.to {
-        return Err(ApiError::BadRequest("from must be before to".into()));
-    }
-    if (q.to - q.from).num_seconds() / secs >= MAX_BUCKETS {
-        return Err(ApiError::BadRequest(format!(
-            "at most {MAX_BUCKETS} buckets: shorten the range or use a longer interval"
-        )));
-    }
+    let unit = bucket_unit(q.from, q.to, q.interval)?;
     let link_id: i64 = sqlx::query_scalar(
         "SELECT l.id FROM links l JOIN domains d ON d.id = l.domain_id \
          WHERE l.workspace_id = $1 AND d.host = lower($2) AND l.code = $3 \
@@ -156,19 +207,6 @@ pub(crate) async fn link_clicks(
     .fetch_optional(&s.pool)
     .await?
     .ok_or(ApiError::LinkNotFound)?;
-    let series: Vec<(DateTime<Utc>, i64)> = sqlx::query_as(
-        "WITH counts AS (SELECT date_trunc($1, at, 'UTC') AS t, count(*) AS n FROM clicks \
-         WHERE link_id = $4 AND at >= $2 AND at < $3 GROUP BY 1) \
-         SELECT g.t, COALESCE(counts.n, 0) FROM generate_series(\
-         date_trunc($1, $2, 'UTC'), $3 - interval '1 microsecond', ('1 ' || $1)::interval) g(t) \
-         LEFT JOIN counts USING (t) ORDER BY g.t",
-    )
-    .bind(unit)
-    .bind(q.from)
-    .bind(q.to)
-    .bind(link_id)
-    .fetch_all(&s.pool)
-    .await?;
     let by = async |sql: &'static str| -> Result<Vec<ClickBreakdown>, ApiError> {
         let rows: Vec<(Option<String>, i64)> = sqlx::query_as(sql)
             .bind(link_id)
@@ -182,13 +220,53 @@ pub(crate) async fn link_clicks(
             .collect())
     };
     Ok(Json(ClickStats {
-        series: series
-            .into_iter()
-            .map(|(time, count)| ClickBucket { time, count })
-            .collect(),
+        series: series(&s, series_sql!("= $4"), unit, (q.from, q.to), link_id).await?,
         referrers: by(breakdown_sql!("referrer_host")).await?,
         countries: by(breakdown_sql!("country")).await?,
         devices: by(breakdown_sql!("device")).await?,
         browsers: by(breakdown_sql!("browser")).await?,
+    }))
+}
+
+/// How many Links `workspace_clicks` ranks.
+const TOP_LINKS: i64 = 10;
+
+/// `GET /api/workspaces/{slug}/clicks`: the Clicks of all the Workspace's Links over a
+/// time range, per hour or day (UTC), and the Links with the most of them.
+pub(crate) async fn workspace_clicks(
+    State(s): State<AppState>,
+    caller: Caller,
+    Path(slug): Path<String>,
+    query: Result<Query<WorkspaceClicksQuery>, QueryRejection>,
+) -> Result<Json<WorkspaceClicks>, ApiError> {
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    let Query(q) = query?;
+    let unit = bucket_unit(q.from, q.to, q.interval)?;
+    let sql =
+        series_sql!("IN (SELECT id FROM links WHERE workspace_id = $4 AND deleted_at IS NULL)");
+    let series = series(&s, sql, unit, (q.from, q.to), workspace_id).await?;
+    let top: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT l.code, d.host, count(*) FROM clicks c \
+         JOIN links l ON l.id = c.link_id JOIN domains d ON d.id = l.domain_id \
+         WHERE l.workspace_id = $1 AND l.deleted_at IS NULL AND c.at >= $2 AND c.at < $3 \
+         GROUP BY l.id, l.code, d.host ORDER BY 3 DESC, 2, 1 LIMIT $4",
+    )
+    .bind(workspace_id)
+    .bind(q.from)
+    .bind(q.to)
+    .bind(TOP_LINKS)
+    .fetch_all(&s.pool)
+    .await?;
+    Ok(Json(WorkspaceClicks {
+        series,
+        top_links: top
+            .into_iter()
+            .map(|(code, domain, count)| TopLink {
+                short_url: format!("{}://{domain}/{code}", s.scheme),
+                code,
+                domain,
+                count,
+            })
+            .collect(),
     }))
 }

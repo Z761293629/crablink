@@ -36,6 +36,35 @@
     "domains": "Domains",
     "admin": "Admin"
   },
+  "clicks": {
+    "clicks": "Clicks",
+    "workspaceTitle": "Workspace Clicks",
+    "linkTitle": "Clicks on {{url}}",
+    "range": "Time range",
+    "ranges": {
+      "24h": "Last 24 hours",
+      "7d": "Last 7 days",
+      "30d": "Last 30 days",
+      "90d": "Last 90 days"
+    },
+    "overTime": "Clicks over time",
+    "total_one": "{{count}} Click",
+    "total_other": "{{count}} Clicks",
+    "max": "Peak {{value}}",
+    "topLinks": "Top Links",
+    "none": "No Clicks in this time range.",
+    "referrers": "Referrers",
+    "countries": "Countries",
+    "devices": "Devices",
+    "browsers": "Browsers",
+    "direct": "Direct or unknown",
+    "unknown": "Unknown",
+    "device": {
+      "desktop": "Desktop",
+      "mobile": "Mobile",
+      "tablet": "Tablet"
+    }
+  },
   "invite": {
     "title": "Accept invite",
     "password": "Choose a password",

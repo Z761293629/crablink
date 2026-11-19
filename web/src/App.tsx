@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Admin } from './Admin';
 import { api, type Membership, type User } from './api';
+import { ClicksPage, clicksHref } from './Clicks';
 import { Domains } from './Domains';
 import { Links } from './Links';
 import { errorMessage, languages, setLanguage } from './i18n';
@@ -50,6 +51,8 @@ export function App() {
           <AcceptInvite />
         ) : user === undefined ? null : !user ? (
           <SignIn onSignedIn={setUser} />
+        ) : page === 'clicks' ? (
+          <ClicksPage />
         ) : page === 'domains' ? (
           <Domains />
         ) : page === 'admin' && user.instance_admin ? (
@@ -166,6 +169,9 @@ function Workspaces() {
         </select>
       </label>
       <h1>{t('links.title')}</h1>
+      <p>
+        <a href={clicksHref(current)}>{t('clicks.workspaceTitle')}</a>
+      </p>
       <Links key={current} slug={current} />
     </>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type Domain, type Link, type LinkPage } from './api';
+import { clicksHref } from './Clicks';
 import { errorMessage } from './i18n';
 
 /** A Workspace's Links: create, list a page at a time, edit, delete. */
@@ -51,6 +52,7 @@ export function Links({ slug }: { slug: string }) {
               {links.map((link) => (
                 <LinkRow
                   key={link.short_url}
+                  slug={slug}
                   base={base}
                   link={link}
                   onChanged={(changed) => setLinks(links.map((l) => (l === link ? changed : l)))}
@@ -126,11 +128,13 @@ function CreateLink({ slug, base, onCreated }: { slug: string; base: string; onC
 }
 
 function LinkRow({
+  slug,
   base,
   link,
   onChanged,
   onDeleted,
 }: {
+  slug: string;
   base: string;
   link: Link;
   onChanged: (link: Link) => void;
@@ -220,6 +224,7 @@ function LinkRow({
           <td>{link.expires_at ? date.format(new Date(link.expires_at)) : t('links.never')}</td>
           <td className="actions" key="viewing">
             <button onClick={copy}>{t(copied ? 'links.copied' : 'links.copy')}</button>
+            <a href={clicksHref(slug, link)}>{t('clicks.clicks')}</a>
             {!expired &&
               ['svg', 'png'].map((format) => (
                 <a
