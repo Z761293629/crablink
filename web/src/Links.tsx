@@ -281,7 +281,8 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
   const usable = usableDomains(domains);
   const onlyDomain = usable.length === 1 ? usable[0].domain : undefined;
   const count = new Intl.NumberFormat(i18n.language);
-  const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' });
+  // A row shows the Expiry's day only; the pass carries the time.
+  const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' });
 
   return (
     <div className="links">

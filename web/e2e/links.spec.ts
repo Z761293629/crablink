@@ -51,7 +51,9 @@ test('a User creates a Link with a Custom Code, changes its Target from the pass
   await pass.getByLabel('Expiry').fill('2030-01-02T03:04');
   await pass.getByRole('button', { name: 'Save' }).click();
   await expect(row).toContainText('https://example.com/second');
-  await expect(row).toContainText('Jan 2, 2030, 3:04 AM');
+  // The row shows the Expiry's day; the pass carries its time.
+  await expect(row).toContainText('Jan 2, 2030');
+  await expect(pass).toContainText('3:04 AM');
 
   // Followed without leaving for example.com.
   const followed = await page.request.get(shortUrl, { maxRedirects: 0 });

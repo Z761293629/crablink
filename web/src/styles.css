@@ -1170,8 +1170,9 @@ table.board {
   table-layout: fixed;
 }
 
+/* Wide enough for a Domain plus a typical Code on one line at desktop width; the Target, ellipsised anyway, gives way. */
 table.board col.c-short {
-  width: 30%;
+  width: 37%;
 }
 
 table.board col.c-count {

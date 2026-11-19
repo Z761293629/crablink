@@ -21,7 +21,7 @@ test('a User signs in, sees their Links and signs out', async ({ page, user }) =
   // The Target cell carries the Tags and the Expiry beneath the Target.
   await expect(expiring.getByRole('cell')).toHaveText([
     `${baseURL}/${code}`,
-    /^https:\/\/example\.com\/expiring\s*Expiry Jan 2, 2030, 3:04 AM$/,
+    /^https:\/\/example\.com\/expiring\s*Expiry Jan 2, 2030$/,
     '0',
     /Copy/,
   ]);
