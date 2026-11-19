@@ -96,6 +96,11 @@ export async function openWorkspacePage(page: Page, name: 'Domains' | 'Members &
   await page.getByRole('link', { name }).click();
 }
 
+/** Chooses the action (not Cancel) in the in-app "Are you sure?" dialog. */
+export async function confirmDialog(page: Page) {
+  await page.getByRole('dialog').getByRole('button').last().click();
+}
+
 async function signInApi(request: APIRequestContext, email: string, password: string) {
   const res = await request.post('/api/session', { headers: { origin: baseURL }, data: { email, password } });
   expect(res.status(), await res.text()).toBe(200);

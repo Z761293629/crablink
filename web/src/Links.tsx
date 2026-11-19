@@ -1,9 +1,22 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, linkPath, type Domain, type ImportedRow, type Link, type LinkPage } from './api';
 import { clicksHref } from './Clicks';
 import { errorMessage } from './i18n';
-import { Flap, MoreMenu, navigate, Plane, reducedMotion, useMedia, useToast, WIDE } from './ui';
+import {
+  Chevron,
+  Flap,
+  MoreMenu,
+  navigate,
+  PageError,
+  Plane,
+  reducedMotion,
+  useConfirm,
+  useLocationKey,
+  useMedia,
+  useToast,
+  WIDE,
+} from './ui';
 
 type Fresh = 'created' | 'updated';
 const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)';
@@ -16,15 +29,19 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
   const { t, i18n } = useTranslation();
   const wide = useMedia(WIDE);
   const [toast, showToast] = useToast();
+  const [dialog, ask] = useConfirm();
   const search = useRef<HTMLInputElement>(null);
+  // The search and the Tag filter live in the query, so a filtered board can be shared and reloaded.
+  useLocationKey();
+  const params = new URLSearchParams(location.search);
+  const q = params.get('q') ?? '';
+  const tag = params.get('tag') ?? '';
   const [links, setLinks] = useState<Link[]>();
   const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState<unknown>();
   const [tags, setTags] = useState<string[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
-  const [tag, setTag] = useState('');
-  const [q, setQ] = useState('');
-  /** Bumped to fetch the list again, e.g. after an import. */
+  /** Bumped to fetch the list again, e.g. after an import or to retry. */
   const [reloads, setReloads] = useState(0);
   /** The request whose page is on the board; another one in flight means loading. */
   const [landed, setLanded] = useState<string>();
@@ -34,20 +51,24 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
   const [fresh, setFresh] = useState<Record<string, Fresh>>({});
   /** The blank pass for a New Link is open. */
   const [issuing, setIssuing] = useState(false);
+  /** The Short URL that couldn't be copied: its pass shows it selected, to copy by hand. */
+  const [manual, setManual] = useState<string>();
+  const [imported, setImported] = useState<{ rows?: ImportedRow[]; error?: unknown }>();
   const base = `/workspaces/${encodeURIComponent(slug)}/links`;
   const filter = new URLSearchParams(Object.entries({ tag, q }).filter(([, v]) => v));
   const query = filter.toString();
   const loadKey = `${query}#${reloads}`;
 
-  const loadTags = useCallback(
-    () => api<string[]>('GET', `/workspaces/${encodeURIComponent(slug)}/tags`).then(setTags, setError),
-    [slug],
-  );
-  useEffect(() => void loadTags(), [loadTags]);
+  /** Bumped to fetch the Tags again, after a change that may add or drop one. */
+  const [tagLoads, setTagLoads] = useState(0);
+  const loadTags = () => setTagLoads((n) => n + 1);
+  useEffect(() => {
+    api<string[]>('GET', `/workspaces/${encodeURIComponent(slug)}/tags`).then(setTags, setError);
+  }, [slug, reloads, tagLoads]);
 
   useEffect(() => {
     api<Domain[]>('GET', `/workspaces/${encodeURIComponent(slug)}/domains`).then(setDomains, setError);
-  }, [slug]);
+  }, [slug, reloads]);
 
   useEffect(() => {
     // Typing in the search box fires a request per keystroke: only the latest may land.
@@ -120,9 +141,10 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
     }
   }
 
-  // Nothing picked, or the pick filtered away: the newest Link on the board, so the pass is never blank.
+  // Nothing picked, or the pick filtered away: the newest live Link on the board, so the pass is never blank.
   const selected =
-    links?.find((l) => l.domain === pick?.domain && l.code === pick?.code) ?? (wide ? links?.[0] : undefined);
+    links?.find((l) => l.domain === pick?.domain && l.code === pick?.code) ??
+    (wide ? (links?.find((l) => !isExpired(l)) ?? links?.[0]) : undefined);
 
   const mark = (key: string, how?: Fresh) =>
     setFresh((f) => {
@@ -130,13 +152,22 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
       return how ? { ...rest, [key]: how } : rest;
     });
 
-  /** Puts `link`'s pass in the URL, or none. */
+  /** Puts `link`'s pass in the URL, or none, keeping the filters. */
   const go = (link?: Link, replace = false) =>
-    navigate(link ? linkHref(link) : '/app/', { replace, keepScroll: true });
+    navigate((link ? linkHref(link) : '/app/') + location.search, { replace, keepScroll: true });
+
+  function setFilter(key: 'q' | 'tag', value: string) {
+    const next = new URLSearchParams(location.search);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    const query = next.toString();
+    navigate(location.pathname + (query ? `?${query}` : ''), { replace: true, keepScroll: true });
+  }
 
   function choose(link: Link) {
     setIssuing(false);
     setEditing(undefined);
+    setManual(undefined);
     mark(link.short_url);
     // On a phone the pass opens under its row, and a second tap folds it away.
     go(!wide && selected === link ? undefined : link);
@@ -149,7 +180,7 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
     mark(link.short_url, 'created');
     setIssuing(false);
     showToast(t('links.announce.created', { url: link.short_url }));
-    void loadTags();
+    loadTags();
   }
 
   function changed(old: Link, link: Link) {
@@ -158,13 +189,23 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
     mark(link.short_url, 'updated');
     setEditing(undefined);
     showToast(t('links.announce.updated', { url: link.short_url }));
-    void loadTags();
+    loadTags();
   }
 
   const copied = (link: Link) => showToast(t('links.announce.copied', { url: link.short_url }));
 
+  /** The clipboard refused: open the Link's pass with its Short URL selected, to copy by hand. */
+  function copyFailed(link: Link) {
+    setIssuing(false);
+    setEditing(undefined);
+    go(link);
+    setManual(link.short_url);
+    showToast(t('links.copyFailed'));
+  }
+
   async function remove(link: Link) {
-    if (!confirm(t('links.confirmDelete', { url: link.short_url, code: link.code, domain: link.domain }))) return;
+    const message = t('links.confirmDelete', { url: link.short_url, code: link.code, domain: link.domain });
+    if (!(await ask(message, t('links.confirmDeleteAction')))) return;
     try {
       await api('DELETE', linkPath(slug, link));
     } catch (err) {
@@ -189,19 +230,22 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
     if (selected === link || wide) go(selected === link ? after : selected, true);
     mark(link.short_url);
     showToast(t('links.announce.deleted', { url: link.short_url }));
-    void loadTags();
+    loadTags();
   }
 
-  const clearFilters = () => {
-    setQ('');
-    setTag('');
-  };
+  const clearFilters = () => navigate(location.pathname, { replace: true, keepScroll: true });
 
   if (error !== undefined) {
     return (
       <div className="links">
         <div className="board-col">
-          <p role="alert">{errorMessage(t, error)}</p>
+          <PageError
+            error={error}
+            onRetry={() => {
+              setError(undefined);
+              setReloads((n) => n + 1);
+            }}
+          />
         </div>
       </div>
     );
@@ -225,11 +269,17 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
       slug={slug}
       link={link}
       editing={editing === link.short_url}
+      manualCopy={manual === link.short_url}
+      reveal={!wide}
       onEditing={(on) => setEditing(on ? link.short_url : undefined)}
       onChanged={changed}
       onCopied={copied}
+      onCopyFailed={copyFailed}
     />
   );
+  // With one usable Domain, rows show just /Code and the Domain sits once in the board's head.
+  const usable = usableDomains(domains);
+  const onlyDomain = usable.length === 1 ? usable[0].domain : undefined;
   const count = new Intl.NumberFormat(i18n.language);
   const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -237,7 +287,10 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
     <div className="links">
       <section className="board-col" aria-labelledby="links-title">
         <div className="board-head">
-          <h1 id="links-title">{t('links.title')}</h1>
+          <div className="board-title">
+            <h1 id="links-title">{t('links.title')}</h1>
+            {onlyDomain && <span className="board-domain">{onlyDomain}</span>}
+          </div>
           <button
             className="accent"
             aria-keyshortcuts="N"
@@ -249,6 +302,16 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
           >
             {t('links.newLink')}
           </button>
+          <CsvTools
+            base={base}
+            onImported={(result) => {
+              setImported(result);
+              if (result.rows) {
+                setReloads((n) => n + 1);
+                loadTags();
+              }
+            }}
+          />
         </div>
         {!wide && editor}
         <div className="filters">
@@ -257,27 +320,22 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
             <input
               ref={search}
               type="search"
+              name="q"
               value={q}
               aria-keyshortcuts="/"
               placeholder={t('links.searchHint')}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => setFilter('q', e.target.value)}
             />
           </label>
           {/* Named explicitly: a wrapping label would also take in the selected option's text. */}
-          <select value={tag} onChange={(e) => setTag(e.target.value)} aria-label={t('links.tag')}>
+          <select name="tag" value={tag} onChange={(e) => setFilter('tag', e.target.value)} aria-label={t('links.tag')}>
             <option value="">{t('links.allTags')}</option>
             {tags.map((name) => (
               <option key={name}>{name}</option>
             ))}
           </select>
-          <CsvTools
-            base={base}
-            onImported={() => {
-              setReloads((n) => n + 1);
-              void loadTags();
-            }}
-          />
         </div>
+        {imported && <ImportResult {...imported} onClose={() => setImported(undefined)} />}
         <div className={`flightpath${loading ? ' on' : ''}`} aria-hidden="true" />
         {loading && <p className="vh">{t('links.loading')}</p>}
         {links &&
@@ -327,7 +385,8 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
                       <td className="c-short">
                         <button className="pick" aria-pressed={isSelected} onClick={() => choose(link)}>
                           <span className="vh">{scheme}</span>
-                          <span className="host">{host}</span>
+                          <span className={link.domain === onlyDomain ? 'vh' : 'host'}>{host.slice(0, -1)}</span>
+                          <span className="host">/</span>
                           <span className="code">{link.code}</span>
                         </button>
                       </td>
@@ -356,25 +415,20 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
                       </td>
                       <td className="c-acts">
                         <span className="row-acts">
-                          <CopyButton link={link} onCopied={copied} />
+                          <CopyButton link={link} onCopied={copied} onFailed={copyFailed} />
                           {!expired && (
-                            <a className="button small" href={qrHref(slug, link, 'svg')} download={`${link.code}.svg`}>
+                            <a
+                              className="button small"
+                              href={qrHref(slug, link, 'png')}
+                              download={`${link.code}.png`}
+                              aria-label={t('links.downloadQrOf', { code: link.code })}
+                            >
                               {t('links.qrShort')}
                             </a>
                           )}
                           <MoreMenu
-                            label={t('links.moreActions')}
-                            items={[
-                              {
-                                label: t('links.edit'),
-                                onSelect: () => {
-                                  setIssuing(false);
-                                  go(link);
-                                  setEditing(link.short_url);
-                                },
-                              },
-                              { label: t('links.delete'), danger: true, onSelect: () => void remove(link) },
-                            ]}
+                            label={t('links.moreActions', { code: link.code })}
+                            items={[{ label: t('links.delete'), danger: true, onSelect: () => void remove(link) }]}
                           />
                         </span>
                       </td>
@@ -402,10 +456,7 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
               (selected ? (
                 pass(selected)
               ) : (
-                <section className="pass" aria-labelledby="pane-cap">
-                  <p id="pane-cap" className="pass-cap micro">
-                    {t('links.selected')}
-                  </p>
+                <section className="pass" aria-label={t('links.selected')}>
                   <div className="pane-empty">
                     <p>{t('links.noMatch')}</p>
                   </div>
@@ -415,12 +466,24 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
         </div>
       )}
       {toast}
+      {dialog}
     </div>
   );
 }
 
 /** Copies a Link's Short URL; for a moment it says so, with the plane. */
-function CopyButton({ link, onCopied, className = 'small' }: { link: Link; onCopied: (link: Link) => void; className?: string }) {
+function CopyButton({
+  link,
+  onCopied,
+  onFailed,
+  className = 'small',
+}: {
+  link: Link;
+  onCopied: (link: Link) => void;
+  /** No clipboard here (e.g. plain http), or it refused. */
+  onFailed: (link: Link) => void;
+  className?: string;
+}) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -431,12 +494,16 @@ function CopyButton({ link, onCopied, className = 'small' }: { link: Link; onCop
   return (
     <button
       className={className}
-      onClick={() =>
-        navigator.clipboard.writeText(link.short_url).then(() => {
-          setCopied(true);
-          onCopied(link);
-        })
-      }
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(link.short_url);
+        } catch {
+          onFailed(link);
+          return;
+        }
+        setCopied(true);
+        onCopied(link);
+      }}
     >
       {copied ? (
         <>
@@ -450,7 +517,7 @@ function CopyButton({ link, onCopied, className = 'small' }: { link: Link; onCop
   );
 }
 
-/** The blank pass a New Link is issued from: each segment a field, the stub previewing the Short URL. */
+/** The blank pass a New Link is created from: the Target first, the rest under More options; the stub previews the Short URL. */
 function IssuePass({
   base,
   domains,
@@ -471,8 +538,7 @@ function IssuePass({
   const [error, setError] = useState<unknown>();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [tearing, setTearing] = useState(false);
-  // The Default Domain first, then the approved custom ones.
-  const usable = domains.filter((d) => d.default || d.status === 'approved').sort((a, b) => +b.default - +a.default);
+  const usable = usableDomains(domains);
   const domain = draft.domain || usable[0]?.domain || '';
   const to = hostOf(draft.target ?? '');
 
@@ -527,12 +593,9 @@ function IssuePass({
             <span className="micro">{t('links.target')}</span>
             <input name="target" type="url" required placeholder={t('links.targetHint')} autoFocus={focus} />
           </label>
-          <div className="segs">
-            <label className="seg l field">
-              <span className="micro">{t('links.customCode')}</span>
-              <input name="code" className="mono" placeholder={t('links.generatedShort')} />
-            </label>
-            <label className="seg r field">
+          {/* With one usable Domain there is nothing to choose. */}
+          {usable.length > 1 && (
+            <label className="field domain-field">
               <span className="micro">{t('links.domain')}</span>
               <select name="domain">
                 {usable.map((d) => (
@@ -540,20 +603,32 @@ function IssuePass({
                 ))}
               </select>
             </label>
-            <div className="seg l field">
-              <label className="micro" htmlFor={`${id}expiry`}>
-                {t('links.expiry')}
+          )}
+          <details className="options">
+            <summary>
+              {t('links.moreOptions')}
+              <Chevron />
+            </summary>
+            <div className="segs">
+              <label className="seg l field">
+                <span className="micro">{t('links.customCode')}</span>
+                <input name="code" className="mono" placeholder={t('links.generatedShort')} />
               </label>
-              <input id={`${id}expiry`} name="expires_at" type="datetime-local" aria-describedby={`${id}hint`} />
-              <p id={`${id}hint`} className="hint">
-                {t('links.expiryHint')}
-              </p>
+              <label className="seg r field">
+                <span className="micro">{t('links.tags')}</span>
+                <input name="tags" placeholder={t('links.tagsHint')} />
+              </label>
+              <div className="seg wide field">
+                <label className="micro" htmlFor={`${id}expiry`}>
+                  {t('links.expiry')}
+                </label>
+                <input id={`${id}expiry`} name="expires_at" type="datetime-local" aria-describedby={`${id}hint`} />
+                <p id={`${id}hint`} className="hint">
+                  {t('links.expiryHint')}
+                </p>
+              </div>
             </div>
-            <label className="seg r field">
-              <span className="micro">{t('links.tags')}</span>
-              <input name="tags" placeholder={t('links.tagsHint')} />
-            </label>
-          </div>
+          </details>
           {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
         </div>
         <div className="perf" aria-hidden="true" />
@@ -585,7 +660,10 @@ function Route({ from, code, codeIsPlaceholder, to }: { from: string; code: stri
     <div className="route">
       <p className="from">
         <span className="micro">{from} /</span>
-        <span className={`code${codeIsPlaceholder ? ' placeholder' : ''}`}>{code}</span>
+        {/* A Code never breaks at its hyphens; one too long for the pass ends in an ellipsis. */}
+        <span className={`code${codeIsPlaceholder ? ' placeholder' : ''}`} title={code}>
+          {code}
+        </span>
       </p>
       <div className="flight" aria-hidden="true">
         <Plane className="plane" />
@@ -598,26 +676,43 @@ function Route({ from, code, codeIsPlaceholder, to }: { from: string; code: stri
   );
 }
 
-/** The selected Link as a pass: its segments, the stub with its QR code; editable in place. */
+/** The selected Link as a pass: its segments, Change Target, the stub with its QR code to download. */
 function LinkPass({
   slug,
   link,
   editing,
+  manualCopy,
+  reveal,
   onEditing,
   onChanged,
   onCopied,
+  onCopyFailed,
 }: {
   slug: string;
   link: Link;
   editing: boolean;
+  /** Copying failed: show the Short URL selected, to copy by hand. */
+  manualCopy: boolean;
+  /** Scroll the stub (QR code and actions) into view when the pass opens, as under a row on a phone. */
+  reveal: boolean;
   onEditing: (on: boolean) => void;
   /** With the Link as it was and as it is now. */
   onChanged: (old: Link, link: Link) => void;
   onCopied: (link: Link) => void;
+  onCopyFailed: (link: Link) => void;
 }) {
   const { t, i18n } = useTranslation();
   const id = useId();
   const [error, setError] = useState<unknown>();
+  const stub = useRef<HTMLDivElement>(null);
+  const manual = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (reveal) stub.current?.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' });
+  }, [reveal]);
+  useEffect(() => {
+    if (manualCopy) manual.current?.select();
+  }, [manualCopy]);
 
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -643,10 +738,7 @@ function LinkPass({
   const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' });
   const short = link.short_url.replace(/^https?:\/\//, '');
   return (
-    <section className="pass" aria-labelledby={`${id}cap`}>
-      <p id={`${id}cap`} className="pass-cap micro">
-        {t('links.selected')}
-      </p>
+    <section className="pass" aria-label={t('links.selected')}>
       <div className="pass-card print">
         <div className="pass-main">
           <Route from={link.domain} code={link.code} to={hostOf(link.target)} />
@@ -659,10 +751,24 @@ function LinkPass({
                 if (e.key === 'Escape') onEditing(false);
               }}
             >
-              <label className="seg wide field">
-                <span className="micro">{t('links.target')}</span>
-                <input name="target" type="url" required defaultValue={link.target} className="mono" autoFocus />
-              </label>
+              <div className="seg wide field">
+                <label className="micro" htmlFor={`${id}target`}>
+                  {t('links.target')}
+                </label>
+                <input
+                  id={`${id}target`}
+                  name="target"
+                  type="url"
+                  required
+                  defaultValue={link.target}
+                  className="mono"
+                  aria-describedby={`${id}same`}
+                  autoFocus
+                />
+                <p id={`${id}same`} className="hint">
+                  {t('links.changeTargetHint')}
+                </p>
+              </div>
               <label className="seg l field">
                 <span className="micro">{t('links.expiry')}</span>
                 <input name="expires_at" type="datetime-local" defaultValue={toInput(link.expires_at)} />
@@ -718,13 +824,21 @@ function LinkPass({
                     {link.target}
                   </a>
                 </dd>
+                <dd className="change">
+                  <button className="small" aria-describedby={`${id}same`} onClick={() => onEditing(true)}>
+                    {t('links.changeTarget')}
+                  </button>
+                  <span id={`${id}same`} className="hint">
+                    {t('links.changeTargetHint')}
+                  </span>
+                </dd>
               </div>
             </dl>
           )}
           {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
         </div>
         <div className="perf" aria-hidden="true" />
-        <div className="stub">
+        <div className="stub" ref={stub}>
           {expired ? (
             <div className="qr blank">{t('links.qrExpired')}</div>
           ) : (
@@ -732,20 +846,49 @@ function LinkPass({
               <img src={qrHref(slug, link, 'svg')} alt={t('links.qrAlt', { url: short })} width={124} height={124} />
             </span>
           )}
-          <p className="short">
-            <a href={link.short_url}>
-              {link.domain}/<wbr />
-              {link.code}
-            </a>
-          </p>
+          {manualCopy ? (
+            <input
+              ref={manual}
+              className="manual"
+              name="short_url"
+              readOnly
+              value={link.short_url}
+              aria-label={t('links.shortUrl')}
+              onFocus={(e) => e.target.select()}
+            />
+          ) : (
+            <p className="short">
+              <a href={link.short_url}>
+                {link.domain}/<wbr />
+                {link.code}
+              </a>
+            </p>
+          )}
           <div className="acts">
-            <CopyButton link={link} onCopied={onCopied} className="primary small" />
-            {!expired &&
-              ['svg', 'png'].map((format) => (
-                <a key={format} className="button small" href={qrHref(slug, link, format)} download={`${link.code}.${format}`}>
-                  {t('links.qr', { format: format.toUpperCase() })}
+            {/* The QR code for a poster is the pass's main job; PNG prints anywhere, SVG for designers. */}
+            {!expired && (
+              <a className="button primary" href={qrHref(slug, link, 'png')} download={`${link.code}.png`}>
+                {t('links.downloadQr')}
+              </a>
+            )}
+            <div className="acts-row">
+              <CopyButton
+                link={link}
+                onCopied={onCopied}
+                onFailed={onCopyFailed}
+                className={expired ? 'primary small' : 'small'}
+              />
+              {!expired && (
+                <a
+                  className="button small"
+                  href={qrHref(slug, link, 'svg')}
+                  download={`${link.code}.svg`}
+                  aria-label={t('links.downloadQrAs', { format: 'SVG' })}
+                >
+                  SVG
                 </a>
-              ))}
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -761,70 +904,98 @@ function LinkPass({
   );
 }
 
-/** Export the Workspace's Links as CSV, or import a CSV file and show each row's result. */
-function CsvTools({ base, onImported }: { base: string; onImported: () => void }) {
+/** The board's More menu: export the Workspace's Links as CSV, or import a CSV file. */
+function CsvTools({
+  base,
+  onImported,
+}: {
+  base: string;
+  onImported: (result: { rows?: ImportedRow[]; error?: unknown }) => void;
+}) {
   const { t } = useTranslation();
-  const [rows, setRows] = useState<ImportedRow[]>();
-  const [error, setError] = useState<unknown>();
+  const file = useRef<HTMLInputElement>(null);
 
   async function upload(input: HTMLInputElement) {
-    const file = input.files?.[0];
-    if (!file) return;
-    setError(undefined);
+    const csv = input.files?.[0];
+    if (!csv) return;
     try {
-      setRows(await api<ImportedRow[]>('POST', `${base}.csv`, file));
-      onImported();
-    } catch (err) {
-      setError(err);
+      onImported({ rows: await api<ImportedRow[]>('POST', `${base}.csv`, csv) });
+    } catch (error) {
+      onImported({ error });
     }
     input.value = '';
   }
 
+  function download() {
+    const a = document.createElement('a');
+    a.href = `/api${base}.csv`;
+    a.download = 'links.csv';
+    a.click();
+  }
+
   return (
     <>
-      <div className="csv">
-        <a className="button small" href={`/api${base}.csv`} download="links.csv">
-          {t('links.exportCsv')}
-        </a>
-        <label className="button small file">
-          {t('links.importCsv')}
-          <input type="file" accept=".csv,text/csv" onChange={(e) => void upload(e.currentTarget)} />
-        </label>
-      </div>
-      {(error !== undefined || rows) && (
-        <div className="import">
-          {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
-          {rows && (
-            <div className="table">
-              <table aria-label={t('links.importCsv')}>
-                <thead>
-                  <tr>
-                    <th className="num">{t('links.line')}</th>
-                    <th>{t('links.result')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.line}>
-                      <td className="num">{row.line}</td>
-                      <td>
-                        {row.short_url ? (
-                          <a href={row.short_url}>{row.short_url}</a>
-                        ) : (
-                          t(`errors.${row.skipped!.kind}`, { defaultValue: row.skipped!.error })
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+      <MoreMenu
+        label={t('links.boardActions')}
+        items={[
+          { label: t('links.exportCsv'), onSelect: download },
+          { label: t('links.importCsv'), onSelect: () => file.current?.click() },
+        ]}
+      />
+      <input
+        ref={file}
+        className="vh"
+        type="file"
+        name="csv"
+        tabIndex={-1}
+        accept=".csv,text/csv"
+        aria-label={t('links.importCsv')}
+        onChange={(e) => void upload(e.currentTarget)}
+      />
     </>
   );
 }
+
+/** What a CSV import did, row by row. */
+function ImportResult({ rows, error, onClose }: { rows?: ImportedRow[]; error?: unknown; onClose: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="import">
+      {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+      {rows && (
+        <table aria-label={t('links.importCsv')}>
+          <thead>
+            <tr>
+              <th className="num">{t('links.line')}</th>
+              <th>{t('links.result')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.line}>
+                <td className="num">{row.line}</td>
+                <td>
+                  {row.short_url ? (
+                    <a href={row.short_url}>{row.short_url}</a>
+                  ) : (
+                    t(`errors.${row.skipped!.kind}`, { defaultValue: row.skipped!.error })
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <button className="small" onClick={onClose}>
+        {t('close')}
+      </button>
+    </div>
+  );
+}
+
+/** The Domains a Link can be created on: the Default Domain first, then the approved custom ones. */
+const usableDomains = (domains: Domain[]) =>
+  domains.filter((d) => d.default || d.status === 'approved').sort((a, b) => +b.default - +a.default);
 
 /** Where a Link's pass lives: `/app/links/{domain}/{code}`. */
 const linkHref = (link: Link) => `/app/links/${encodeURIComponent(link.domain)}/${encodeURIComponent(link.code)}`;

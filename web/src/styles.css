@@ -9,7 +9,7 @@
   color-scheme: light;
   --ink: #17181c;
   --band: #17181c;
-  --ground: #e8eaed;
+  --ground: #ffffff;
   --surface: #ffffff;
   --surface-2: #f6f7f8;
   --text: #17181c;
@@ -63,8 +63,9 @@
   }
 }
 
-/* The pass is paper: light in either theme. */
-.pass {
+/* The pass is paper: light in either theme, and so is a confirming dialog. */
+.pass,
+.confirm {
   color-scheme: light;
   --surface: #ffffff;
   --surface-2: #f6f7f8;
@@ -104,6 +105,14 @@ html {
   background: var(--ground);
   -webkit-text-size-adjust: 100%;
   scrollbar-color: var(--line-strong) transparent;
+}
+
+/* JetBrains Mono's contextual ligatures set `://` apart; the `font` shorthand resets this
+   property wherever it is used, hence the !important. */
+*,
+::before,
+::after {
+  font-variant-ligatures: none !important;
 }
 
 body {
@@ -242,13 +251,15 @@ button:disabled {
   opacity: 0.55;
 }
 
-button.primary {
+button.primary,
+.button.primary {
   color: var(--on-text);
   background: var(--text);
   border-color: var(--text);
 }
 
-button.primary:hover {
+button.primary:hover,
+.button.primary:hover {
   background: color-mix(in srgb, var(--text) 86%, var(--on-text));
 }
 
@@ -355,6 +366,29 @@ input[readonly] {
 .hint {
   font-size: 0.75rem;
   color: var(--muted);
+}
+
+/* Fingers: every control at least 44px on a touch screen or a phone. */
+@media (pointer: coarse), (max-width: 47.99rem) {
+  button,
+  .button,
+  input,
+  select,
+  button.small,
+  .button.small,
+  .item,
+  .popover.menu [role='menuitem'],
+  .row-acts .button,
+  .row-acts button,
+  .filters input,
+  .filters select {
+    height: 2.75rem;
+  }
+
+  button.icon,
+  .row-acts button.icon {
+    width: 2.75rem;
+  }
 }
 
 /* ---------- Header band ---------- */
@@ -717,6 +751,13 @@ button.icon svg {
   }
 }
 
+@media (min-width: 60rem) {
+  .band {
+    position: sticky;
+    top: 0;
+  }
+}
+
 @media (min-width: 48rem) and (max-width: 63.99rem) {
   .band {
     column-gap: 1rem;
@@ -809,8 +850,8 @@ main.flush {
 }
 
 .page-head .lede {
+  /* Its own line under the heading: a max-width would let it fit beside it. */
   flex-basis: 100%;
-  max-width: 68ch;
   color: var(--muted);
 }
 
@@ -829,23 +870,28 @@ main.flush {
   text-decoration: underline;
 }
 
-/* A white sheet holding one section of a page. */
-.sheet {
-  padding: 1.5rem;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+/* One section of a page, straight on the ground: a heading, then board rows; a hairline between sections. */
+.sheet + .sheet {
+  margin-top: 2.25rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--line);
 }
 
-.sheet + .sheet,
-.sheet + .breakdowns,
+.pass + .sheet,
 .sheet + [role='alert'],
 [role='alert'] + .sheet {
-  margin-top: 1.25rem;
+  margin-top: 2.75rem;
 }
 
 .sheet > h2 {
   margin-bottom: 1rem;
+}
+
+.page-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
 }
 
 .sheet > .row + .table,
@@ -873,11 +919,13 @@ main.flush {
   max-width: 24rem;
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.5rem;
+/* A cell of row buttons stays a table cell, so its rule lines up with the row's. */
+td.actions {
+  text-align: right;
+}
+
+td.actions > * {
+  margin: 0.125rem 0 0.125rem 0.5rem;
 }
 
 /* ---------- Tables: the board grammar ---------- */
@@ -962,21 +1010,29 @@ td.mono {
 }
 
 .board-col {
-  --notch: var(--surface);
   min-width: 0;
   padding: 1.75rem 1.75rem 4rem 2rem;
-  background: var(--surface);
   border-right: 1px solid var(--line);
 }
 
+/* The pass lies on the counter: the pane sticks under the band, the pass centred in it,
+   from the top and scrolling when it is taller than the pane. */
 .pane {
+  position: sticky;
+  top: 3.75rem;
+  align-self: start;
+  display: flex;
   min-width: 0;
-  padding: 1.75rem 1.75rem 4rem;
+  height: calc(100dvh - 3.75rem);
+  padding: 1.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .pane-inner {
-  position: sticky;
-  top: 1.75rem;
+  width: 100%;
+  max-width: 36rem;
+  margin: auto;
 }
 
 @media (max-width: 59.99rem) {
@@ -993,14 +1049,44 @@ td.mono {
   .board-col > .pass {
     margin-bottom: 1.5rem;
   }
+
+  /* New Link stays in reach while the board scrolls. */
+  .board-head {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    margin: -1.25rem -1rem 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--ground);
+    border-bottom: 1px solid var(--line);
+  }
 }
 
 .board-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0.5rem;
   margin-bottom: 1.25rem;
+}
+
+.board-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.board-domain {
+  font: 500 0.8125rem/1.2 var(--font-mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.board-head .popover {
+  right: 0;
+  left: auto;
 }
 
 .filters {
@@ -1033,20 +1119,11 @@ td.mono {
   }
 }
 
-.filters .csv {
-  display: flex;
-  gap: 0.5rem;
-  margin-left: auto;
-}
-
-.filters .csv .button,
-.filters .csv .file {
-  font-weight: 500;
-}
-
 .import {
-  flex-basis: 100%;
-  margin-top: 0.25rem;
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
   padding: 0.75rem 1rem;
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -1508,9 +1585,11 @@ table.board col.c-acts {
 }
 
 .route .code {
+  overflow: hidden;
   font: 650 clamp(1.625rem, 1.1rem + 2.4cqi, 2.375rem) / 1.05 var(--font-mono);
   letter-spacing: -0.02em;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .route .code.placeholder {
@@ -1641,6 +1720,55 @@ table.board col.c-acts {
   margin-top: 0.25rem;
 }
 
+/* Change Target sits on the Target's segment, with what it keeps. */
+.seg dd.change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+  font: 400 0.75rem/1.4 var(--font-sans);
+}
+
+.seg dd.change .hint {
+  flex: 1 1 12rem;
+}
+
+.domain-field {
+  margin-top: 1rem;
+}
+
+/* Code, Tags and Expiry wait under More options. */
+.options {
+  margin-top: 1rem;
+}
+
+.options summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  font: 600 0.8125rem/1 var(--font-sans);
+  cursor: pointer;
+  list-style: none;
+}
+
+.options summary::-webkit-details-marker {
+  display: none;
+}
+
+.options[open] > summary .chevron {
+  transform: rotate(180deg);
+}
+
+.options .segs {
+  margin-top: 0.5rem;
+}
+
+.options .seg input {
+  width: 100%;
+}
+
 .target-field {
   margin-top: 1.25rem;
 }
@@ -1702,6 +1830,23 @@ table.board col.c-acts {
   width: 100%;
 }
 
+.stub .acts-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+}
+
+.stub .manual {
+  width: 100%;
+  height: 2.25rem;
+  font-size: 0.75rem;
+}
+
+/* On a phone the opened pass scrolls its stub into view, clear of the tab bar. */
+.stub {
+  scroll-margin: 1rem 0 calc(4.5rem + env(safe-area-inset-bottom));
+}
+
 .plane-sm {
   width: 1rem;
   height: 1rem;
@@ -1732,6 +1877,8 @@ table.board col.c-acts {
 
 .pane-empty {
   display: grid;
+  min-height: 12rem;
+  align-content: center;
   justify-items: start;
   gap: 0.75rem;
   padding: 2rem 1.5rem;
@@ -1807,6 +1954,10 @@ table.board col.c-acts {
   fill: var(--muted);
 }
 
+.chart .none {
+  fill: var(--line-strong);
+}
+
 .chart .axis {
   stroke: var(--text);
 }
@@ -1839,27 +1990,68 @@ table.board col.c-acts {
   }
 }
 
-/* Breakdowns are segments: one sheet, hairlines between. */
+/* Clicks on the pass's paper: the chart's segments, then the breakdowns as segments. */
+.clicks-card {
+  --pad: 1.75rem;
+  display: block;
+  padding: 1.5rem var(--pad);
+}
+
+@media (max-width: 40rem) {
+  .clicks-card {
+    --pad: 1.125rem;
+  }
+}
+
 .breakdowns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  margin-top: 1.25rem;
-  overflow: hidden;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  margin: 1.5rem calc(-1 * var(--pad)) -1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.breakdowns section {
+  min-width: 0;
+  padding: 1.25rem var(--pad) 1.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.breakdowns section:nth-child(odd) {
+  border-right: 1px solid var(--line);
+}
+
+.breakdowns section:nth-last-child(-n + 2) {
+  border-bottom: 0;
 }
 
 @media (max-width: 40rem) {
   .breakdowns {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .breakdowns section:nth-child(odd) {
+    border-right: 0;
+  }
+
+  .breakdowns section:nth-last-child(2) {
+    border-bottom: 1px solid var(--line);
+  }
 }
 
-.breakdowns section {
-  padding: 1.25rem 1.5rem 1.5rem;
-  background: var(--surface);
+.short-link {
+  text-decoration: none;
+}
+
+.short-link .host {
+  color: var(--muted);
+}
+
+.short-link .code {
+  font-weight: 650;
+}
+
+.short-link:hover .code {
+  text-decoration: underline;
 }
 
 .breakdowns h2 {
@@ -1997,27 +2189,81 @@ table.board col.c-acts {
   margin-top: 1.25rem;
 }
 
-.settings + .settings {
-  margin-top: 1.25rem;
-}
-
 .settings h2 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0;
+  padding-bottom: 0.625rem;
+  border-bottom: 2px solid var(--text);
+}
+
+.settings ul {
+  gap: 0;
+}
+
+.settings .item {
+  height: 3.25rem;
+  padding: 0 0.25rem;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.settings .item:hover {
+  background: var(--surface-2);
+}
+
+.settings a.item::after {
+  content: '';
+  width: 0.75rem;
+  height: 0.75rem;
+  background: var(--chevron) center / contain no-repeat;
+  transform: rotate(-90deg);
 }
 
 .settings .menu-field {
   max-width: 20rem;
-  padding: 0.75rem;
+  padding: 0.75rem 0.25rem;
 }
 
 .leave {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+/* ---------- Confirming ---------- */
+
+.confirm {
+  width: min(26rem, calc(100% - 2rem));
+  padding: 0;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  box-shadow: var(--pass-shadow);
+  animation: drop 0.18s var(--ease-out) backwards;
+}
+
+.confirm::backdrop {
+  background: rgb(23 24 28 / 0.5);
+}
+
+.confirm p {
+  padding: 1.5rem 1.5rem 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.confirm-acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem 1.25rem;
+  background: var(--surface-2);
+  border-top: 2px dashed var(--line-strong);
+  border-radius: 0 0 13px 13px;
 }
 
 /* ---------- Motion off when asked ---------- */

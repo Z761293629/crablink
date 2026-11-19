@@ -28,17 +28,13 @@
     "empty": "还没有链接。",
     "actions": "操作",
     "customCode": "自定义短码",
-    "generated": "留空则自动生成",
     "domain": "域名",
-    "create": "创建链接",
-    "edit": "编辑",
     "save": "保存",
     "cancel": "取消",
     "delete": "删除",
     "confirmDelete": "删除 {{url}}？短码 {{code}} 将永远不能在 {{domain}} 上再次使用。",
     "copy": "复制",
     "copied": "已复制",
-    "qr": "二维码（{{format}}）",
     "more": "加载更多",
     "tags": "标签",
     "tagsHint": "用逗号分隔",
@@ -55,30 +51,39 @@
     "targetHint": "粘贴长网址",
     "generatedShort": "自动生成",
     "expiryHint": "留空则永不过期",
-    "issue": "签发",
+    "issue": "创建",
     "created": "创建时间",
     "expired": "已过期",
     "noTags": "无标签",
     "qrAlt": "{{url}} 的二维码",
-    "qrPending": "签发后生成二维码。",
+    "qrPending": "创建后生成二维码。",
     "qrExpired": "已过期的链接没有二维码。",
     "clearFilters": "清除筛选",
-    "searchHint": "搜索短码或目标网址  ( / )",
+    "searchHint": "搜索短码或目标网址",
     "fresh": {
       "created": "新",
       "updated": "已更新"
     },
     "announce": {
-      "created": "已签发 {{url}}",
+      "created": "已创建 {{url}}",
       "updated": "已保存 {{url}}",
       "deleted": "已删除 {{url}}",
       "copied": "已复制 {{url}}"
     },
     "loading": "正在加载链接",
     "viewClicks": "查看点击",
-    "qrShort": "二维码",
+    "qrShort": "QR",
     "shortcutNew": "快捷键：N",
-    "moreActions": "更多"
+    "moreActions": "更多：{{code}}",
+    "boardActions": "CSV 导入与导出",
+    "changeTarget": "修改目标网址",
+    "changeTargetHint": "短网址保持不变，已印出的二维码仍然有效。",
+    "downloadQr": "下载 QR",
+    "downloadQrAs": "下载 QR（{{format}}）",
+    "downloadQrOf": "下载 {{code}} 的 QR（PNG）",
+    "copyFailed": "无法自动复制，请长按短网址（或按 Ctrl+C）复制。",
+    "moreOptions": "更多选项",
+    "confirmDeleteAction": "删除链接"
   },
   "nav": {
     "links": "链接",
@@ -121,10 +126,10 @@
       "tablet": "平板"
     },
     "peak": "峰值",
-    "eachBar": "每根柱",
+    "eachBar": "统计",
     "per": {
-      "hour": "1 小时",
-      "day": "1 天"
+      "hour": "按小时",
+      "day": "按天"
     }
   },
   "invite": {
@@ -146,7 +151,8 @@
       "pending": "待审批",
       "approved": "已批准",
       "rejected": "已拒绝"
-    }
+    },
+    "confirmRemoveAction": "移除域名"
   },
   "admin": {
     "title": "实例管理",
@@ -188,7 +194,8 @@
     "makeOwner": "设为所有者",
     "makeMember": "设为成员",
     "remove": "移除",
-    "confirmRemove": "将 {{email}} 移出此工作区？"
+    "confirmRemove": "将 {{email}} 移出此工作区？",
+    "confirmRemoveAction": "移除成员"
   },
   "roles": {
     "owner": "所有者",
@@ -208,7 +215,9 @@
     "create": "创建 API 密钥",
     "secret": "密钥",
     "copy": "复制",
-    "secretOnce": "{{name}} 的密钥：请立即复制，之后不会再显示。"
+    "secretOnce": "{{name}} 的密钥：请立即复制，之后不会再显示。",
+    "confirmRevokeAction": "撤销 API 密钥",
+    "copyFailed": "无法自动复制：密钥已选中，请按 Ctrl+C 或长按复制。"
   },
   "account": {
     "title": "账户",
@@ -248,5 +257,8 @@
     "domain_taken": "该域名是默认域名，或已属于其他工作区。",
     "domain_not_found": "该域名不存在。",
     "domain_not_approved": "请使用默认域名或本工作区已批准的域名。"
-  }
+  },
+  "cancel": "取消",
+  "retry": "重试",
+  "close": "关闭"
 }

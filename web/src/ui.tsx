@@ -10,6 +10,8 @@ import {
   useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
+import { useTranslation } from 'react-i18next';
+import { errorMessage } from './i18n';
 
 /** Whether `query` matches now, re-rendering when that changes. */
 export function useMedia(query: string): boolean {
@@ -143,6 +145,7 @@ export function MoreMenu({
   const { open, setOpen, toggle, ref } = usePopover<HTMLDivElement>();
   const id = useId();
   const menu = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (open) menu.current?.querySelector<HTMLElement>('[role=menuitem]')?.focus();
   }, [open]);
@@ -160,6 +163,7 @@ export function MoreMenu({
   return (
     <div className="menu-wrap" ref={ref}>
       <button
+        ref={button}
         className="small icon"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -189,6 +193,8 @@ export function MoreMenu({
               className={item.danger ? 'danger' : undefined}
               onClick={() => {
                 setOpen(false);
+                // Focus back on the menu's button, so a dialog the item opens returns it there.
+                button.current?.focus();
                 item.onSelect();
               }}
             >
@@ -230,4 +236,61 @@ export function useToast() {
     </div>
   );
   return [node, show] as const;
+}
+
+// ---------- Confirming and failing ----------
+
+/**
+ * An in-app "Are you sure?": a modal `<dialog>` (focus kept inside, Escape cancels,
+ * focus back on the button that asked). `ask` resolves to whether `action` was chosen.
+ */
+export function useConfirm() {
+  const { t } = useTranslation();
+  const id = useId();
+  const ref = useRef<HTMLDialogElement>(null);
+  const [asking, setAsking] = useState<{ message: string; action: string; done: (yes: boolean) => void }>();
+  useEffect(() => {
+    if (asking) ref.current?.showModal();
+  }, [asking]);
+  const ask = useCallback(
+    (message: string, action: string) => new Promise<boolean>((done) => setAsking({ message, action, done })),
+    [],
+  );
+  const node = asking && (
+    <dialog
+      ref={ref}
+      className="confirm"
+      aria-labelledby={id}
+      onClose={(e) => {
+        asking.done(e.currentTarget.returnValue === 'yes');
+        setAsking(undefined);
+      }}
+    >
+      <form method="dialog">
+        <p id={id}>{asking.message}</p>
+        <div className="confirm-acts">
+          <button value="no" autoFocus>
+            {t('cancel')}
+          </button>
+          <button value="yes" className="danger">
+            {asking.action}
+          </button>
+        </div>
+      </form>
+    </dialog>
+  );
+  return [node, ask] as const;
+}
+
+/** A page that failed to load: what went wrong, and a way to try again. */
+export function PageError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="page-error">
+      <p role="alert">{errorMessage(t, error)}</p>
+      <button className="small" onClick={onRetry}>
+        {t('retry')}
+      </button>
+    </div>
+  );
 }

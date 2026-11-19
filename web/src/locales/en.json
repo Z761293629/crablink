@@ -28,17 +28,13 @@
     "empty": "No Links yet.",
     "actions": "Actions",
     "customCode": "Custom Code",
-    "generated": "Generated when empty",
     "domain": "Domain",
-    "create": "Create Link",
-    "edit": "Edit",
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
     "confirmDelete": "Delete {{url}}? Its Code {{code}} can never be used again on {{domain}}.",
     "copy": "Copy",
     "copied": "Copied",
-    "qr": "QR code ({{format}})",
     "more": "Load more",
     "tags": "Tags",
     "tagsHint": "Comma-separated",
@@ -60,10 +56,10 @@
     "expired": "Expired",
     "noTags": "No Tags",
     "qrAlt": "QR code of {{url}}",
-    "qrPending": "The QR code is issued with the Link.",
+    "qrPending": "The QR code appears once the Link is created.",
     "qrExpired": "An expired Link has no QR code.",
     "clearFilters": "Clear filters",
-    "searchHint": "Search Code or Target  ( / )",
+    "searchHint": "Search Code or Target",
     "fresh": {
       "created": "New",
       "updated": "Updated"
@@ -78,7 +74,16 @@
     "viewClicks": "View Clicks",
     "qrShort": "QR",
     "shortcutNew": "Shortcut: N",
-    "moreActions": "More"
+    "moreActions": "More: {{code}}",
+    "boardActions": "CSV import and export",
+    "changeTarget": "Change Target",
+    "changeTargetHint": "The Short URL stays the same, so printed QR codes keep working.",
+    "downloadQr": "Download QR",
+    "downloadQrAs": "Download QR as {{format}}",
+    "downloadQrOf": "Download QR of {{code}} (PNG)",
+    "copyFailed": "Couldn't copy automatically. Press and hold the Short URL (or press Ctrl+C) to copy.",
+    "moreOptions": "More options",
+    "confirmDeleteAction": "Delete Link"
   },
   "nav": {
     "links": "Links",
@@ -121,10 +126,10 @@
       "tablet": "Tablet"
     },
     "peak": "Peak",
-    "eachBar": "Each bar",
+    "eachBar": "Bars",
     "per": {
-      "hour": "1 hour",
-      "day": "1 day"
+      "hour": "Hourly",
+      "day": "Daily"
     }
   },
   "invite": {
@@ -146,7 +151,8 @@
       "pending": "Pending",
       "approved": "Approved",
       "rejected": "Rejected"
-    }
+    },
+    "confirmRemoveAction": "Remove Domain"
   },
   "admin": {
     "title": "Instance administration",
@@ -188,7 +194,8 @@
     "makeOwner": "Make Owner",
     "makeMember": "Make Member",
     "remove": "Remove",
-    "confirmRemove": "Remove {{email}} from this Workspace?"
+    "confirmRemove": "Remove {{email}} from this Workspace?",
+    "confirmRemoveAction": "Remove member"
   },
   "roles": {
     "owner": "Owner",
@@ -208,7 +215,9 @@
     "create": "Create API Key",
     "secret": "Secret",
     "copy": "Copy",
-    "secretOnce": "The secret of {{name}}: copy it now, it won't be shown again."
+    "secretOnce": "The secret of {{name}}: copy it now, it won't be shown again.",
+    "confirmRevokeAction": "Revoke API Key",
+    "copyFailed": "Couldn't copy automatically: the secret is selected, press Ctrl+C or press and hold to copy."
   },
   "account": {
     "title": "Account",
@@ -248,5 +257,8 @@
     "domain_taken": "That Domain is the Default Domain or another Workspace’s.",
     "domain_not_found": "That Domain doesn’t exist.",
     "domain_not_approved": "Use the Default Domain or one of this Workspace’s approved Domains."
-  }
+  },
+  "cancel": "Cancel",
+  "retry": "Try again",
+  "close": "Close"
 }

@@ -29,6 +29,7 @@ test('an Owner adds a Domain and sees it pending, an Instance Admin approves it,
   await page.getByRole('link', { name: 'Links' }).click();
   await page.getByRole('button', { name: 'New Link' }).click();
   await page.getByLabel('Target').fill('https://example.com/branded');
+  await page.getByText('More options').click();
   await page.getByLabel('Code').fill('sale');
   await page.getByLabel('Domain').selectOption(custom);
   await page.getByRole('button', { name: 'Create' }).click();

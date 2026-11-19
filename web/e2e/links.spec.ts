@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { baseURL } from '../playwright.config';
 import type { Locator, Page } from '@playwright/test';
-import { test, expect, openUserMenu, signInPage, switchWorkspace } from './fixtures';
+import { test, expect, confirmDialog, openUserMenu, signInPage, switchWorkspace } from './fixtures';
 
 /** The pass of the Link picked on the board. */
 const selectedPass = (page: Page) => page.getByRole('region', { name: 'Selected Link' });
@@ -9,13 +9,22 @@ const selectedPass = (page: Page) => page.getByRole('region', { name: 'Selected 
 /** Picks a Link's row on the board, opening its pass. */
 const pick = (row: Locator) => row.getByRole('button').first().click();
 
-/** Chooses `action` from a row's More menu. */
-async function more(row: Locator, action: 'Edit' | 'Delete') {
-  await row.getByRole('button', { name: 'More' }).click();
-  await row.page().getByRole('menuitem', { name: action }).click();
+/** Chooses Delete from a row's More menu, which is named after the Link's Code. */
+async function deleteFrom(row: Locator, code: string) {
+  await row.getByRole('button', { name: `More: ${code}` }).click();
+  await row.page().getByRole('menuitem', { name: 'Delete' }).click();
 }
 
-test('a User creates a Link with a Custom Code, edits its Target, follows it and deletes it', async ({
+/** Opens the New Link pass's More options: Custom Code, Tags, Expiry. */
+const moreOptions = (page: Page) => page.getByText('More options').click();
+
+/** Opens the Board's More menu and chooses `action`. */
+async function boardMenu(page: Page, action: 'Export CSV' | 'Import CSV') {
+  await page.getByRole('button', { name: 'CSV import and export' }).click();
+  await page.getByRole('menuitem', { name: action }).click();
+}
+
+test('a User creates a Link with a Custom Code, changes its Target from the pass, follows it and deletes it', async ({
   page,
   user,
 }) => {
@@ -25,6 +34,7 @@ test('a User creates a Link with a Custom Code, edits its Target, follows it and
 
   await page.getByRole('button', { name: 'New Link' }).click();
   await page.getByLabel('Target').fill('https://example.com/first');
+  await moreOptions(page);
   await page.getByLabel('Custom Code').fill(code);
   await page.getByRole('button', { name: 'Create' }).click();
   const row = page.getByRole('row').filter({ hasText: shortUrl });
@@ -33,7 +43,10 @@ test('a User creates a Link with a Custom Code, edits its Target, follows it and
   const pass = selectedPass(page);
   await expect(pass).toContainText(code);
 
-  await more(row, 'Edit');
+  // Changing the Target is on the pass, saying the Short URL stays.
+  const change = pass.getByRole('button', { name: 'Change Target' });
+  await expect(change).toHaveAccessibleDescription(/The Short URL stays the same/);
+  await change.click();
   await pass.getByLabel('Target').fill('https://example.com/second');
   await pass.getByLabel('Expiry').fill('2030-01-02T03:04');
   await pass.getByRole('button', { name: 'Save' }).click();
@@ -45,16 +58,16 @@ test('a User creates a Link with a Custom Code, edits its Target, follows it and
   expect(followed.status()).toBe(302);
   expect(followed.headers().location).toBe('https://example.com/second');
 
-  page.once('dialog', (dialog) => {
-    // The confirmation says what deleting costs.
-    expect(dialog.message()).toContain(`can never be used again on ${new URL(baseURL).host}`);
-    return dialog.dismiss();
-  });
-  await more(row, 'Delete');
+  // The confirmation says what deleting costs; Escape backs out.
+  await deleteFrom(row, code);
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText(`can never be used again on ${new URL(baseURL).host}`);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
   await expect(row).toHaveCount(1);
 
-  page.once('dialog', (dialog) => dialog.accept());
-  await more(row, 'Delete');
+  await deleteFrom(row, code);
+  await confirmDialog(page);
   await expect(row).toHaveCount(0);
   expect((await page.request.get(shortUrl, { maxRedirects: 0 })).status()).toBe(410);
 });
@@ -66,13 +79,14 @@ test('taking a Code that is already taken says so, in either language', async ({
 
   await page.getByRole('button', { name: 'New Link' }).click();
   await page.getByLabel('Target').fill('https://example.com/second');
+  await moreOptions(page);
   await page.getByLabel('Custom Code').fill(code);
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page.getByRole('alert')).toHaveText('That Code is already taken.');
 
   await openUserMenu(page);
   await page.getByLabel('Language').selectOption('zh-CN');
-  await page.getByRole('button', { name: '签发' }).click();
+  await page.getByRole('button', { name: '创建', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('该短码已被占用。');
 });
 
@@ -93,7 +107,7 @@ test("switching Workspace shows that Workspace's Links", async ({ page, user }) 
   await expect(links).not.toContainText('https://example.com/personal');
 });
 
-test("a Link's Short URL copies in one click, and its QR code downloads as SVG or PNG", async ({
+test("a Link's QR code downloads as PNG or SVG from its pass, and its Short URL copies in one click", async ({
   page,
   context,
   user,
@@ -110,13 +124,36 @@ test("a Link's Short URL copies in one click, and its QR code downloads as SVG o
   await expect(pass.getByRole('button', { name: 'Copied' })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${baseURL}/${code}`);
 
-  for (const format of ['svg', 'png']) {
+  for (const [format, name] of [
+    ['png', 'Download QR'],
+    ['svg', 'Download QR as SVG'],
+  ]) {
     const download = page.waitForEvent('download');
-    await pass.getByRole('link', { name: `QR code (${format.toUpperCase()})` }).click();
+    await pass.getByRole('link', { name, exact: true }).click();
     const file = await download;
     expect(file.suggestedFilename()).toBe(`${code}.${format}`);
     expect((await file.failure()) ?? null).toBeNull();
   }
+
+  // The row's QR is a PNG too.
+  const download = page.waitForEvent('download');
+  await page.getByRole('link', { name: `Download QR of ${code} (PNG)` }).click();
+  expect((await download).suggestedFilename()).toBe(`${code}.png`);
+});
+
+test('when the clipboard refuses, the Short URL shows selected to copy by hand', async ({ page, user }) => {
+  const code = `manual-${Date.now()}`;
+  await user.api('POST', `/workspaces/${user.slug}/links`, { target: 'https://example.com/manual', code });
+  await page.addInitScript(() => {
+    navigator.clipboard.writeText = () => Promise.reject(new DOMException('Denied', 'NotAllowedError'));
+  });
+  await signInPage(page, user.email, user.password);
+
+  await page.getByRole('row').filter({ hasText: `${baseURL}/${code}` }).getByRole('button', { name: 'Copy' }).click();
+  await expect(page.getByText('Press and hold the Short URL')).toBeVisible();
+  const manual = selectedPass(page).getByRole('textbox', { name: 'Short URL' });
+  await expect(manual).toHaveValue(`${baseURL}/${code}`);
+  await expect(manual).toBeFocused();
 });
 
 test('a User tags two Links, filters by one Tag and searches by part of a Target', async ({ page, user }) => {
@@ -127,6 +164,7 @@ test('a User tags two Links, filters by one Tag and searches by part of a Target
 
   await page.getByRole('button', { name: 'New Link' }).click();
   await page.getByLabel('Target').fill('https://example.com/spring-sale');
+  await moreOptions(page);
   await page.getByLabel('Tags').fill('spring, launch');
   await page.getByRole('button', { name: 'Create' }).click();
   const spring = page.getByRole('row').filter({ hasText: 'https://example.com/spring-sale' });
@@ -134,8 +172,9 @@ test('a User tags two Links, filters by one Tag and searches by part of a Target
   await expect(spring).toContainText('spring');
 
   const autumn = page.getByRole('row').filter({ hasText: `${baseURL}/${code}` });
-  await more(autumn, 'Edit');
+  await pick(autumn);
   const pass = selectedPass(page);
+  await pass.getByRole('button', { name: 'Change Target' }).click();
   await pass.getByLabel('Tags').fill('autumn');
   await pass.getByRole('button', { name: 'Save' }).click();
   await expect(autumn).toContainText('autumn');
@@ -144,11 +183,20 @@ test('a User tags two Links, filters by one Tag and searches by part of a Target
   await page.getByLabel('Tag', { exact: true }).selectOption('spring');
   await expect(rows).toHaveCount(1 + 1);
   await expect(rows.nth(1)).toContainText('https://example.com/spring-sale');
+  // The filter is in the address, so it survives a reload.
+  await expect(page).toHaveURL(/[?&]tag=spring/);
+  await page.reload();
+  await expect(page.getByLabel('Tag', { exact: true })).toHaveValue('spring');
+  await expect(rows).toHaveCount(1 + 1);
 
   await page.getByLabel('Tag', { exact: true }).selectOption('');
   await page.getByLabel('Search').fill('AUTUMN-SA');
   await expect(rows).toHaveCount(1 + 1);
   await expect(rows.nth(1)).toContainText('https://example.com/autumn-sale');
+  await expect(page).toHaveURL(/[?&]q=AUTUMN-SA/);
+  await page.reload();
+  await expect(page.getByLabel('Search')).toHaveValue('AUTUMN-SA');
+  await expect(rows).toHaveCount(1 + 1);
 });
 
 test('more Links load a page at a time', async ({ page, user }) => {
@@ -177,7 +225,7 @@ test('a User exports Links as CSV, then imports a file and sees each row’s res
   await signInPage(page, user.email, user.password);
 
   const downloading = page.waitForEvent('download');
-  await page.getByRole('link', { name: 'Export CSV' }).click();
+  await boardMenu(page, 'Export CSV');
   const download = await downloading;
   expect(download.suggestedFilename()).toBe('links.csv');
   const exported = await readFile((await download.path())!, 'utf8');
@@ -209,6 +257,7 @@ test('a Workspace with no Links shows a blank pass that previews the New Link, t
   await expect(blank).toContainText('Generated');
   await page.getByLabel('Target').fill('https://example.com/preview');
   await expect(blank).toContainText('example.com');
+  await moreOptions(page);
   await page.getByLabel('Custom Code').fill(code);
   await expect(blank).toContainText(`${new URL(baseURL).host}/${code}`);
   await page.getByLabel('Target').press('Enter');
