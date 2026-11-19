@@ -1,0 +1,43 @@
+{
+  "language": "Language",
+  "signIn": {
+    "title": "Sign in",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in"
+  },
+  "signOut": "Sign out",
+  "links": {
+    "shortUrl": "Short URL",
+    "target": "Target",
+    "clickCount": "Click Count",
+    "expiry": "Expiry",
+    "never": "Never",
+    "empty": "No Links yet."
+  },
+  "errors": {
+    "network": "Can't reach the server. Check your connection and try again.",
+    "unauthorized": "You're not signed in, or your session has expired.",
+    "forbidden": "You're not allowed to do that.",
+    "invalid_credentials": "Wrong email or password.",
+    "origin_mismatch": "This request came from another site and was refused.",
+    "wrong_password": "The current password is wrong.",
+    "invalid_email": "Enter an email like name@example.com.",
+    "password_too_short": "The password must be at least 8 characters.",
+    "email_taken": "That email is already taken.",
+    "not_found": "Not found.",
+    "invite_not_found": "This invite link doesn't exist.",
+    "invite_expired": "This invite link has expired.",
+    "invite_used": "This invite link has already been used.",
+    "link_not_found": "That Link doesn't exist.",
+    "link_expired": "That Link has expired.",
+    "invalid_target": "The Target must be a full http:// or https:// URL that isn't on this instance.",
+    "invalid_code": "A Code must be 3-64 characters of A-Z, a-z, 0-9, _ or -.",
+    "code_reserved": "That Code is reserved.",
+    "code_taken": "That Code is already taken.",
+    "user_not_found": "No such User.",
+    "already_member": "Already in this Workspace.",
+    "last_owner": "A Workspace needs an Owner: make someone else Owner first.",
+    "internal": "Something went wrong on the server. Try again."
+  }
+}

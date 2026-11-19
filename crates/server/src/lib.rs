@@ -20,6 +20,7 @@ mod links;
 mod members;
 mod redirect;
 mod users;
+mod web;
 mod workspaces;
 
 pub use clicks::dbip_country_lookup;
@@ -140,6 +141,7 @@ pub async fn app(
         .nest("/api", api)
         .route("/health", get(|| async { "ok" }))
         .route("/internal/domain-allowed", get(domain_allowed))
+        .nest_service("/app", get(web::serve))
         .route("/{code}", get(redirect))
         .fallback(|| async { (StatusCode::NOT_FOUND, "not found") })
         .with_state(state))
