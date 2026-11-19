@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 // End-to-end tests against the real crablink-server binary serving web/dist, on an
 // embedded Postgres (crates/server/examples/e2e.rs). Build the web app first: `pnpm build`.
-const port = 8787;
+// CRABLINK_E2E_PORT: to run beside another checkout's e2e server.
+const port = Number(process.env.CRABLINK_E2E_PORT ?? 8787);
 export const baseURL = `http://localhost:${port}`;
 export const admin = { email: 'admin@example.com', password: 'e2e admin password' };
 

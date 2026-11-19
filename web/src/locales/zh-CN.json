@@ -15,6 +15,66 @@
     "never": "永不过期",
     "empty": "还没有链接。"
   },
+  "nav": {
+    "switcher": "工作区",
+    "links": "链接",
+    "workspace": "管理工作区",
+    "account": "账户"
+  },
+  "workspace": {
+    "none": "你还不在任何工作区中。先创建一个吧。",
+    "name": "名称",
+    "rename": "重命名",
+    "newName": "新工作区名称",
+    "create": "创建工作区",
+    "leave": "退出工作区",
+    "confirmLeave": "退出 {{name}}？你将无法再访问它的链接。",
+    "delete": "删除工作区",
+    "confirmDelete": "删除 {{name}}？它的链接将变为已删除链接，短码仍被占用；它的 API 密钥将失效。"
+  },
+  "members": {
+    "title": "成员",
+    "email": "邮箱",
+    "role": "角色",
+    "addEmail": "成员邮箱",
+    "add": "添加成员",
+    "makeOwner": "设为所有者",
+    "makeMember": "设为成员",
+    "remove": "移除",
+    "confirmRemove": "将 {{email}} 移出此工作区？"
+  },
+  "roles": {
+    "owner": "所有者",
+    "member": "成员"
+  },
+  "apiKeys": {
+    "title": "API 密钥",
+    "empty": "还没有 API 密钥。",
+    "name": "名称",
+    "prefix": "开头",
+    "createdAt": "创建时间",
+    "lastUsed": "最近使用",
+    "never": "从未",
+    "revoke": "吊销",
+    "confirmRevoke": "吊销 {{name}}？使用它的程序将立即失效。",
+    "newName": "API 密钥名称",
+    "create": "创建 API 密钥",
+    "secret": "密钥",
+    "copy": "复制",
+    "secretOnce": "{{name}} 的密钥：请立即复制，之后不会再显示。"
+  },
+  "account": {
+    "title": "账户",
+    "currentPassword": "当前密码",
+    "newPassword": "新密码",
+    "change": "修改密码",
+    "changed": "密码已修改。"
+  },
+  "invite": {
+    "title": "接受邀请",
+    "password": "设置密码",
+    "submit": "接受邀请"
+  },
   "errors": {
     "network": "无法连接服务器，请检查网络后重试。",
     "unauthorized": "尚未登录，或登录已过期。",

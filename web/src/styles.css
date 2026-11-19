@@ -34,14 +34,14 @@ h1 {
   font-size: 1.5rem;
 }
 
-.sign-in {
+.narrow {
   display: grid;
   gap: 1rem;
   max-width: 22rem;
   margin: 2rem auto;
 }
 
-.sign-in label {
+.narrow label {
   display: grid;
   gap: 0.25rem;
 }
@@ -78,4 +78,49 @@ td.target {
   max-width: 24rem;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin-top: 2rem;
+}
+
+nav {
+  display: flex;
+  gap: 0.25rem;
+}
+
+nav [aria-current='page'] {
+  font-weight: bold;
+}
+
+/* A form or a group of buttons on one line, wrapping on a phone. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+}
+
+td.actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.secret {
+  padding: 0.5rem 1rem;
+  border: 1px solid color-mix(in srgb, CanvasText 30%, transparent);
+}
+
+.secret input {
+  width: min(36rem, 80vw);
+  font-family: ui-monospace, monospace;
+}
+
+button.danger {
+  color: #d33;
+}
+
+[role='status'] {
+  color: #2a2;
 }
