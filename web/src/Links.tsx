@@ -611,7 +611,7 @@ function IssuePass({
             <div className="segs">
               <label className="seg l field">
                 <span className="micro">{t('links.customCode')}</span>
-                <input name="code" className="mono" placeholder={t('links.generatedShort')} />
+                <input name="code" className="mono" placeholder={t('links.codeHint')} />
               </label>
               <label className="seg r field">
                 <span className="micro">{t('links.tags')}</span>
@@ -658,16 +658,24 @@ function Route({ from, code, codeIsPlaceholder, to }: { from: string; code: stri
       <p className="from">
         <span className="micro">{from} /</span>
         {/* A Code never breaks at its hyphens; one too long for the pass ends in an ellipsis. */}
-        <span className={`code${codeIsPlaceholder ? ' placeholder' : ''}`} title={code}>
-          {code}
-        </span>
+        {codeIsPlaceholder ? (
+          // No Code yet: a blank of the Generated Code's seven slots, to be filled.
+          <span className="code placeholder">
+            <span className="vh">{code}</span>
+            <span aria-hidden="true">_______</span>
+          </span>
+        ) : (
+          <span className="code" title={code}>
+            {code}
+          </span>
+        )}
       </p>
       <div className="flight" aria-hidden="true">
         <Plane className="plane" />
       </div>
       <p className="to">
         <span className="micro">{t('links.target')}</span>
-        <span className={`host${to ? '' : ' placeholder'}`}>{to || '—'}</span>
+        {to && <span className="host">{to}</span>}
       </p>
     </div>
   );

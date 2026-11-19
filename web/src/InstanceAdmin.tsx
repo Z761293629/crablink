@@ -67,10 +67,13 @@ export function InstanceAdmin() {
         </div>
         {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
 
-        <section className="sheet">
-          <h2>{t('admin.users.title')}</h2>
+        <section className="board-sec" aria-labelledby="users-title">
+          <div className="board-title">
+            <h2 id="users-title">{t('admin.users.title')}</h2>
+            <span className="board-domain">{users?.length}</span>
+          </div>
           <div className="table">
-            <table className="gate" aria-label={t('admin.users.title')}>
+            <table className="gate" aria-labelledby="users-title">
               <thead>
                 <tr>
                   <th>{t('admin.users.email')}</th>
@@ -116,13 +119,16 @@ export function InstanceAdmin() {
           </div>
         </section>
 
-        <section className="sheet">
-          <h2>{t('admin.domains.title')}</h2>
+        <section className="board-sec" aria-labelledby="custom-title">
+          <div className="board-title">
+            <h2 id="custom-title">{t('admin.domains.title')}</h2>
+            <span className="board-domain">{domains?.length}</span>
+          </div>
           {domains?.length === 0 ? (
             <p className="empty">{t('admin.domains.empty')}</p>
           ) : (
             <div className="table">
-              <table className="gate" aria-label={t('admin.domains.title')}>
+              <table className="gate" aria-labelledby="custom-title">
                 <thead>
                   <tr>
                     <th>{t('domains.domain')}</th>

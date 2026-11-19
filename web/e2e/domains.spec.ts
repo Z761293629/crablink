@@ -9,7 +9,7 @@ test('an Owner adds a Domain and sees it pending, an Instance Admin approves it,
   const custom = `go-${Date.now()}.example.com`;
   await signInPage(page, user.email, user.password);
   await openWorkspacePage(page, 'Domains');
-  await page.getByLabel('Domain').fill(custom);
+  await page.getByLabel('Domain', { exact: true }).fill(custom);
   await page.getByRole('button', { name: 'Add Domain' }).click();
   const domain = page.getByRole('row').filter({ hasText: custom });
   await expect(domain).toContainText('Pending');

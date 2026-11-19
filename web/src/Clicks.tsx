@@ -165,8 +165,8 @@ function ShortLink({ link }: { link: { code: string; domain: string; short_url: 
 }
 
 /**
- * Clicks as a pass, on the same light paper as a Link's: the range as its route, the time
- * range and the Clicks in it as segments, the chart, then a perforation and the stub (`children`).
+ * Clicks as a pass, on the same light paper as a Link's: the time range picked at its head, the range
+ * as its route, the Clicks in it as segments, the chart, then a perforation and the stub (`children`).
  */
 function ClicksPass({
   series,
@@ -204,6 +204,16 @@ function ClicksPass({
     <section className="pass" aria-label={t('clicks.overTime')}>
       <div className="ticket wide">
         <div className="ticket-body">
+          <label className="range">
+            <span className="micro">{t('clicks.range')}</span>
+            <select name="range" value={range} onChange={(e) => onRange(e.target.value as Range)}>
+              {Object.keys(RANGES).map((r) => (
+                <option key={r} value={r}>
+                  {t(`clicks.ranges.${r}`)}
+                </option>
+              ))}
+            </select>
+          </label>
           {first && (
             <div className="route">
               <p className="from">{end(t('clicks.from'), first)}</p>
@@ -214,17 +224,7 @@ function ClicksPass({
             </div>
           )}
           <div className="segs">
-            <label className="seg l field">
-              <span className="micro">{t('clicks.range')}</span>
-              <select name="range" value={range} onChange={(e) => onRange(e.target.value as Range)}>
-                {Object.keys(RANGES).map((r) => (
-                  <option key={r} value={r}>
-                    {t(`clicks.ranges.${r}`)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="seg r">
+            <div className="seg wide">
               <p className="micro">{t('clicks.clicks')}</p>
               <p className="val total">{t('clicks.total', { count: total })}</p>
             </div>
