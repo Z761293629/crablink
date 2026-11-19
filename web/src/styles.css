@@ -1860,12 +1860,13 @@ table.board.compact col.c-acts {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 0.75rem;
-  margin-top: 0.75rem;
-  font: 400 0.75rem/1.4 var(--font-sans);
+  margin-top: 1rem;
+  font: 400 0.75rem/1.5 var(--font-sans);
 }
 
 .seg dd.change .hint {
-  flex: 1 1 12rem;
+  flex: 1 1 10rem;
+  color: var(--muted);
 }
 
 .domain-field {

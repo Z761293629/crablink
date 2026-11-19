@@ -79,7 +79,7 @@
     "moreActions": "更多：{{code}}",
     "boardActions": "CSV 导入与导出",
     "changeTarget": "修改目标网址",
-    "changeTargetHint": "短网址保持不变，已印出的二维码仍然有效。",
+    "changeTargetHint": "短网址不变，印好的二维码照常可用",
     "downloadQr": "下载 QR",
     "downloadQrAs": "下载 QR（{{format}}）",
     "downloadQrOf": "下载 {{code}} 的 QR（PNG）",
@@ -98,7 +98,8 @@
       "country": "主要地区",
       "device": "主要设备",
       "empty": "还没有点击。分享短网址或贴出二维码后，点击会显示在这里。"
-    }
+    },
+    "routeTo": "前往"
   },
   "nav": {
     "links": "链接",

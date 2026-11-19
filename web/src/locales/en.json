@@ -79,7 +79,7 @@
     "moreActions": "More: {{code}}",
     "boardActions": "CSV import and export",
     "changeTarget": "Change Target",
-    "changeTargetHint": "The Short URL stays the same, so printed QR codes keep working.",
+    "changeTargetHint": "Printed QR codes keep working.",
     "downloadQr": "Download QR",
     "downloadQrAs": "Download QR as {{format}}",
     "downloadQrOf": "Download QR of {{code}} (PNG)",
@@ -98,7 +98,8 @@
       "country": "Top country",
       "device": "Top device",
       "empty": "No Clicks yet. Share the Short URL or put up its QR code, and Clicks show up here."
-    }
+    },
+    "routeTo": "To"
   },
   "nav": {
     "links": "Links",

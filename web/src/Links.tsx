@@ -753,7 +753,7 @@ function Route({ from, code, codeIsPlaceholder, to }: { from: string; code: stri
       {/* No Target yet: the route ends at the plane rather than at a label with nothing under it. */}
       {to && (
         <p className="to">
-          <span className="micro">{t('links.target')}</span>
+          <span className="micro">{t('links.routeTo')}</span>
           <span className="host">{to}</span>
         </p>
       )}

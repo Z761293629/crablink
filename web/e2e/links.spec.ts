@@ -45,7 +45,7 @@ test('a User creates a Link with a Custom Code, changes its Target from the pass
 
   // Changing the Target is on the pass, saying the Short URL stays.
   const change = pass.getByRole('button', { name: 'Change Target' });
-  await expect(change).toHaveAccessibleDescription(/The Short URL stays the same/);
+  await expect(change).toHaveAccessibleDescription(/Printed QR codes keep working/);
   await change.click();
   await pass.getByLabel('Target').fill('https://example.com/second');
   await pass.getByLabel('Expiry').fill('2030-01-02T03:04');
