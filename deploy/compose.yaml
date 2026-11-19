@@ -30,6 +30,8 @@ services:
     environment:
       CRABLINK_BASE_URL: https://${CRABLINK_DOMAIN:?set CRABLINK_DOMAIN in .env}
       CRABLINK_DATABASE_URL: postgres://crablink:${POSTGRES_PASSWORD}@postgres:5432/crablink
+      # Caddy replaces any X-Forwarded-For a visitor sends with their real address.
+      CRABLINK_TRUST_PROXY: "true"
 
   caddy:
     image: caddy:2
