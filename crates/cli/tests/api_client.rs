@@ -12,6 +12,7 @@ fn api_client_creates_links_and_lists_them_across_pages() {
                 target: format!("https://example.com/{i}"),
                 code: Some(format!("link{i:03}")),
                 expires_at: None,
+                domain: None,
             })
             .unwrap();
         assert_eq!(link.code, format!("link{i:03}"));

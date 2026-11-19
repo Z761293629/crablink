@@ -1,6 +1,6 @@
 //! `/api/workspaces/{slug}/links`: Link management handlers, Target and Custom Code
-//! validation, and QR codes. Every Link lives on the Default Domain for now, so a
-//! Code addresses one within its Workspace.
+//! validation, and QR codes. A Link is addressed by its Code and `?domain=`, the
+//! Default Domain when absent.
 
 use axum::Json;
 use axum::extract::rejection::{JsonRejection, QueryRejection};
@@ -104,7 +104,8 @@ fn validate_custom_code(code: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// `POST /api/workspaces/{slug}/links`: a Link on the Default Domain.
+/// `POST /api/workspaces/{slug}/links`: a Link on the Default Domain or an approved
+/// Domain of the Workspace.
 pub(crate) async fn create_link(
     State(s): State<AppState>,
     caller: Caller,
@@ -117,6 +118,10 @@ pub(crate) async fn create_link(
     if let Some(code) = &req.code {
         validate_custom_code(code)?;
     }
+    let host = req.domain.as_deref().unwrap_or(&s.default_domain);
+    let domain_id = crate::domains::usable(&s.pool, workspace_id, host)
+        .await?
+        .ok_or(ApiError::DomainNotApproved)?;
     let now = (s.clock)();
     // Insert and let the unique constraint reject a taken Code; never check first (ADR-0003).
     for _ in 0..MAX_CODE_ATTEMPTS {
@@ -132,7 +137,7 @@ pub(crate) async fn create_link(
         .bind(now)
         .bind(now)
         .bind(req.expires_at)
-        .bind(s.domain_id)
+        .bind(domain_id)
         .bind(workspace_id)
         .fetch_one(&s.pool)
         .await;
@@ -149,30 +154,42 @@ pub(crate) async fn create_link(
     Err(ApiError::CodesExhausted)
 }
 
-/// `GET /api/workspaces/{slug}/links/{code}`: one Link; 404 if missing or deleted.
+/// The host of the Domain `?domain=` names, the Default Domain when absent.
+fn host<'a>(s: &'a AppState, domain: &'a Option<String>) -> &'a str {
+    domain.as_deref().unwrap_or(&s.default_domain)
+}
+
+/// `GET /api/workspaces/{slug}/links/{code}?domain=`: one Link; 404 if missing or deleted.
 pub(crate) async fn get_link(
     State(s): State<AppState>,
     caller: Caller,
     Path((slug, code)): Path<(String, String)>,
+    query: Result<Query<crablink_api::LinkDomain>, QueryRejection>,
 ) -> Result<Json<crablink_api::Link>, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
-    fetch_link(&s, workspace_id, &code).await.map(Json)
+    let Query(q) = query?;
+    fetch_link(&s, workspace_id, host(&s, &q.domain), &code)
+        .await
+        .map(Json)
 }
 
-/// The Workspace's live or expired Link with this Code; 404 if missing or deleted.
+/// The Workspace's live or expired Link with this Code on Domain `host`; 404 if
+/// missing or deleted.
 async fn fetch_link(
     s: &AppState,
     workspace_id: i64,
+    host: &str,
     code: &str,
 ) -> Result<crablink_api::Link, ApiError> {
     sqlx::query_as::<_, LinkRow>(concat!(
         "SELECT ",
         link_columns!(),
         " FROM links l JOIN domains d ON d.id = l.domain_id \
-         WHERE l.workspace_id = $1 AND l.domain_id = $2 AND l.code = $3 AND l.deleted_at IS NULL"
+         WHERE l.workspace_id = $1 AND d.host = lower($2) AND l.code = $3 \
+         AND l.deleted_at IS NULL"
     ))
     .bind(workspace_id)
-    .bind(s.domain_id)
+    .bind(host)
     .bind(code)
     .fetch_optional(&s.pool)
     .await?
@@ -190,7 +207,7 @@ pub(crate) async fn link_qr(
 ) -> Result<Response, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
-    let link = fetch_link(&s, workspace_id, &code).await?;
+    let link = fetch_link(&s, workspace_id, host(&s, &q.domain), &code).await?;
     // Its Short URL no longer redirects, so a QR code of it would only mislead.
     if link.is_expired((s.clock)()) {
         return Err(ApiError::LinkExpired);
@@ -214,15 +231,17 @@ pub(crate) async fn link_qr(
     Ok(([(header::CONTENT_TYPE, format.content_type())], body).into_response())
 }
 
-/// `PATCH /api/workspaces/{slug}/links/{code}`: changes Target and/or Expiry, never
-/// the Code; 404 if missing or deleted.
+/// `PATCH /api/workspaces/{slug}/links/{code}?domain=`: changes Target and/or Expiry,
+/// never the Code or Domain; 404 if missing or deleted.
 pub(crate) async fn update_link(
     State(s): State<AppState>,
     caller: Caller,
     Path((slug, code)): Path<(String, String)>,
+    query: Result<Query<crablink_api::LinkDomain>, QueryRejection>,
     req: Result<Json<crablink_api::UpdateLink>, JsonRejection>,
 ) -> Result<Json<crablink_api::Link>, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    let Query(q) = query?;
     let Json(req) = req?;
     if let Some(target) = &req.target {
         validate_target(target, &s.default_host)?;
@@ -231,7 +250,8 @@ pub(crate) async fn update_link(
         "UPDATE links l SET target = COALESCE($1, l.target), \
          expires_at = CASE WHEN $2 THEN $3 ELSE l.expires_at END, updated_at = $4 \
          FROM domains d WHERE d.id = l.domain_id \
-         AND l.workspace_id = $5 AND l.domain_id = $6 AND l.code = $7 AND l.deleted_at IS NULL \
+         AND l.workspace_id = $5 AND d.host = lower($6) AND l.code = $7 \
+         AND l.deleted_at IS NULL \
          RETURNING ",
         link_columns!()
     ))
@@ -240,7 +260,7 @@ pub(crate) async fn update_link(
     .bind(req.expires_at.flatten())
     .bind((s.clock)())
     .bind(workspace_id)
-    .bind(s.domain_id)
+    .bind(host(&s, &q.domain))
     .bind(&code)
     .fetch_optional(&s.pool)
     .await?
@@ -259,7 +279,8 @@ struct ListRow {
 }
 
 /// `GET /api/workspaces/{slug}/links`: the Workspace's live and expired Links on the
-/// Default Domain, newest (highest id) first. The cursor is the id of the previous
+/// Default Domain and its own custom Domains (not a former Default Domain), newest
+/// (highest id) first. The cursor is the id of the previous
 /// page's last Link, so each page is an index range scan.
 pub(crate) async fn list_links(
     State(s): State<AppState>,
@@ -286,13 +307,13 @@ pub(crate) async fn list_links(
         "SELECT l.id, ",
         link_columns!(),
         " FROM links l JOIN domains d ON d.id = l.domain_id \
-         WHERE l.workspace_id = $3 AND l.domain_id = $4 AND l.deleted_at IS NULL AND l.id < $1 \
+         WHERE l.workspace_id = $3 AND l.deleted_at IS NULL AND l.id < $1 \
+         AND (d.is_default OR d.workspace_id = $3) \
          ORDER BY l.id DESC LIMIT $2"
     ))
     .bind(before)
     .bind(i64::from(limit) + 1)
     .bind(workspace_id)
-    .bind(s.domain_id)
     .fetch_all(&s.pool)
     .await?;
     let next_cursor = if rows.len() > limit as usize {
@@ -310,22 +331,25 @@ pub(crate) async fn list_links(
     }))
 }
 
-/// `DELETE /api/workspaces/{slug}/links/{code}`: marks the Link deleted (ADR-0002).
-/// The row stays so its Code is never reused on its Domain; 404 if missing or already
-/// deleted.
+/// `DELETE /api/workspaces/{slug}/links/{code}?domain=`: marks the Link deleted
+/// (ADR-0002). The row stays so its Code is never reused on its Domain; 404 if missing
+/// or already deleted.
 pub(crate) async fn delete_link(
     State(s): State<AppState>,
     caller: Caller,
     Path((slug, code)): Path<(String, String)>,
+    query: Result<Query<crablink_api::LinkDomain>, QueryRejection>,
 ) -> Result<StatusCode, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    let Query(q) = query?;
     let done = sqlx::query(
-        "UPDATE links SET deleted_at = $1 \
-         WHERE workspace_id = $2 AND domain_id = $3 AND code = $4 AND deleted_at IS NULL",
+        "UPDATE links SET deleted_at = $1 FROM domains d WHERE d.id = links.domain_id \
+         AND links.workspace_id = $2 AND d.host = lower($3) AND links.code = $4 \
+         AND links.deleted_at IS NULL",
     )
     .bind((s.clock)())
     .bind(workspace_id)
-    .bind(s.domain_id)
+    .bind(host(&s, &q.domain))
     .bind(&code)
     .execute(&s.pool)
     .await?;

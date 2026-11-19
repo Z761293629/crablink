@@ -12,6 +12,7 @@ use sqlx::PgPool;
 mod admin;
 mod api_keys;
 mod db;
+mod domains;
 mod error;
 mod links;
 mod members;
@@ -26,6 +27,10 @@ pub use users::{create_user, set_user_disabled};
 
 use admin::{accept_invite, create_invite, list_users, reset_password, update_user};
 use api_keys::{create_api_key, list_api_keys, revoke_api_key};
+use domains::{
+    add_domain, domain_allowed, list_domains, list_managed_domains, remove_domain,
+    update_managed_domain,
+};
 use links::{create_link, delete_link, get_link, link_qr, list_links, update_link};
 use members::{add_member, list_workspace_users, remove_workspace_user, update_workspace_user};
 use redirect::redirect;
@@ -51,8 +56,6 @@ struct AppState {
     default_domain: Arc<str>,
     /// The Default Domain's host alone: a Target there would loop.
     default_host: Arc<str>,
-    /// The Default Domain's id: every Link lives on it for now.
-    domain_id: i64,
 }
 
 /// Builds the full HTTP app, first creating the Default Domain from `base_url`
@@ -71,7 +74,7 @@ pub async fn app(
         Some(port) => format!("{default_host}:{port}"),
         None => default_host.to_owned(),
     };
-    let domain_id = db::default_domain(&pool, &default_domain).await?;
+    db::default_domain(&pool, &default_domain).await?;
     std::sync::LazyLock::force(&users::DUMMY);
     let state = AppState {
         pool,
@@ -80,7 +83,6 @@ pub async fn app(
         scheme: url.scheme().into(),
         default_domain: default_domain.into(),
         default_host: default_host.into(),
-        domain_id,
     };
     let workspace = Router::new()
         .route("/links", post(create_link).get(list_links))
@@ -91,6 +93,8 @@ pub async fn app(
         .route("/links/{code}/qr", get(link_qr))
         .route("/api-keys", post(create_api_key).get(list_api_keys))
         .route("/api-keys/{id}", delete(revoke_api_key))
+        .route("/domains", post(add_domain).get(list_domains))
+        .route("/domains/{host}", delete(remove_domain))
         .route("/members", post(add_member).get(list_workspace_users))
         .route(
             "/members/{email}",
@@ -98,6 +102,8 @@ pub async fn app(
         );
     let admin = Router::new()
         .route("/invites", post(create_invite))
+        .route("/domains", get(list_managed_domains))
+        .route("/domains/{host}", patch(update_managed_domain))
         .route("/users", get(list_users))
         .route("/users/{id}", patch(update_user))
         .route("/users/{id}/password", post(reset_password));
@@ -117,6 +123,7 @@ pub async fn app(
     Ok(Router::new()
         .nest("/api", api)
         .route("/health", get(|| async { "ok" }))
+        .route("/internal/domain-allowed", get(domain_allowed))
         .route("/{code}", get(redirect))
         .fallback(|| async { (StatusCode::NOT_FOUND, "not found") })
         .with_state(state))

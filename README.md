@@ -48,7 +48,7 @@ Postgres 只在 compose 网络内可达，数据在卷 `postgres` 里，删掉�
 
 | 环境变量 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
-| `CRABLINK_BASE_URL` | 是 | — | 对外地址，如 `https://crabl.ink`；启动时用它的 host（和端口）建 Default Domain，Short URL 是 `scheme://host/{code}`，路径部分不计入 |
+| `CRABLINK_BASE_URL` | 是 | — | 对外地址，如 `https://crabl.ink`；启动时用它的 host（和端口）建 Default Domain，Short URL 是 `scheme://host/{code}`，路径部分不计入；跳转按请求的 `Host` 找 Domain，用别的地址访问得到 404 |
 | `CRABLINK_DATABASE_URL` | 是 | compose 里已设好 | Postgres URL，如 `postgres://user:pass@host:5432/crablink`；启动时自动建表 |
 | `CRABLINK_LISTEN` | 否 | `0.0.0.0:8080` | 监听地址（改端口的话 `ports` 和健康检查端口要一起改） |
 
@@ -69,6 +69,18 @@ docker compose exec crablink crablink-server admin create --email you@example.co
 ```
 
 `POSTGRES_PASSWORD` 只在 Postgres 卷第一次初始化时写入，之后改 `.env` 不会改掉库里的密码。升级时改 `compose.yaml` 里的镜像版本号，再 `docker compose pull && docker compose up -d`，schema 在启动时自动升级。备份见下方「备份与恢复」，命令在同一目录里执行；把备份文件复制到这台主机以外。
+
+### 自定义 Domain
+
+Workspace 可以用自己的 Domain，比如 `go.example.com`。Owner 添加后它处于 pending，Instance Admin 批准后才会跳转、才能在上面建 Link、Caddy 才会为它申请证书；被拒绝或未批准的 Domain 一律 404。
+
+1. Owner 把 `go.example.com` 的 CNAME 指向 Default Domain（或 A / AAAA 指向这台主机），然后添加：`POST /api/workspaces/{ws}/domains`，`{ "host": "go.example.com" }`。
+2. Instance Admin 在 `GET /api/admin/domains` 里看到它，`PATCH /api/admin/domains/go.example.com` 设 `{ "status": "approved" }`（或 `rejected`）。
+3. 在上面建 Link：`crablink create https://example.com/sale --code sale --domain go.example.com`。同一个 Code 可以同时存在于不同 Domain。
+
+`deploy/Caddyfile` 用 Caddy 的 on-demand TLS：某个 host 第一次有 HTTPS 请求时，Caddy 先问 crablink 的 `GET /internal/domain-allowed?domain=<host>`，只有 Default Domain 和已批准的 Domain 得到 200，其余 404，所以别人把任意域名指过来也无法让这台主机去申请证书。crablink 自己从不处理 TLS。
+
+Owner 移除 Domain 后，它上面的 Link 变为已删除；之后无论哪个 Workspace 再添加这个 Domain，这些 Code 都仍被占用。删除 Workspace 也会释放它的 Domain。
 
 ### 邀请与管理 User
 
@@ -151,6 +163,7 @@ curl -b jar -H 'Origin: https://crabl.ink' -H 'Content-Type: application/json' \
 crablink login --server https://crabl.ink   # 提示输入 API Key，向服务器问出它的 Workspace，存到 ~/.config/crablink/config.toml
 crablink create https://example.com/a/very/long/path
 crablink create https://rustconf.com --code rust-meetup --expires 7d
+crablink create https://example.com/sale --domain go.example.com   # 建在 Workspace 已批准的自定义 Domain 上
 crablink ls                                  # 全部 Link：Code、Click Count、Expiry、Target
 crablink get rust-meetup
 crablink edit rust-meetup --target https://rustconf.com/2027
@@ -169,17 +182,23 @@ crablink qr rust-meetup -o poster.png        # 存为文件，格式看扩展名
 
 ### HTTP API
 
-Link 属于 Workspace，都在 Default Domain 上；Code 在其 Domain 内唯一，删除后也不再复用。`{ws}` 是 Workspace 的 slug，`/api/workspaces/{ws}/links…` 接受该 Workspace 成员的 session cookie 或它的 API Key，其他凭据一律 403（`forbidden`）。
+Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自定义 Domain 上；Code 在其 Domain 内唯一，删除后也不再复用。`{ws}` 是 Workspace 的 slug，`/api/workspaces/{ws}/links…` 接受该 Workspace 成员的 session cookie 或它的 API Key，其他凭据一律 403（`forbidden`）。单个 Link 用 Code 加 `?domain=<host>` 定位，省略 `domain` 即 Default Domain。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/{code}` | 302 跳转；不存在 404；已删除或已过期 410 |
-| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at? }`；返回的 Link 带 `domain` 和 `short_url` |
-| `GET` | `/api/workspaces/{ws}/links` | 列表，新的在前，游标分页 |
-| `GET` | `/api/workspaces/{ws}/links/{code}` | 查看单个 Link |
-| `PATCH` | `/api/workspaces/{ws}/links/{code}` | 修改 `target` / `expires_at` |
-| `DELETE` | `/api/workspaces/{ws}/links/{code}` | 删除（不可恢复） |
-| `GET` | `/api/workspaces/{ws}/links/{code}/qr?format=svg\|png` | Short URL 的 QR 码，默认 SVG；已过期 410（`link_expired`） |
+| `GET` | `/{code}` | 按 `Host` 找 Domain 再 302 跳转；未知或未批准的 Domain、不存在的 Code 404；已删除或已过期 410 |
+| `GET` | `/internal/domain-allowed?domain=` | 无需凭据，供 Caddy 询问：Default Domain 和已批准的 Domain 200，其余 404 |
+| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain? }`；`domain` 不可用 400（`domain_not_approved`）；返回的 Link 带 `domain` 和 `short_url` |
+| `GET` | `/api/workspaces/{ws}/links` | 列表（所有 Domain），新的在前，游标分页 |
+| `GET` | `/api/workspaces/{ws}/links/{code}?domain=` | 查看单个 Link |
+| `PATCH` | `/api/workspaces/{ws}/links/{code}?domain=` | 修改 `target` / `expires_at` |
+| `DELETE` | `/api/workspaces/{ws}/links/{code}?domain=` | 删除（不可恢复） |
+| `GET` | `/api/workspaces/{ws}/links/{code}/qr?format=svg\|png&domain=` | Short URL 的 QR 码，默认 SVG；已过期 410（`link_expired`） |
+| `GET` | `/api/workspaces/{ws}/domains` | 列出 Default Domain 和本 Workspace 的自定义 Domain：`[{ host, status, default }]`，`status` 为 `pending` / `approved` / `rejected` |
+| `POST` | `/api/workspaces/{ws}/domains` | Owner 添加自定义 Domain：`{ host }`，状态 pending；不是合法 host 400（`invalid_domain`），是 Default Domain 或别的 Workspace 的 409（`domain_taken`） |
+| `DELETE` | `/api/workspaces/{ws}/domains/{host}` | Owner 移除 Domain：其 Link 变为已删除，Code 仍被占用；不属于本 Workspace 404（`domain_not_found`） |
+| `GET` | `/api/admin/domains` | Instance Admin 列出各 Workspace 的自定义 Domain：`[{ host, status, workspace }]` |
+| `PATCH` | `/api/admin/domains/{host}` | Instance Admin 批准或拒绝：`{ status }` |
 | `POST` | `/api/workspaces/{ws}/api-keys` | Owner 建 API Key：`{ name }`；`secret` 只在这次返回，服务器只存哈希 |
 | `GET` | `/api/workspaces/{ws}/api-keys` | Owner 列出未吊销的 API Key：`name`、`prefix`、`created_at`、`last_used_at` |
 | `DELETE` | `/api/workspaces/{ws}/api-keys/{id}` | Owner 吊销 API Key，立即失效 |

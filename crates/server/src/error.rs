@@ -63,6 +63,14 @@ pub enum ApiError {
     AlreadyMember,
     #[error("a Workspace needs an Owner: make someone else Owner first")]
     LastOwner,
+    #[error("domain must be a host name such as go.example.com, without a port")]
+    InvalidDomain,
+    #[error("domain is the Default Domain or another Workspace's")]
+    DomainTaken,
+    #[error("domain not found")]
+    DomainNotFound,
+    #[error("domain is neither the Default Domain nor an approved Domain of this Workspace")]
+    DomainNotApproved,
     #[error("could not generate a free code, try again")]
     CodesExhausted,
     /// Details are logged, never sent.
@@ -95,6 +103,10 @@ impl ApiError {
             Self::UserNotFound => ErrorKind::UserNotFound,
             Self::AlreadyMember => ErrorKind::AlreadyMember,
             Self::LastOwner => ErrorKind::LastOwner,
+            Self::InvalidDomain => ErrorKind::InvalidDomain,
+            Self::DomainTaken => ErrorKind::DomainTaken,
+            Self::DomainNotFound => ErrorKind::DomainNotFound,
+            Self::DomainNotApproved => ErrorKind::DomainNotApproved,
             Self::CodesExhausted | Self::Internal => ErrorKind::Internal,
         }
     }
@@ -105,19 +117,25 @@ impl ApiError {
                 StatusCode::UNAUTHORIZED
             }
             Self::Forbidden | Self::OriginMismatch | Self::WrongPassword => StatusCode::FORBIDDEN,
-            Self::NotFound | Self::LinkNotFound | Self::InviteNotFound | Self::UserNotFound => {
-                StatusCode::NOT_FOUND
-            }
+            Self::NotFound
+            | Self::LinkNotFound
+            | Self::InviteNotFound
+            | Self::UserNotFound
+            | Self::DomainNotFound => StatusCode::NOT_FOUND,
             Self::LinkExpired | Self::InviteExpired | Self::InviteUsed => StatusCode::GONE,
             Self::BadRequest(_)
             | Self::InvalidTarget(_)
             | Self::InvalidCode
             | Self::CodeReserved(_)
             | Self::InvalidEmail
-            | Self::PasswordTooShort => StatusCode::BAD_REQUEST,
-            Self::CodeTaken | Self::EmailTaken | Self::AlreadyMember | Self::LastOwner => {
-                StatusCode::CONFLICT
-            }
+            | Self::PasswordTooShort
+            | Self::InvalidDomain
+            | Self::DomainNotApproved => StatusCode::BAD_REQUEST,
+            Self::CodeTaken
+            | Self::EmailTaken
+            | Self::AlreadyMember
+            | Self::LastOwner
+            | Self::DomainTaken => StatusCode::CONFLICT,
             Self::CodesExhausted | Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

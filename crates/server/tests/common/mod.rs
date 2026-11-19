@@ -27,6 +27,8 @@ pub const ORIGIN: &str = BASE_URL;
 pub const PASSWORD: &str = "correct horse battery";
 /// The User whose personal Workspace and API Key `TestApp::api` uses.
 pub const OWNER: &str = "owner@example.com";
+/// The Instance Admin `TestApp::instance_admin` signs in as.
+pub const ADMIN: &str = "admin@example.com";
 
 /// App with random Generated Codes.
 pub async fn app() -> TestApp {
@@ -195,10 +197,47 @@ impl TestApp {
         self.send(req.unwrap()).await
     }
 
-    /// Unauthenticated GET, e.g. a visitor following a Short URL.
+    /// Unauthenticated GET to `HOST`, e.g. a visitor following a Short URL.
     pub async fn get(&self, path: &str) -> Res {
-        self.send(Request::get(path).body(Body::empty()).unwrap())
-            .await
+        self.get_on(HOST, path).await
+    }
+
+    /// Unauthenticated GET with `Host: host`, e.g. a visitor on a custom Domain.
+    pub async fn get_on(&self, host: &str, path: &str) -> Res {
+        let req = Request::get(path).header(header::HOST, host);
+        self.send(req.body(Body::empty()).unwrap()).await
+    }
+
+    /// Signs in as the Instance Admin `ADMIN`, creating them if missing; returns the cookie.
+    pub async fn instance_admin(&self) -> String {
+        // Already created by an earlier call is fine.
+        let _ = crablink_server::create_user(&self.pool, ADMIN, PASSWORD, true).await;
+        self.sign_in(ADMIN, PASSWORD).await
+    }
+
+    /// `POST /api/workspaces/{slug}/domains` adding `host`, as the session `cookie`.
+    pub async fn add_domain(&self, cookie: &str, slug: &str, host: &str) -> Res {
+        let path = format!("/api/workspaces/{slug}/domains");
+        let body = serde_json::json!({ "host": host });
+        self.as_user("POST", &path, Some(body), cookie).await
+    }
+
+    /// Sets Domain `host`'s status (`approved`, `rejected`, …) as the Instance Admin,
+    /// asserting `200`.
+    pub async fn set_domain_status(&self, host: &str, status: &str) {
+        let admin = self.instance_admin().await;
+        let path = format!("/api/admin/domains/{host}");
+        let body = serde_json::json!({ "status": status });
+        let res = self.as_user("PATCH", &path, Some(body), &admin).await;
+        assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+    }
+
+    /// Adds `host` to `OWNER`'s Workspace and approves it.
+    pub async fn approved_domain(&self, host: &str) {
+        let (cookie, slug) = (&self.owner.cookie, &self.owner.slug);
+        let res = self.add_domain(cookie, slug, host).await;
+        assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
+        self.set_domain_status(host, "approved").await;
     }
 
     /// A request with `OWNER`'s API Key to `path` under `OWNER`'s Workspace, e.g.
@@ -228,7 +267,10 @@ impl TestApp {
         body: Option<Value>,
         key: Option<&str>,
     ) -> Res {
-        let mut req = Request::builder().method(method).uri(path);
+        let mut req = Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::HOST, HOST);
         if let Some(key) = key {
             req = req.header(header::AUTHORIZATION, format!("Bearer {key}"));
         }

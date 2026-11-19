@@ -1,5 +1,23 @@
+# Before issuing a certificate on demand, Caddy asks crablink whether the host is the
+# Default Domain or a custom Domain an Instance Admin approved (ADR-0009). Caddy adds
+# `?domain=<host>` itself; anything but a 200 means no certificate.
+{
+	on_demand_tls {
+		ask http://crablink:8080/internal/domain-allowed
+	}
+}
+
 # Caddy gets and renews the certificate for the Default Domain and keeps the Host header,
-# which crablink checks against Origin on cookie requests.
+# which crablink checks against Origin on cookie requests and uses to find a Link's Domain.
 {$CRABLINK_DOMAIN} {
+	reverse_proxy crablink:8080
+}
+
+# Custom Domains, e.g. go.example.com: the certificate is issued on the first HTTPS
+# request for the host, once crablink approves it.
+https:// {
+	tls {
+		on_demand
+	}
 	reverse_proxy crablink:8080
 }

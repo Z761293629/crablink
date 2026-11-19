@@ -161,7 +161,7 @@ async fn links_on_a_former_default_domain_are_not_listed() {
     app.create(json!({ "target": "https://example.com", "code": "new" }))
         .await;
 
-    // Like every other Link endpoint, listing sees only the Default Domain's Links.
+    // Listing sees only Links on the Default Domain and the Workspace's own Domains.
     assert_eq!(page(&app, "").await.0, ["new"]);
     let res = app.api("GET", "/links/old", None).await;
     assert_eq!(res.status, StatusCode::NOT_FOUND, "{}", res.text);
