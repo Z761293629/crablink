@@ -157,6 +157,7 @@ impl TestServer {
                 code: Some(code.into()),
                 expires_at: None,
                 domain: None,
+                tags: Vec::new(),
             })
             .unwrap()
     }

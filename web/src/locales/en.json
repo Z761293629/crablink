@@ -39,7 +39,13 @@
     "copy": "Copy",
     "copied": "Copied",
     "qr": "QR code ({{format}})",
-    "more": "Load more"
+    "more": "Load more",
+    "tags": "Tags",
+    "tagsHint": "Comma-separated",
+    "tag": "Tag",
+    "allTags": "All Tags",
+    "search": "Search",
+    "noMatch": "No Links match."
   },
   "nav": {
     "links": "Links",
@@ -190,6 +196,7 @@
     "invalid_code": "A Code must be 3-64 characters of A-Z, a-z, 0-9, _ or -.",
     "code_reserved": "That Code is reserved.",
     "code_taken": "That Code is already taken.",
+    "invalid_tag": "A Tag must be 1-64 characters, with no comma.",
     "user_not_found": "No such User.",
     "already_member": "Already in this Workspace.",
     "last_owner": "A Workspace needs an Owner: make someone else Owner first.",

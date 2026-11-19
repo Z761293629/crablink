@@ -16,17 +16,25 @@ test('a User signs in, sees their Links and signs out', async ({ page, user }) =
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   const links = page.getByRole('table');
-  await expect(links.getByRole('columnheader')).toHaveText(['Short URL', 'Target', 'Click Count', 'Expiry', 'Actions']);
+  await expect(links.getByRole('columnheader')).toHaveText([
+    'Short URL',
+    'Target',
+    'Tags',
+    'Click Count',
+    'Expiry',
+    'Actions',
+  ]);
   const expiring = links.getByRole('row').filter({ hasText: 'https://example.com/expiring' });
   await expect(expiring.getByRole('cell')).toHaveText([
     `${baseURL}/${code}`,
     'https://example.com/expiring',
+    '',
     '0',
     'Jan 2, 2030, 3:04 AM',
     /Edit/,
   ]);
   const forever = links.getByRole('row').filter({ hasText: 'https://example.com/forever' });
-  await expect(forever.getByRole('cell').nth(3)).toHaveText('Never');
+  await expect(forever.getByRole('cell').nth(4)).toHaveText('Never');
 
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();

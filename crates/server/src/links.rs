@@ -8,6 +8,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
+use sqlx::PgConnection;
 
 use crate::AppState;
 use crate::error::ApiError;
@@ -34,6 +35,7 @@ struct LinkRow {
     expires_at: Option<DateTime<Utc>>,
     click_count: i64,
     domain: String,
+    tags: Vec<String>,
 }
 
 impl LinkRow {
@@ -48,6 +50,7 @@ impl LinkRow {
             updated_at: self.updated_at,
             expires_at: self.expires_at,
             click_count: self.click_count,
+            tags: self.tags,
         }
     }
 }
@@ -56,8 +59,66 @@ impl LinkRow {
 /// with `concat!` (sqlx only accepts static SQL).
 macro_rules! link_columns {
     () => {
-        "l.code, l.target, l.created_at, l.updated_at, l.expires_at, l.click_count, d.host AS domain"
+        "l.code, l.target, l.created_at, l.updated_at, l.expires_at, l.click_count, \
+         d.host AS domain, ARRAY(SELECT t.name FROM link_tags lt JOIN tags t ON t.id = lt.tag_id \
+         WHERE lt.link_id = l.id ORDER BY t.name) AS tags"
     };
+}
+
+/// The Link with this id, deleted or not.
+async fn link_by_id(conn: &mut PgConnection, id: i64) -> sqlx::Result<LinkRow> {
+    sqlx::query_as(concat!(
+        "SELECT ",
+        link_columns!(),
+        " FROM links l JOIN domains d ON d.id = l.domain_id WHERE l.id = $1"
+    ))
+    .bind(id)
+    .fetch_one(conn)
+    .await
+}
+
+/// Trimmed Tag names, each 1-64 characters with no comma (CSV joins a Link's Tags
+/// with commas) or control character.
+fn tag_names(tags: &[String]) -> Result<Vec<String>, ApiError> {
+    tags.iter()
+        .map(|t| {
+            let t = t.trim();
+            let ok = (1..=64).contains(&t.chars().count())
+                && !t.chars().any(|c| c == ',' || c.is_control());
+            ok.then(|| t.to_owned()).ok_or(ApiError::InvalidTag)
+        })
+        .collect()
+}
+
+/// Replaces the Link's Tags with `names`, creating those new to the Workspace.
+async fn set_tags(
+    conn: &mut PgConnection,
+    workspace_id: i64,
+    link_id: i64,
+    names: &[String],
+) -> sqlx::Result<()> {
+    sqlx::query("DELETE FROM link_tags WHERE link_id = $1")
+        .bind(link_id)
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query(
+        "INSERT INTO tags (workspace_id, name) SELECT $1, unnest($2::text[]) \
+         ON CONFLICT (workspace_id, name) DO NOTHING",
+    )
+    .bind(workspace_id)
+    .bind(names)
+    .execute(&mut *conn)
+    .await?;
+    sqlx::query(
+        "INSERT INTO link_tags (link_id, tag_id) \
+         SELECT $1, id FROM tags WHERE workspace_id = $2 AND name = ANY($3)",
+    )
+    .bind(link_id)
+    .bind(workspace_id)
+    .bind(names)
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
 }
 
 /// A Target must be an absolute `http(s)` URL not on `default_host`, the Default
@@ -118,20 +179,22 @@ pub(crate) async fn create_link(
     if let Some(code) = &req.code {
         validate_custom_code(code)?;
     }
+    let tags = tag_names(&req.tags)?;
     let host = req.domain.as_deref().unwrap_or(&s.default_domain);
     let domain_id = crate::domains::usable(&s.pool, workspace_id, host)
         .await?
         .ok_or(ApiError::DomainNotApproved)?;
     let now = (s.clock)();
+    let mut tx = s.pool.begin().await?;
     // Insert and let the unique constraint reject a taken Code; never check first (ADR-0003).
+    let mut id = None;
     for _ in 0..MAX_CODE_ATTEMPTS {
-        let inserted = sqlx::query_as::<_, LinkRow>(concat!(
-            "WITH l AS (INSERT INTO links \
+        id = sqlx::query_scalar::<_, i64>(
+            "INSERT INTO links \
              (code, target, created_at, updated_at, expires_at, domain_id, workspace_id) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *) SELECT ",
-            link_columns!(),
-            " FROM l JOIN domains d ON d.id = l.domain_id"
-        ))
+             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             ON CONFLICT (domain_id, code) DO NOTHING RETURNING id",
+        )
         .bind(req.code.clone().unwrap_or_else(|| (s.codes)()))
         .bind(&req.target)
         .bind(now)
@@ -139,19 +202,25 @@ pub(crate) async fn create_link(
         .bind(req.expires_at)
         .bind(domain_id)
         .bind(workspace_id)
-        .fetch_one(&s.pool)
-        .await;
-        match inserted {
-            Ok(row) => return Ok((StatusCode::CREATED, Json(row.into_dto(&s.scheme)))),
-            // A taken Custom Code is the caller's to fix: never overwrite, never retry.
-            Err(sqlx::Error::Database(e)) if e.is_unique_violation() && req.code.is_some() => {
-                return Err(ApiError::CodeTaken);
-            }
-            Err(sqlx::Error::Database(e)) if e.is_unique_violation() => continue,
-            Err(e) => return Err(e.into()),
+        .fetch_optional(&mut *tx)
+        .await?;
+        // A taken Custom Code is the caller's to fix: never overwrite, never retry.
+        if id.is_some() || req.code.is_some() {
+            break;
         }
     }
-    Err(ApiError::CodesExhausted)
+    let Some(id) = id else {
+        return Err(match req.code {
+            Some(_) => ApiError::CodeTaken,
+            None => ApiError::CodesExhausted,
+        });
+    };
+    if !tags.is_empty() {
+        set_tags(&mut tx, workspace_id, id, &tags).await?;
+    }
+    let link = link_by_id(&mut tx, id).await?;
+    tx.commit().await?;
+    Ok((StatusCode::CREATED, Json(link.into_dto(&s.scheme))))
 }
 
 /// The host of the Domain `?domain=` names, the Default Domain when absent.
@@ -246,15 +315,16 @@ pub(crate) async fn update_link(
     if let Some(target) = &req.target {
         validate_target(target, &s.default_host)?;
     }
-    sqlx::query_as::<_, LinkRow>(concat!(
+    let tags = req.tags.as_deref().map(tag_names).transpose()?;
+    let mut tx = s.pool.begin().await?;
+    let id = sqlx::query_scalar::<_, i64>(
         "UPDATE links l SET target = COALESCE($1, l.target), \
          expires_at = CASE WHEN $2 THEN $3 ELSE l.expires_at END, updated_at = $4 \
          FROM domains d WHERE d.id = l.domain_id \
          AND l.workspace_id = $5 AND d.host = lower($6) AND l.code = $7 \
          AND l.deleted_at IS NULL \
-         RETURNING ",
-        link_columns!()
-    ))
+         RETURNING l.id",
+    )
     .bind(&req.target)
     .bind(req.expires_at.is_some())
     .bind(req.expires_at.flatten())
@@ -262,10 +332,15 @@ pub(crate) async fn update_link(
     .bind(workspace_id)
     .bind(host(&s, &q.domain))
     .bind(&code)
-    .fetch_optional(&s.pool)
+    .fetch_optional(&mut *tx)
     .await?
-    .map(|row| Json(row.into_dto(&s.scheme)))
-    .ok_or(ApiError::LinkNotFound)
+    .ok_or(ApiError::LinkNotFound)?;
+    if let Some(tags) = &tags {
+        set_tags(&mut tx, workspace_id, id, tags).await?;
+    }
+    let link = link_by_id(&mut tx, id).await?;
+    tx.commit().await?;
+    Ok(Json(link.into_dto(&s.scheme)))
 }
 
 const DEFAULT_PAGE: u32 = 50;
@@ -280,7 +355,8 @@ struct ListRow {
 
 /// `GET /api/workspaces/{slug}/links`: the Workspace's live and expired Links on the
 /// Default Domain and its own custom Domains (not a former Default Domain), newest
-/// (highest id) first. The cursor is the id of the previous
+/// (highest id) first, only those with Tag `tag` and whose Code or Target contains
+/// `q` (ignoring case) when given. The cursor is the id of the previous
 /// page's last Link, so each page is an index range scan.
 pub(crate) async fn list_links(
     State(s): State<AppState>,
@@ -309,11 +385,17 @@ pub(crate) async fn list_links(
         " FROM links l JOIN domains d ON d.id = l.domain_id \
          WHERE l.workspace_id = $3 AND l.deleted_at IS NULL AND l.id < $1 \
          AND (d.is_default OR d.workspace_id = $3) \
+         AND ($4::text IS NULL OR EXISTS (SELECT 1 FROM link_tags lt \
+              JOIN tags t ON t.id = lt.tag_id WHERE lt.link_id = l.id AND t.name = $4)) \
+         AND ($5::text IS NULL OR strpos(lower(l.code), lower($5)) > 0 \
+              OR strpos(lower(l.target), lower($5)) > 0) \
          ORDER BY l.id DESC LIMIT $2"
     ))
     .bind(before)
     .bind(i64::from(limit) + 1)
     .bind(workspace_id)
+    .bind(&q.tag)
+    .bind(&q.q)
     .fetch_all(&s.pool)
     .await?;
     let next_cursor = if rows.len() > limit as usize {
@@ -329,6 +411,26 @@ pub(crate) async fn list_links(
             .collect(),
         next_cursor,
     }))
+}
+
+/// `GET /api/workspaces/{slug}/tags`: the names of the Workspace's Tags on at least
+/// one live Link, sorted.
+pub(crate) async fn list_tags(
+    State(s): State<AppState>,
+    caller: Caller,
+    Path(slug): Path<String>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    let tags = sqlx::query_scalar(
+        "SELECT t.name FROM tags t WHERE t.workspace_id = $1 AND EXISTS \
+         (SELECT 1 FROM link_tags lt JOIN links l ON l.id = lt.link_id \
+          WHERE lt.tag_id = t.id AND l.deleted_at IS NULL) \
+         ORDER BY t.name",
+    )
+    .bind(workspace_id)
+    .fetch_all(&s.pool)
+    .await?;
+    Ok(Json(tags))
 }
 
 /// `DELETE /api/workspaces/{slug}/links/{code}?domain=`: marks the Link deleted

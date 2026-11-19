@@ -63,14 +63,21 @@ impl Api {
     }
 
     /// `GET /api/workspaces/{slug}/links`, following `next_cursor`; calls `each_page`
-    /// with every page, newest first.
-    pub fn list(&self, mut each_page: impl FnMut(Vec<Link>)) -> anyhow::Result<()> {
+    /// with every page, newest first. Only Links with Tag `tag` and whose Code or
+    /// Target contains `search`, when given.
+    pub fn list(
+        &self,
+        tag: Option<&str>,
+        search: Option<&str>,
+        mut each_page: impl FnMut(Vec<Link>),
+    ) -> anyhow::Result<()> {
         let mut cursor: Option<String> = None;
         loop {
-            let path = match &cursor {
-                Some(c) => format!("{}?cursor={}", self.links_path(), encode(c)),
-                None => self.links_path(),
-            };
+            let query: Vec<String> = [("tag", tag), ("q", search), ("cursor", cursor.as_deref())]
+                .into_iter()
+                .filter_map(|(name, value)| Some(format!("{name}={}", encode(value?))))
+                .collect();
+            let path = format!("{}?{}", self.links_path(), query.join("&"));
             let page: LinkPage = self.json(Method::GET, &path, SendBody::none())?;
             each_page(page.links);
             cursor = page.next_cursor;

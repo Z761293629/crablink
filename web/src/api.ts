@@ -39,6 +39,8 @@ export interface Link {
   updated_at: string;
   expires_at: string | null;
   click_count: number;
+  /** Sorted. */
+  tags: string[];
 }
 
 export interface LinkPage {

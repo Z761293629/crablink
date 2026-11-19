@@ -336,6 +336,7 @@ impl Form {
                 &UpdateLink {
                     target: Some(self.target.clone()),
                     expires_at: (self.expires != self.prefilled_expires).then_some(expires_at),
+                    tags: None,
                 },
             )?
         } else {
@@ -344,6 +345,7 @@ impl Form {
                 code: (!self.code.is_empty()).then(|| self.code.clone()),
                 expires_at,
                 domain: None,
+                tags: Vec::new(),
             })?
         };
         Ok(link)
@@ -372,7 +374,7 @@ impl App {
     fn load(&mut self) {
         let selected = self.selected().cloned();
         let mut links = Vec::new();
-        self.links = match self.api.list(|page| links.extend(page)) {
+        self.links = match self.api.list(None, None, |page| links.extend(page)) {
             Ok(()) => Ok(links),
             Err(e) => Err(format!("{e:#}")),
         };

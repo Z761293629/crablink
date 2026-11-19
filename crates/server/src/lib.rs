@@ -35,7 +35,7 @@ use domains::{
     add_domain, domain_allowed, list_domains, list_managed_domains, remove_domain,
     update_managed_domain,
 };
-use links::{create_link, delete_link, get_link, link_qr, list_links, update_link};
+use links::{create_link, delete_link, get_link, link_qr, list_links, list_tags, update_link};
 use members::{add_member, list_workspace_users, remove_workspace_user, update_workspace_user};
 use redirect::redirect;
 use users::{change_password, me, sign_in, sign_out};
@@ -109,6 +109,7 @@ pub async fn app(
         .route("/links/{code}/qr", get(link_qr))
         .route("/links/{code}/clicks", get(clicks::link_clicks))
         .route("/clicks", get(clicks::workspace_clicks))
+        .route("/tags", get(list_tags))
         .route("/api-keys", post(create_api_key).get(list_api_keys))
         .route("/api-keys/{id}", delete(revoke_api_key))
         .route("/domains", post(add_domain).get(list_domains))

@@ -17,6 +17,9 @@ pub struct CreateLink {
     /// Domain of the Workspace.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
+    /// Tag names; each is created in the Workspace if new.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 /// Query of `GET`, `PATCH` and `DELETE /api/workspaces/{slug}/links/{code}`: the
@@ -86,6 +89,9 @@ pub struct UpdateLink {
         skip_serializing_if = "Option::is_none"
     )]
     pub expires_at: Option<Option<DateTime<Utc>>>,
+    /// Replaces all the Link's Tags; `[]` removes them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
 }
 
 /// Wraps any present value (including `null`) in `Some`; `default` covers absence.
@@ -106,6 +112,9 @@ pub struct Link {
     pub updated_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
     pub click_count: i64,
+    /// Its Tags' names, sorted.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 impl Link {
@@ -413,6 +422,9 @@ pub enum ErrorKind {
     CodeReserved,
     /// The Code is taken on its Domain, possibly by a Deleted Link.
     CodeTaken,
+    /// A Tag name that is empty, longer than 64 characters, or has a comma or a
+    /// control character.
+    InvalidTag,
     /// No User has this email or id; on a `/members` route, none in this Workspace.
     UserNotFound,
     /// Adding a User who is already in the Workspace.
@@ -448,6 +460,12 @@ pub struct ListLinks {
     /// Opaque: pass back the previous page's `next_cursor`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Only Links with this Tag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// Only Links whose Code or Target contains this, ignoring case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub q: Option<String>,
 }
 
 /// Response of `GET /api/workspaces/{slug}/links`: newest first; `next_cursor` is `None` on the last page.
@@ -638,6 +656,7 @@ mod tests {
             let req = UpdateLink {
                 target: None,
                 expires_at: dto,
+                tags: None,
             };
             assert_eq!(serde_json::to_value(&req).unwrap(), wire);
             let back: UpdateLink = serde_json::from_value(wire).unwrap();
@@ -657,6 +676,7 @@ mod tests {
             updated_at: t,
             expires_at,
             click_count: 0,
+            tags: Vec::new(),
         };
         let second = chrono::TimeDelta::seconds(1);
         assert!(!link(None).is_expired(t));

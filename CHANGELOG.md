@@ -6,6 +6,7 @@
 
 - **自定义 Domain**：Owner 用 `/api/workspaces/{ws}/domains` 添加（pending）、列出、移除自定义 Domain；Instance Admin 用 `/api/admin/domains` 批准或拒绝。Link 可建在 Default Domain 或已批准的 Domain 上（`domain` 字段，CLI `crablink create --domain`），同一个 Code 可存在于不同 Domain；单个 Link 用 `?domain=` 定位。移除 Domain 后其 Link 变为已删除，再被任何 Workspace 添加时这些 Code 仍被占用。`GET /internal/domain-allowed?domain=` 供 Caddy on-demand TLS 询问，`deploy/Caddyfile` 已配好。(#59)
 - **web UI 管理 Link**：在 `/app` 里创建 Link（Generated 或 Custom Code，可设 Expiry）、编辑 Target 和 Expiry、确认后删除，一键复制 Short URL，下载 SVG 或 PNG 二维码；分页加载，切换自己所在的 Workspace。(#61)
+- **Tag 和搜索**：Link 可带任意多个 Tag（Workspace 内唯一，1-64 个字符、不含逗号，不影响跳转）：创建时 `tags`，`PATCH` 的 `tags` 整体替换；`GET /api/workspaces/{ws}/tags` 列出 Workspace 里有 Link 在用的 Tag；Link 列表加 `tag`（按 Tag 过滤）和 `q`（Code 或 Target 包含该文本，不区分大小写），照常按 cursor 分页。CLI 新增 `crablink create --tag`（可重复）、`crablink ls --tag` 和 `--search`；web UI 可编辑 Link 的 Tag、按 Tag 过滤、搜索。(#66)
 
 ### 行为变化
 

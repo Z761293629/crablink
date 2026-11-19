@@ -49,6 +49,7 @@ fn same_code_on_two_domains() -> TestServer {
             code: Some("sale".into()),
             expires_at: None,
             domain: Some("go.example.com".into()),
+            tags: Vec::new(),
         })
         .unwrap();
     s
@@ -57,7 +58,7 @@ fn same_code_on_two_domains() -> TestServer {
 /// Every Link on the server as `Short URL -> Target`, newest first.
 fn links(s: &TestServer) -> Vec<String> {
     let mut links = Vec::new();
-    s.api().list(|page| links.extend(page)).unwrap();
+    s.api().list(None, None, |page| links.extend(page)).unwrap();
     links
         .into_iter()
         .map(|l| format!("{} -> {}", l.short_url, l.target))
