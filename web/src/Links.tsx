@@ -19,6 +19,8 @@ import {
 } from './ui';
 
 type Fresh = 'created' | 'updated';
+/** The Tags a board row shows before a "+N" chip. */
+const ROW_TAGS = 3;
 const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
 /**
@@ -397,11 +399,18 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
                         <span className="target">{link.target}</span>
                         <span className="meta">
                           {how && <span className="stamp fresh">{t(`links.fresh.${how}`)}</span>}
-                          {link.tags.map((name) => (
-                            <span key={name} className="tag">
+                          {/* A row keeps its rhythm with three Tags at most; the pass shows them all. */}
+                          {link.tags.slice(0, ROW_TAGS).map((name) => (
+                            <span key={name} className="tag" title={name}>
                               {name}
                             </span>
                           ))}
+                          {link.tags.length > ROW_TAGS && (
+                            <span className="tag" title={link.tags.slice(ROW_TAGS).join(', ')}>
+                              +{link.tags.length - ROW_TAGS}
+                              <span className="vh">: {link.tags.slice(ROW_TAGS).join(', ')}</span>
+                            </span>
+                          )}
                           {expired ? (
                             <span className="stamp expired">{t('links.expired')}</span>
                           ) : (
@@ -495,8 +504,9 @@ function CopyButton({
     return () => clearTimeout(timer);
   }, [copied]);
   return (
+    // Both labels share one cell, the idle one hidden, so the button is always as wide as the wider.
     <button
-      className={className}
+      className={`${className} copy`}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(link.short_url);
@@ -508,14 +518,12 @@ function CopyButton({
         onCopied(link);
       }}
     >
-      {copied ? (
-        <>
-          <Plane className="plane-sm" />
-          {t('links.copied')}
-        </>
-      ) : (
-        t('links.copy')
-      )}
+      <span className={copied ? 'off' : undefined}>{t('links.copy')}</span>
+      <span className={copied ? undefined : 'off'}>
+        {/* Mounted afresh on each copy, so the plane flies in every time. */}
+        <Plane key={String(copied)} className="plane-sm" />
+        {t('links.copied')}
+      </span>
     </button>
   );
 }
@@ -658,7 +666,7 @@ function Route({ from, code, codeIsPlaceholder, to }: { from: string; code: stri
     <div className="route">
       <p className="from">
         <span className="micro">{from} /</span>
-        {/* A Code never breaks at its hyphens; one too long for the pass ends in an ellipsis. */}
+        {/* A long Code shrinks to fit the column, then breaks after its hyphens and underscores. */}
         {codeIsPlaceholder ? (
           // No Code yet: a blank of the Generated Code's seven slots, to be filled.
           <span className="code placeholder">
@@ -668,8 +676,8 @@ function Route({ from, code, codeIsPlaceholder, to }: { from: string; code: stri
             ))}
           </span>
         ) : (
-          <span className="code" title={code}>
-            {code}
+          <span className="code" style={{ '--ems': monoEms(code) } as CSSProperties} title={code}>
+            {breakable(code)}
           </span>
         )}
       </p>
@@ -690,11 +698,21 @@ function Route({ from, code, codeIsPlaceholder, to }: { from: string; code: stri
 /** The width of `text` in ems of the mono face: a CJK character is a full em, the rest 0.6. */
 const monoEms = (text: string) => [...text].reduce((n, ch) => n + (ch.codePointAt(0)! >= 0x2e80 ? 1 : 0.6), 0);
 
-/** The stub's Short URL on one line of mono, set smaller to fit the stub rather than break. */
+/** `text` with a line-break chance after each slash, hyphen and underscore, and nowhere else. */
+const breakable = (text: string) => text.split(/(?<=[/_-])/).flatMap((part, i) => (i ? [<wbr key={i} />, part] : part));
+
+/** The stub's Short URL in mono, set smaller to fit the stub, and only then broken: after the Domain's slash first, then at hyphens. */
 function ShortLine({ text, href }: { text: string; href?: string }) {
+  const slash = text.indexOf('/') + 1;
+  const body = (
+    <>
+      {breakable(text.slice(0, slash))}
+      <span className="code">{breakable(text.slice(slash))}</span>
+    </>
+  );
   return (
     <p className="short" style={{ '--ems': monoEms(text) } as CSSProperties} title={text}>
-      {href ? <a href={href}>{text}</a> : text}
+      {href ? <a href={href}>{body}</a> : body}
     </p>
   );
 }
@@ -834,7 +852,7 @@ function LinkPass({
                 <dd className={link.tags.length ? 'prose tags' : 'prose'}>
                   {link.tags.length
                     ? link.tags.map((name) => (
-                        <span key={name} className="tag">
+                        <span key={name} className="tag" title={name}>
                           {name}
                         </span>
                       ))
