@@ -36,3 +36,76 @@ fn create_on_a_domain_the_workspace_cannot_use_fails_with_the_servers_message() 
     assert!(!out.success);
     assert!(out.stderr.contains("approved Domain"), "{}", out.stderr);
 }
+
+/// Creates Link `sale` on the Default Domain, then `sale` on approved Domain
+/// `go.example.com`, so the custom-Domain one is newest and listed first.
+fn same_code_on_two_domains() -> TestServer {
+    let s = server();
+    s.approved_domain("go.example.com");
+    s.create("sale", "https://example.com/default");
+    s.api()
+        .create(&crablink_api::CreateLink {
+            target: "https://example.com/custom".into(),
+            code: Some("sale".into()),
+            expires_at: None,
+            domain: Some("go.example.com".into()),
+        })
+        .unwrap();
+    s
+}
+
+/// Every Link on the server as `Short URL -> Target`, newest first.
+fn links(s: &TestServer) -> Vec<String> {
+    let mut links = Vec::new();
+    s.api().list(|page| links.extend(page)).unwrap();
+    links
+        .into_iter()
+        .map(|l| format!("{} -> {}", l.short_url, l.target))
+        .collect()
+}
+
+#[test]
+fn tui_deletes_the_selected_custom_domain_link_not_the_default_domains() {
+    let s = same_code_on_two_domains();
+    let mut tui = s.tui();
+
+    tui.keys("dy");
+
+    assert_eq!(
+        links(&s),
+        [format!("{}/sale -> https://example.com/default", s.url)]
+    );
+}
+
+#[test]
+fn tui_edits_the_selected_custom_domain_link_not_the_default_domains() {
+    let s = same_code_on_two_domains();
+    let mut tui = s.tui();
+
+    tui.keys("e");
+    for _ in 0.."custom".len() {
+        tui.key(KeyCode::Backspace);
+    }
+    tui.keys("edited");
+    tui.key(KeyCode::Enter);
+
+    assert_eq!(
+        links(&s),
+        [
+            "http://go.example.com/sale -> https://example.com/edited".to_string(),
+            format!("{}/sale -> https://example.com/default", s.url),
+        ]
+    );
+}
+
+#[test]
+fn tui_reload_keeps_the_default_domain_link_selected_not_its_code_twin() {
+    let s = same_code_on_two_domains();
+    let mut tui = s.tui();
+
+    tui.keys("jr");
+
+    let screen = tui.screen();
+    let detail = screen.lines().find(|l| l.contains("Short URL")).unwrap();
+    assert!(detail.contains(&format!("{}/sale", s.url)), "{screen}");
+}

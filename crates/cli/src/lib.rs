@@ -145,7 +145,7 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
                 );
             }
         })?,
-        Cmd::Get { code, json } => show_link(&api.get(&code)?, json, now)?,
+        Cmd::Get { code, json } => show_link(&api.get(&code, None)?, json, now)?,
         Cmd::Edit {
             code,
             target,
@@ -154,10 +154,10 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
             json,
         } => {
             let body = edit_body(target, expires, no_expires, now)?;
-            show_link(&api.update(&code, &body)?, json, now)?;
+            show_link(&api.update(&code, None, &body)?, json, now)?;
         }
         Cmd::Rm { code } => {
-            api.delete(&code)?;
+            api.delete(&code, None)?;
             eprintln!("Deleted {code}");
         }
         Cmd::Qr {
@@ -165,7 +165,7 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
             output: Some(path),
         } => {
             let format = qr_format(&path)?;
-            std::fs::write(&path, api.qr(&code, format)?)
+            std::fs::write(&path, api.qr(&code, None, format)?)
                 .with_context(|| format!("cannot write {}", path.display()))?;
             eprintln!("Saved {}", path.display());
         }
@@ -173,7 +173,7 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
             if !std::io::stdout().is_terminal() {
                 bail!("stdout is not a terminal: pass -o <file.svg|file.png> to save the QR code");
             }
-            let link = api.get(&code)?;
+            let link = api.get(&code, None)?;
             // As the server refuses `-o`: its Short URL no longer redirects.
             if link.is_expired(now) {
                 bail!("Link {} has expired: no QR code", link.code);

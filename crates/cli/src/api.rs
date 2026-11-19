@@ -80,26 +80,41 @@ impl Api {
         }
     }
 
-    /// `GET /api/workspaces/{slug}/links/{code}`.
-    pub fn get(&self, code: &str) -> anyhow::Result<Link> {
-        self.json(Method::GET, &self.link_path(code), SendBody::none())
+    /// `GET /api/workspaces/{slug}/links/{code}?domain=`. Single-Link methods act on
+    /// the Link with `code` on `domain`, or on the Default Domain when it's `None`.
+    pub fn get(&self, code: &str, domain: Option<&str>) -> anyhow::Result<Link> {
+        let path = self.link_path(code, "", domain);
+        self.json(Method::GET, &path, SendBody::none())
     }
 
-    /// `PATCH /api/workspaces/{slug}/links/{code}`.
-    pub fn update(&self, code: &str, body: &UpdateLink) -> anyhow::Result<Link> {
-        let path = self.link_path(code);
+    /// `PATCH /api/workspaces/{slug}/links/{code}?domain=`.
+    pub fn update(
+        &self,
+        code: &str,
+        domain: Option<&str>,
+        body: &UpdateLink,
+    ) -> anyhow::Result<Link> {
+        let path = self.link_path(code, "", domain);
         self.json(Method::PATCH, &path, SendBody::from_json(body)?)
     }
 
-    /// `DELETE /api/workspaces/{slug}/links/{code}`.
-    pub fn delete(&self, code: &str) -> anyhow::Result<()> {
-        self.send(Method::DELETE, &self.link_path(code), SendBody::none())
-            .map(drop)
+    /// `DELETE /api/workspaces/{slug}/links/{code}?domain=`.
+    pub fn delete(&self, code: &str, domain: Option<&str>) -> anyhow::Result<()> {
+        let path = self.link_path(code, "", domain);
+        self.send(Method::DELETE, &path, SendBody::none()).map(drop)
     }
 
-    /// `GET /api/workspaces/{slug}/links/{code}/qr`: the QR code file's bytes.
-    pub fn qr(&self, code: &str, format: QrFormat) -> anyhow::Result<Vec<u8>> {
-        let path = format!("{}/qr?format={}", self.link_path(code), format.as_str());
+    /// `GET /api/workspaces/{slug}/links/{code}/qr?domain=`: the QR code file's bytes.
+    pub fn qr(
+        &self,
+        code: &str,
+        domain: Option<&str>,
+        format: QrFormat,
+    ) -> anyhow::Result<Vec<u8>> {
+        let path = self.link_path(code, "/qr", domain);
+        // Only `?domain=` can put a `?` there: the Code is encoded.
+        let sep = if path.contains('?') { '&' } else { '?' };
+        let path = format!("{path}{sep}format={}", format.as_str());
         let mut res = self.send(Method::GET, &path, SendBody::none())?;
         Ok(res.body_mut().read_to_vec()?)
     }
@@ -146,10 +161,15 @@ impl Api {
         format!("/api/workspaces/{}/links", encode(&self.workspace))
     }
 
-    /// The Code as one path segment, so e.g. `rm 'a?x'` cannot hit Link `a`.
+    /// The Link's path, then `sub` (e.g. `/qr`), then `?domain=` if `domain` is given.
+    /// The Code is one path segment, so e.g. `rm 'a?x'` cannot hit Link `a`.
     /// Whether the Code is valid is the server's call.
-    fn link_path(&self, code: &str) -> String {
-        format!("{}/{}", self.links_path(), encode(code))
+    fn link_path(&self, code: &str, sub: &str, domain: Option<&str>) -> String {
+        let path = format!("{}/{}{sub}", self.links_path(), encode(code));
+        match domain {
+            Some(d) => format!("{path}?domain={}", encode(d)),
+            None => path,
+        }
     }
 }
 
@@ -173,11 +193,15 @@ mod tests {
     #[test]
     fn codes_are_sent_as_one_encoded_path_segment() {
         let api = Api::new("https://x".into(), "key".into(), "ada".into());
-        let link_path = |code| api.link_path(code);
+        let link_path = |code| api.link_path(code, "", None);
         assert_eq!(link_path("Ab_-9"), "/api/workspaces/ada/links/Ab_-9");
         assert_eq!(link_path("a?x"), "/api/workspaces/ada/links/a%3Fx");
         assert_eq!(link_path("a/b#c"), "/api/workspaces/ada/links/a%2Fb%23c");
         assert_eq!(link_path(".."), "/api/workspaces/ada/links/%2E%2E");
         assert_eq!(link_path("é"), "/api/workspaces/ada/links/%C3%A9");
+        assert_eq!(
+            api.link_path("a", "/qr", Some("go.example.com")),
+            "/api/workspaces/ada/links/a/qr?domain=go%2Eexample%2Ecom"
+        );
     }
 }
