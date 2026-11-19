@@ -747,16 +747,19 @@ function Route({ from, code, codeIsPlaceholder, to }: { from: string; code: stri
           </span>
         )}
       </p>
-      <div className="flight" aria-hidden="true">
-        <Plane className="plane" />
+      {/* The leg, flight and destination, moves as one: beside the Code, or under a long one. */}
+      <div className="leg">
+        <div className="flight" aria-hidden="true">
+          <Plane className="plane" />
+        </div>
+        {/* No Target yet: the route ends at the plane rather than at a label with nothing under it. */}
+        {to && (
+          <p className="to">
+            <span className="micro">{t('links.routeTo')}</span>
+            <span className="host">{to}</span>
+          </p>
+        )}
       </div>
-      {/* No Target yet: the route ends at the plane rather than at a label with nothing under it. */}
-      {to && (
-        <p className="to">
-          <span className="micro">{t('links.routeTo')}</span>
-          <span className="host">{to}</span>
-        </p>
-      )}
     </div>
   );
 }
@@ -954,7 +957,7 @@ function LinkPass({
               <div className="seg wide">
                 <dt className="micro">{t('links.target')}</dt>
                 <dd>
-                  <a href={link.target} rel="noreferrer">
+                  <a className="target" href={link.target} rel="noreferrer" title={link.target}>
                     {link.target}
                   </a>
                 </dd>

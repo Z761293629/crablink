@@ -38,6 +38,8 @@
   --radius: 6px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --pass-shadow: 0 1px 2px rgb(23 24 28 / 0.06), 0 12px 28px -10px rgb(23 24 28 / 0.18);
+  /* The same shadow for a shape with holes in it, which a box-shadow cannot follow. */
+  --pass-drop: drop-shadow(0 1px 1px rgb(23 24 28 / 0.06)) drop-shadow(0 8px 12px rgb(23 24 28 / 0.1));
 }
 
 @media (prefers-color-scheme: dark) {
@@ -60,6 +62,7 @@
     --focus: #edeef0;
     --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%23edeef0' stroke-width='1.6'/%3E%3C/svg%3E");
     --pass-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 16px 36px -12px rgb(0 0 0 / 0.7);
+    --pass-drop: drop-shadow(0 1px 1px rgb(0 0 0 / 0.4)) drop-shadow(0 10px 16px rgb(0 0 0 / 0.45));
   }
 }
 
@@ -1528,7 +1531,17 @@ table.board.compact col.c-acts {
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: 14px;
-  box-shadow: var(--pass-shadow);
+  /* The notches are holes punched through the card where the perforation meets its edges (centred on the
+     dashed line, 10.5rem in from the right), so its shadow, a drop-shadow on the pass, follows them. The
+     perforation's half-circles draw their rims. */
+  mask:
+    radial-gradient(circle at calc(100% - 10.5rem) 0, transparent 11px, #000 11.5px),
+    radial-gradient(circle at calc(100% - 10.5rem) 100%, transparent 11px, #000 11.5px);
+  mask-composite: intersect;
+}
+
+.pass:has(> .pass-card) {
+  filter: var(--pass-drop);
 }
 
 .pass-card.print {
@@ -1598,8 +1611,10 @@ table.board.compact col.c-acts {
 }
 
 @container pass (max-width: 30rem) {
+  /* Stacked, the notches sit at the sides, where the shadow barely shows: they are painted, not punched. */
   .pass-card {
     grid-template-columns: minmax(0, 1fr);
+    mask: none;
   }
 
   .perf {
@@ -1647,8 +1662,8 @@ table.board.compact col.c-acts {
   }
 }
 
-/* The route: from the Short URL to the Target's host, like SFO to ORD. The Code takes its
-   width, the flight the rest; a host that can't fit beside them drops to its own line. */
+/* The route: from the Short URL to the Target's host, like SFO to ORD. The Code takes its width; the leg,
+   flight and host together, the rest, or a line of its own under a Code too long to leave it room. */
 .route {
   display: flex;
   flex-wrap: wrap;
@@ -1673,6 +1688,14 @@ table.board.compact col.c-acts {
   flex: 1 0 2rem;
 }
 
+.route .leg {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: flex-end;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
 .route .to {
   flex: 0 1 auto;
   justify-items: end;
@@ -1686,10 +1709,10 @@ table.board.compact col.c-acts {
   white-space: nowrap;
 }
 
-/* A long Code shrinks from the display size to fill the pass's main column beside the flight's least
-   room (--ems is its width in ems), down to 1.25rem; past that it breaks after a hyphen or underscore. */
+/* A long Code shrinks from the display size to fill the pass's main column (--ems is its width in ems), down
+   to 1.25rem; past that it breaks after a hyphen or underscore. */
 .route .code {
-  --room: calc(100cqi - 16.5rem - 4px);
+  --room: calc(100cqi - 13.75rem - 4px);
   font: 650 min(clamp(2.25rem, 9cqi, 3.25rem), max(1.25rem, calc(var(--room) / var(--ems, 1)))) / 1.05
     var(--font-mono);
   letter-spacing: -0.02em;
@@ -1698,7 +1721,7 @@ table.board.compact col.c-acts {
 
 @container pass (max-width: 30rem) {
   .route .code {
-    --room: calc(100cqi - 6rem - 4px);
+    --room: calc(100cqi - 3.75rem - 4px);
   }
 }
 
@@ -2859,4 +2882,15 @@ table.gate .dns .micro {
 
 .board-7d .page-error {
   color: var(--text);
+}
+
+/* A long Target, query string and all, keeps to three even lines on the pass; the whole of it is its
+   tooltip, and in the field when changing it. */
+.seg a.target {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  word-break: break-all;
 }
