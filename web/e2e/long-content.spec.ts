@@ -61,10 +61,13 @@ test('a Link with a 64-character Code, a long Target and long Tags fits the boar
     await expect(pass.locator('.route .code')).toHaveText(code);
     await fits(page, pass);
 
-    // The row shows three Tags, then the rest as one chip naming them.
+    // The row shows two Tags on one line, then the rest as one chip naming them.
     const row = page.getByRole('row').filter({ hasText: code }).first();
-    await expect(row.locator('.tag')).toHaveCount(4);
-    await expect(row.locator('.tag').last()).toHaveAttribute('title', TAGS.slice(3).join(', '));
+    await expect(row.locator('.tag')).toHaveCount(3);
+    await expect(row.locator('.tag').last()).toHaveAttribute('title', TAGS.slice(2).join(', '));
+    const meta = await row.locator('.meta').boundingBox();
+    const chip = await row.locator('.tag').first().boundingBox();
+    expect(meta!.height).toBeLessThan(chip!.height * 1.5);
     await fits(page, page.locator('.board'));
 
     // Copy says Copied in the same box: nothing beside it moves.

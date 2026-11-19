@@ -20,7 +20,7 @@ import {
 
 type Fresh = 'created' | 'updated';
 /** The Tags a board row shows before a "+N" chip. */
-const ROW_TAGS = 3;
+const ROW_TAGS = 2;
 const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
 /**
@@ -399,14 +399,14 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
                         <span className="target">{link.target}</span>
                         <span className="meta">
                           {how && <span className="stamp fresh">{t(`links.fresh.${how}`)}</span>}
-                          {/* A row keeps its rhythm with three Tags at most; the pass shows them all. */}
+                          {/* A row keeps one line of meta: two Tags at most, shrinking to fit, then +N; the pass shows them all. */}
                           {link.tags.slice(0, ROW_TAGS).map((name) => (
                             <span key={name} className="tag" title={name}>
                               {name}
                             </span>
                           ))}
                           {link.tags.length > ROW_TAGS && (
-                            <span className="tag" title={link.tags.slice(ROW_TAGS).join(', ')}>
+                            <span className="tag rest" title={link.tags.slice(ROW_TAGS).join(', ')}>
                               +{link.tags.length - ROW_TAGS}
                               <span className="vh">: {link.tags.slice(ROW_TAGS).join(', ')}</span>
                             </span>

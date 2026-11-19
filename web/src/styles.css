@@ -1325,6 +1325,23 @@ table.board col.c-acts {
   display: none;
 }
 
+/* A board row's meta stays on one line: Tags shrink to an ellipsis, the +N, stamps and Expiry keep their width. */
+.board .meta {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.board .meta .tag {
+  flex: 0 1 auto;
+  min-width: 3em;
+}
+
+.board .meta > :not(.tag),
+.board .meta .tag.rest {
+  flex-shrink: 0;
+  min-width: auto;
+}
+
 .tag {
   max-width: 100%;
   overflow: hidden;
