@@ -1,6 +1,7 @@
 //! crablink-server as a library: `app` builds the full HTTP app, and is the
 //! seam both `main` and the tests use.
 
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use axum::Router;
@@ -11,6 +12,7 @@ use sqlx::PgPool;
 
 mod admin;
 mod api_keys;
+mod clicks;
 mod db;
 mod error;
 mod links;
@@ -20,6 +22,7 @@ mod users;
 mod web;
 mod workspaces;
 
+pub use clicks::dbip_country_lookup;
 pub use db::connect;
 pub use error::ApiError;
 pub use links::random_code;
@@ -41,11 +44,18 @@ pub type CodeGenerator = Arc<dyn Fn() -> String + Send + Sync>;
 /// The current time. Injected so tests can expire sessions.
 pub type Clock = Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>;
 
+/// The ISO 3166-1 alpha-2 country of an IP address, if known. Injected so tests
+/// can place visitors; production reads the bundled DB-IP Lite database.
+pub type CountryLookup = Arc<dyn Fn(IpAddr) -> Option<String> + Send + Sync>;
+
 #[derive(Clone)]
 struct AppState {
     pool: PgPool,
     codes: CodeGenerator,
     clock: Clock,
+    country: CountryLookup,
+    /// Whether the visitor's IP is the first `X-Forwarded-For` entry rather than the socket's.
+    trust_proxy: bool,
     /// The scheme of Short URLs: `CRABLINK_BASE_URL`'s.
     scheme: Arc<str>,
     /// The Default Domain: its host, and port if any.
@@ -57,11 +67,14 @@ struct AppState {
 }
 
 /// Builds the full HTTP app, first creating the Default Domain from `base_url`
-/// (`CRABLINK_BASE_URL`: its host, and port if any) if missing.
+/// (`CRABLINK_BASE_URL`: its host, and port if any) if missing. Serve it with
+/// `ConnectInfo<SocketAddr>` so Clicks can find the visitor's country.
 pub async fn app(
     pool: PgPool,
     codes: CodeGenerator,
     clock: Clock,
+    country: CountryLookup,
+    trust_proxy: bool,
     base_url: &str,
 ) -> Result<Router, Box<dyn std::error::Error + Send + Sync>> {
     let url = url::Url::parse(base_url)?;
@@ -78,6 +91,8 @@ pub async fn app(
         pool,
         codes,
         clock,
+        country,
+        trust_proxy,
         scheme: url.scheme().into(),
         default_domain: default_domain.into(),
         default_host: default_host.into(),
@@ -90,6 +105,7 @@ pub async fn app(
             get(get_link).patch(update_link).delete(delete_link),
         )
         .route("/links/{code}/qr", get(link_qr))
+        .route("/links/{code}/clicks", get(clicks::link_clicks))
         .route("/api-keys", post(create_api_key).get(list_api_keys))
         .route("/api-keys/{id}", delete(revoke_api_key))
         .route("/members", post(add_member).get(list_workspace_users))
