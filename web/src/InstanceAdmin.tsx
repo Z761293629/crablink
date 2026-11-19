@@ -7,7 +7,7 @@ const fetchAll = () =>
   Promise.all([api<ManagedUser[]>('GET', '/admin/users'), api<ManagedDomain[]>('GET', '/admin/domains')]);
 
 /** Instance administration: Users, invites and custom Domains. The API refuses anyone but an Instance Admin. */
-export function Admin() {
+export function InstanceAdmin() {
   const { t } = useTranslation();
   const [users, setUsers] = useState<ManagedUser[]>();
   const [domains, setDomains] = useState<ManagedDomain[]>();
@@ -43,8 +43,8 @@ export function Admin() {
   const updateUser = (id: number, change: Partial<ManagedUser>) => act(() => api('PATCH', `/admin/users/${id}`, change));
   const resetPassword = (id: number) =>
     act(async () => setReset({ id, ...(await api<{ password: string }>('POST', `/admin/users/${id}/password`)) }));
-  const setStatus = (host: string, status: DomainStatus) =>
-    act(() => api('PATCH', `/admin/domains/${encodeURIComponent(host)}`, { status }));
+  const setStatus = (domain: string, status: DomainStatus) =>
+    act(() => api('PATCH', `/admin/domains/${encodeURIComponent(domain)}`, { status }));
 
   async function createInvite(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -87,7 +87,7 @@ export function Admin() {
           <table>
             <thead>
               <tr>
-                <th>{t('domains.host')}</th>
+                <th>{t('domains.domain')}</th>
                 <th>{t('admin.domains.workspace')}</th>
                 <th>{t('domains.status')}</th>
                 <th />
@@ -95,16 +95,16 @@ export function Admin() {
             </thead>
             <tbody>
               {domains?.map((d) => (
-                <tr key={d.host}>
-                  <td>{d.host}</td>
-                  <td>{d.workspace}</td>
+                <tr key={d.domain}>
+                  <td>{d.domain}</td>
+                  <td>{d.workspace_slug}</td>
                   <td>{t(`domains.statuses.${d.status}`)}</td>
                   <td>
                     {d.status !== 'approved' && (
-                      <button onClick={() => setStatus(d.host, 'approved')}>{t('admin.domains.approve')}</button>
+                      <button onClick={() => setStatus(d.domain, 'approved')}>{t('admin.domains.approve')}</button>
                     )}
                     {d.status !== 'rejected' && (
-                      <button onClick={() => setStatus(d.host, 'rejected')}>{t('admin.domains.reject')}</button>
+                      <button onClick={() => setStatus(d.domain, 'rejected')}>{t('admin.domains.reject')}</button>
                     )}
                   </td>
                 </tr>

@@ -50,9 +50,9 @@ async fn the_link_list_shows_links_on_every_domain_of_the_workspace() {
     );
 }
 
-/// `GET /internal/domain-allowed?domain=host`, with no credential: its status.
-async fn allowed(app: &TestApp, host: &str) -> StatusCode {
-    let path = format!("/internal/domain-allowed?domain={host}");
+/// `GET /internal/domain-allowed?domain=…`, with no credential: its status.
+async fn allowed(app: &TestApp, domain: &str) -> StatusCode {
+    let path = format!("/internal/domain-allowed?domain={domain}");
     app.bearer("GET", &path, None, None).await.status
 }
 
@@ -79,7 +79,7 @@ async fn a_pending_domain_neither_redirects_nor_is_allowed_nor_takes_links() {
     assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
     assert_eq!(
         res.json(),
-        json!({ "host": CUSTOM, "status": "pending", "default": false })
+        json!({ "domain": CUSTOM, "status": "pending", "default": false })
     );
     app.create(json!({ "target": "https://example.com/a", "code": "sale" }))
         .await;
@@ -128,10 +128,10 @@ async fn adding_a_domain_another_workspace_holds_fails_with_domain_taken() {
     app.approved_domain(CUSTOM).await;
     let other = app.account("other@example.com").await;
 
-    for host in [CUSTOM, "GO.example.com", HOST] {
-        let res = app.add_domain(&other.cookie, &other.slug, host).await;
-        assert_eq!(res.status, StatusCode::CONFLICT, "{host}");
-        assert_eq!(res.json()["kind"], "domain_taken", "{host}");
+    for domain in [CUSTOM, "GO.example.com", HOST] {
+        let res = app.add_domain(&other.cookie, &other.slug, domain).await;
+        assert_eq!(res.status, StatusCode::CONFLICT, "{domain}");
+        assert_eq!(res.json()["kind"], "domain_taken", "{domain}");
     }
 }
 
@@ -139,7 +139,7 @@ async fn adding_a_domain_another_workspace_holds_fails_with_domain_taken() {
 async fn a_domain_must_be_a_host_name() {
     let app = app().await;
 
-    for host in [
+    for domain in [
         "",
         "go.example.com:8080",
         "https://go.example.com",
@@ -147,10 +147,10 @@ async fn a_domain_must_be_a_host_name() {
         "go example.com",
     ] {
         let res = app
-            .add_domain(&app.owner.cookie, &app.owner.slug, host)
+            .add_domain(&app.owner.cookie, &app.owner.slug, domain)
             .await;
-        assert_eq!(res.status, StatusCode::BAD_REQUEST, "{host:?}");
-        assert_eq!(res.json()["kind"], "invalid_domain", "{host:?}");
+        assert_eq!(res.status, StatusCode::BAD_REQUEST, "{domain:?}");
+        assert_eq!(res.json()["kind"], "invalid_domain", "{domain:?}");
     }
 }
 
@@ -211,8 +211,8 @@ async fn a_workspace_lists_the_default_domain_then_its_own() {
     assert_eq!(
         res.json(),
         json!([
-            { "host": HOST, "status": "approved", "default": true },
-            { "host": CUSTOM, "status": "approved", "default": false },
+            { "domain": HOST, "status": "approved", "default": true },
+            { "domain": CUSTOM, "status": "approved", "default": false },
         ])
     );
 }
@@ -237,7 +237,7 @@ async fn only_owners_add_and_remove_domains() {
         .api(
             "POST",
             "/domains",
-            Some(json!({ "host": "new.example.com" })),
+            Some(json!({ "domain": "new.example.com" })),
         )
         .await;
     assert_eq!(res.status, StatusCode::FORBIDDEN);
@@ -259,7 +259,7 @@ async fn instance_admins_list_custom_domains_and_only_they_approve() {
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
     assert_eq!(
         res.json(),
-        json!([{ "host": CUSTOM, "status": "pending", "workspace": app.owner.slug }])
+        json!([{ "domain": CUSTOM, "status": "pending", "workspace_slug": app.owner.slug }])
     );
 
     let path = format!("/api/admin/domains/{CUSTOM}");

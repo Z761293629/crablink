@@ -52,16 +52,16 @@ export type DomainStatus = 'pending' | 'approved' | 'rejected';
 
 /** A Domain a Workspace may use: the Default Domain or one of its custom Domains. */
 export interface Domain {
-  host: string;
+  domain: string;
   status: DomainStatus;
   default: boolean;
 }
 
-/** A custom Domain as an Instance Admin sees it, with the slug of the Workspace that has it. */
+/** A custom Domain as an Instance Admin sees it, with the Workspace slug of the Workspace that has it. */
 export interface ManagedDomain {
-  host: string;
+  domain: string;
   status: DomainStatus;
-  workspace: string;
+  workspace_slug: string;
 }
 
 /** The Clicks in the bucket starting at `time`. */
@@ -94,6 +94,15 @@ export interface ManagedUser {
   email: string;
   instance_admin: boolean;
   disabled: boolean;
+}
+
+/**
+ * The API path of a Link of Workspace `slug`, or of its `sub` resource (e.g. `/qr`),
+ * addressed by its Domain; it ends in `?domain=…`, so add more query with `&`.
+ */
+export function linkPath(slug: string, link: { code: string; domain: string }, sub = ''): string {
+  const code = encodeURIComponent(link.code);
+  return `/workspaces/${encodeURIComponent(slug)}/links/${code}${sub}?domain=${encodeURIComponent(link.domain)}`;
 }
 
 /** An error response: `kind` is stable, `message` is the server's English text. */

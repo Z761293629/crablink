@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, type ClickBreakdown, type ClickBucket, type ClickStats, type WorkspaceClicks } from './api';
+import { api, linkPath, type ClickBreakdown, type ClickBucket, type ClickStats, type WorkspaceClicks } from './api';
 import { errorMessage } from './i18n';
 
 /** The time ranges on offer: `n` buckets of `interval`, ending with the current one. */
@@ -36,12 +36,14 @@ function query(range: Range): string {
 }
 
 /** Loads `path?{range}` whenever the range changes; `undefined` while loading. */
-function useClicks<T>(path: string, range: Range, extra = '') {
+/** GETs `path`, which may have a query already, over `range`. */
+function useClicks<T>(path: string, range: Range) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<unknown>();
   useEffect(() => {
-    api<T>('GET', `${path}?${query(range)}${extra}`).then(setData, setError);
-  }, [path, range, extra]);
+    const sep = path.includes('?') ? '&' : '?';
+    api<T>('GET', `${path}${sep}${query(range)}`).then(setData, setError);
+  }, [path, range]);
   return { data, error };
 }
 
@@ -64,8 +66,7 @@ function RangePicker({ range, onChange }: { range: Range; onChange: (r: Range) =
 function LinkClicks({ slug, code, domain }: { slug: string; code: string; domain: string }) {
   const { t } = useTranslation();
   const [range, setRange] = useState<Range>('30d');
-  const path = `/workspaces/${encodeURIComponent(slug)}/links/${encodeURIComponent(code)}/clicks`;
-  const { data, error } = useClicks<ClickStats>(path, range, `&domain=${encodeURIComponent(domain)}`);
+  const { data, error } = useClicks<ClickStats>(linkPath(slug, { code, domain }, '/clicks'), range);
   const countryName = useCountryName();
   return (
     <>

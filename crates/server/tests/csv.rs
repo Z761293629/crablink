@@ -1,7 +1,6 @@
 mod common;
 
 use axum::body::Body;
-use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode, header};
 use common::*;
 use serde_json::json;
@@ -29,16 +28,11 @@ async fn import(app: &TestApp, slug: &str, key: &str, csv: &str) -> serde_json::
     res.json()
 }
 
-/// A human visitor following `/{code}` on Domain `host`.
-async fn click(app: &TestApp, host: &str, code: &str) {
-    let mut req = Request::get(format!("/{code}"))
-        .header(header::HOST, host)
-        .header(header::USER_AGENT, BROWSER_UA)
-        .body(Body::empty())
-        .unwrap();
-    req.extensions_mut()
-        .insert(ConnectInfo(std::net::SocketAddr::from(([192, 0, 2, 1], 1))));
-    assert_eq!(app.send(req).await.status, StatusCode::FOUND);
+/// A human visitor following `/{code}` on `domain`.
+async fn click(app: &TestApp, domain: &str, code: &str) {
+    let ua = [("user-agent", BROWSER_UA)];
+    let res = app.visit_on(domain, &format!("/{code}"), &ua).await;
+    assert_eq!(res.status, StatusCode::FOUND);
 }
 
 #[tokio::test]

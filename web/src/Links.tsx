@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, type Domain, type ImportedRow, type Link, type LinkPage } from './api';
+import { api, linkPath, type Domain, type ImportedRow, type Link, type LinkPage } from './api';
 import { clicksHref } from './Clicks';
 import { errorMessage } from './i18n';
 
@@ -103,7 +103,7 @@ export function Links({ slug }: { slug: string }) {
               {links.map((link) => (
                 <LinkRow
                   key={link.short_url}
-                  base={base}
+                  slug={slug}
                   link={link}
                   onChanged={(changed) => {
                     setLinks(links.map((l) => (l === link ? changed : l)));
@@ -178,7 +178,7 @@ function CreateLink({ slug, base, onCreated }: { slug: string; base: string; onC
           {domains
             .filter((d) => d.default || d.status === 'approved')
             .map((d) => (
-              <option key={d.host}>{d.host}</option>
+              <option key={d.domain}>{d.domain}</option>
             ))}
         </select>
       </label>
@@ -248,12 +248,12 @@ function CsvTools({ base, onImported }: { base: string; onImported: () => void }
 }
 
 function LinkRow({
-  base,
+  slug,
   link,
   onChanged,
   onDeleted,
 }: {
-  base: string;
+  slug: string;
   link: Link;
   onChanged: (link: Link) => void;
   onDeleted: () => void;
@@ -262,7 +262,7 @@ function LinkRow({
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<unknown>();
-  const path = `${base}/${encodeURIComponent(link.code)}?domain=${encodeURIComponent(link.domain)}`;
+  const path = linkPath(slug, link);
 
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -358,7 +358,7 @@ function LinkRow({
               ['svg', 'png'].map((format) => (
                 <a
                   key={format}
-                  href={`/api${base}/${encodeURIComponent(link.code)}/qr?format=${format}&domain=${encodeURIComponent(link.domain)}`}
+                  href={`/api${linkPath(slug, link, '/qr')}&format=${format}`}
                   download={`${link.code}.${format}`}
                 >
                   {t('links.qr', { format: format.toUpperCase() })}

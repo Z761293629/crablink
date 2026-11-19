@@ -190,8 +190,8 @@ async fn insert_link(
         validate_custom_code(code)?;
     }
     let tags = tag_names(&req.tags)?;
-    let host = req.domain.as_deref().unwrap_or(&s.default_domain);
-    let domain_id = crate::domains::usable(&s.pool, workspace_id, host)
+    let domain = s.domain_or_default(req.domain.as_deref());
+    let domain_id = crate::domains::usable(&s.pool, workspace_id, domain)
         .await?
         .ok_or(ApiError::DomainNotApproved)?;
     let now = (s.clock)();
@@ -233,22 +233,21 @@ async fn insert_link(
     Ok(link.into_dto(&s.scheme))
 }
 
-/// A row of `links.csv`. Export fills every column; on import empty cells are `None`
-/// (a Generated Code, the Default Domain, no Expiry) and Click Count is ignored.
+/// The columns of `links.csv`, in `CsvRow`'s field order.
+const CSV_COLUMNS: [&str; 6] = ["Code", "Domain", "Target", "Expiry", "Tags", "Click Count"];
+
+/// A row of `links.csv`, its fields in `CSV_COLUMNS` order. Export fills every column;
+/// on import empty or missing cells are `None` (a Generated Code, the Default Domain,
+/// no Expiry) and Click Count is ignored.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CsvRow {
-    #[serde(rename = "Code")]
     code: Option<String>,
-    #[serde(rename = "Domain")]
     domain: Option<String>,
-    #[serde(rename = "Target")]
     target: String,
-    #[serde(rename = "Expiry")]
     expiry: Option<DateTime<Utc>>,
     /// Tag names joined with commas, which Tags never contain.
-    #[serde(rename = "Tags", default)]
     tags: String,
-    #[serde(rename = "Click Count", skip_deserializing)]
+    #[serde(skip_deserializing)]
     click_count: i64,
 }
 
@@ -275,12 +274,11 @@ pub(crate) async fn export_links(
     .bind(workspace_id)
     .fetch_all(&s.pool)
     .await?;
-    let mut out = csv::Writer::from_writer(Vec::new());
-    if rows.is_empty() {
-        // `serialize` writes the header with the first row; an empty export still has one.
-        out.write_record(["Code", "Domain", "Target", "Expiry", "Tags", "Click Count"])
-            .map_err(csv_error)?;
-    }
+    let mut out = csv::WriterBuilder::new()
+        .has_headers(false)
+        .from_writer(Vec::new());
+    // Written by hand: `serialize` would only write a header with a first row.
+    out.write_record(CSV_COLUMNS).map_err(csv_error)?;
     for r in rows {
         out.serialize(CsvRow {
             code: Some(r.code),
@@ -319,8 +317,12 @@ pub(crate) async fn import_links(
     let mut reader = csv::Reader::from_reader(body.as_bytes());
     let headers = reader
         .headers()
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?
-        .clone();
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    // Where each column but Click Count is in this file, if anywhere.
+    let columns: Vec<Option<usize>> = CSV_COLUMNS[..5]
+        .iter()
+        .map(|c| headers.iter().position(|h| h == *c))
+        .collect();
     let mut results = Vec::new();
     for record in reader.records() {
         let line = match &record {
@@ -328,7 +330,10 @@ pub(crate) async fn import_links(
             Err(e) => e.position(),
         }
         .map_or(0, csv::Position::line);
-        let row = record.and_then(|r| r.deserialize::<CsvRow>(Some(&headers)));
+        let row = record.and_then(|r| {
+            let cell = |c: &Option<usize>| c.and_then(|i| r.get(i)).unwrap_or("");
+            csv::StringRecord::from_iter(columns.iter().map(cell)).deserialize::<CsvRow>(None)
+        });
         let created = match row {
             Ok(row) => {
                 let req = crablink_api::CreateLink {
@@ -363,11 +368,6 @@ pub(crate) async fn import_links(
     Ok(Json(results))
 }
 
-/// The host of the Domain `?domain=` names, the Default Domain when absent.
-fn host<'a>(s: &'a AppState, domain: &'a Option<String>) -> &'a str {
-    domain.as_deref().unwrap_or(&s.default_domain)
-}
-
 /// `GET /api/workspaces/{slug}/links/{code}?domain=`: one Link; 404 if missing or deleted.
 pub(crate) async fn get_link(
     State(s): State<AppState>,
@@ -377,33 +377,42 @@ pub(crate) async fn get_link(
 ) -> Result<Json<crablink_api::Link>, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
-    fetch_link(&s, workspace_id, host(&s, &q.domain), &code)
+    fetch_link(&s, workspace_id, q.domain.as_deref(), &code)
         .await
         .map(Json)
 }
 
-/// The Workspace's live or expired Link with this Code on Domain `host`; 404 if
-/// missing or deleted.
-async fn fetch_link(
+/// The id of the Workspace's live or expired Link with this Code on `domain` (the
+/// Default Domain when `None`); 404 if missing or deleted.
+pub(crate) async fn link_id(
     s: &AppState,
     workspace_id: i64,
-    host: &str,
+    domain: Option<&str>,
     code: &str,
-) -> Result<crablink_api::Link, ApiError> {
-    sqlx::query_as::<_, LinkRow>(concat!(
-        "SELECT ",
-        link_columns!(),
-        " FROM links l JOIN domains d ON d.id = l.domain_id \
+) -> Result<i64, ApiError> {
+    sqlx::query_scalar(
+        "SELECT l.id FROM links l JOIN domains d ON d.id = l.domain_id \
          WHERE l.workspace_id = $1 AND d.host = lower($2) AND l.code = $3 \
-         AND l.deleted_at IS NULL"
-    ))
+         AND l.deleted_at IS NULL",
+    )
     .bind(workspace_id)
-    .bind(host)
+    .bind(s.domain_or_default(domain))
     .bind(code)
     .fetch_optional(&s.pool)
     .await?
-    .map(|row| row.into_dto(&s.scheme))
     .ok_or(ApiError::LinkNotFound)
+}
+
+/// `link_id`'s Link as its DTO.
+async fn fetch_link(
+    s: &AppState,
+    workspace_id: i64,
+    domain: Option<&str>,
+    code: &str,
+) -> Result<crablink_api::Link, ApiError> {
+    let id = link_id(s, workspace_id, domain, code).await?;
+    let row = link_by_id(&mut *s.pool.acquire().await?, id).await?;
+    Ok(row.into_dto(&s.scheme))
 }
 
 /// `GET /api/workspaces/{slug}/links/{code}/qr?format=svg|png`: the QR code of the
@@ -416,7 +425,7 @@ pub(crate) async fn link_qr(
 ) -> Result<Response, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
-    let link = fetch_link(&s, workspace_id, host(&s, &q.domain), &code).await?;
+    let link = fetch_link(&s, workspace_id, q.domain.as_deref(), &code).await?;
     // Its Short URL no longer redirects, so a QR code of it would only mislead.
     if link.is_expired((s.clock)()) {
         return Err(ApiError::LinkExpired);
@@ -456,25 +465,24 @@ pub(crate) async fn update_link(
         validate_target(target, &s.default_host)?;
     }
     let tags = req.tags.as_deref().map(tag_names).transpose()?;
+    let id = link_id(&s, workspace_id, q.domain.as_deref(), &code).await?;
     let mut tx = s.pool.begin().await?;
-    let id = sqlx::query_scalar::<_, i64>(
-        "UPDATE links l SET target = COALESCE($1, l.target), \
-         expires_at = CASE WHEN $2 THEN $3 ELSE l.expires_at END, updated_at = $4 \
-         FROM domains d WHERE d.id = l.domain_id \
-         AND l.workspace_id = $5 AND d.host = lower($6) AND l.code = $7 \
-         AND l.deleted_at IS NULL \
-         RETURNING l.id",
+    // Still live: it may have been deleted since `link_id` found it.
+    let updated = sqlx::query(
+        "UPDATE links SET target = COALESCE($1, target), \
+         expires_at = CASE WHEN $2 THEN $3 ELSE expires_at END, updated_at = $4 \
+         WHERE id = $5 AND deleted_at IS NULL",
     )
     .bind(&req.target)
     .bind(req.expires_at.is_some())
     .bind(req.expires_at.flatten())
     .bind((s.clock)())
-    .bind(workspace_id)
-    .bind(host(&s, &q.domain))
-    .bind(&code)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or(ApiError::LinkNotFound)?;
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(ApiError::LinkNotFound);
+    }
     if let Some(tags) = &tags {
         set_tags(&mut tx, workspace_id, id, tags).await?;
     }
@@ -584,17 +592,13 @@ pub(crate) async fn delete_link(
 ) -> Result<StatusCode, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
-    let done = sqlx::query(
-        "UPDATE links SET deleted_at = $1 FROM domains d WHERE d.id = links.domain_id \
-         AND links.workspace_id = $2 AND d.host = lower($3) AND links.code = $4 \
-         AND links.deleted_at IS NULL",
-    )
-    .bind((s.clock)())
-    .bind(workspace_id)
-    .bind(host(&s, &q.domain))
-    .bind(&code)
-    .execute(&s.pool)
-    .await?;
+    let id = link_id(&s, workspace_id, q.domain.as_deref(), &code).await?;
+    // Still live: a concurrent delete may have got there first.
+    let done = sqlx::query("UPDATE links SET deleted_at = $1 WHERE id = $2 AND deleted_at IS NULL")
+        .bind((s.clock)())
+        .bind(id)
+        .execute(&s.pool)
+        .await?;
     if done.rows_affected() == 0 {
         return Err(ApiError::LinkNotFound);
     }

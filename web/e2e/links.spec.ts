@@ -54,19 +54,19 @@ test('taking a Code that is already taken says so, in either language', async ({
 });
 
 test("switching Workspace shows that Workspace's Links", async ({ page, user }) => {
-  const team = `Team ${Date.now()}`;
+  const shared = `Shared ${Date.now()}`;
   await user.api('POST', `/workspaces/${user.slug}/links`, { target: 'https://example.com/personal' });
-  const { slug } = (await user.api('POST', '/workspaces', { name: team })) as { slug: string };
-  await user.api('POST', `/workspaces/${slug}/links`, { target: 'https://example.com/team' });
+  const { slug } = (await user.api('POST', '/workspaces', { name: shared })) as { slug: string };
+  await user.api('POST', `/workspaces/${slug}/links`, { target: 'https://example.com/shared' });
   await signInPage(page, user.email, user.password);
 
   const links = page.getByRole('table');
   await page.getByLabel('Workspace').selectOption({ label: user.email });
   await expect(links).toContainText('https://example.com/personal');
-  await expect(links).not.toContainText('https://example.com/team');
+  await expect(links).not.toContainText('https://example.com/shared');
 
-  await page.getByLabel('Workspace').selectOption({ label: team });
-  await expect(links).toContainText('https://example.com/team');
+  await page.getByLabel('Workspace').selectOption({ label: shared });
+  await expect(links).toContainText('https://example.com/shared');
   await expect(links).not.toContainText('https://example.com/personal');
 });
 

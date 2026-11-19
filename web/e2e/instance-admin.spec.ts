@@ -1,10 +1,10 @@
-import { admin } from '../playwright.config';
+import { instanceAdmin } from '../playwright.config';
 import { test, expect, signInPage } from './fixtures';
 
 test('an Instance Admin creates an invite into a Workspace, and a new User accepts it', async ({ page, browser, user }) => {
   const email = `invited-${Date.now()}@example.com`;
-  await signInPage(page, admin.email, admin.password);
-  await page.getByRole('link', { name: 'Admin' }).click();
+  await signInPage(page, instanceAdmin.email, instanceAdmin.password);
+  await page.getByRole('link', { name: 'Instance Admin' }).click();
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Workspace').fill(user.slug);
   await page.getByRole('button', { name: 'Create invite link' }).click();
@@ -24,7 +24,7 @@ test('an Instance Admin creates an invite into a Workspace, and a new User accep
 test('a User who isn’t an Instance Admin sees no admin navigation', async ({ page, user }) => {
   await signInPage(page, user.email, user.password);
   await expect(page.getByRole('link', { name: 'Domains' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Instance Admin' })).toHaveCount(0);
 
   // Nor the admin page itself.
   await page.goto('/app/admin');
@@ -33,8 +33,8 @@ test('a User who isn’t an Instance Admin sees no admin navigation', async ({ p
 });
 
 test('an Instance Admin resets a password, then disables the User', async ({ page, browser, user }) => {
-  await signInPage(page, admin.email, admin.password);
-  await page.getByRole('link', { name: 'Admin' }).click();
+  await signInPage(page, instanceAdmin.email, instanceAdmin.password);
+  await page.getByRole('link', { name: 'Instance Admin' }).click();
   const row = page.getByRole('row').filter({ hasText: user.email });
   await row.getByRole('button', { name: 'Reset password' }).click();
   const password = await row.getByLabel('New password').textContent();
@@ -46,4 +46,16 @@ test('an Instance Admin resets a password, then disables the User', async ({ pag
   await expect(row).toContainText('Disabled');
   await userPage.reload();
   await expect(userPage.getByRole('button', { name: 'Sign in' })).toBeVisible();
+});
+
+test('the last Instance Admin is told they can’t revoke themselves', async ({ page }) => {
+  await signInPage(page, instanceAdmin.email, instanceAdmin.password);
+  await page.getByRole('link', { name: 'Instance Admin' }).click();
+  const row = page.getByRole('row').filter({ hasText: instanceAdmin.email });
+  await row.getByRole('button', { name: 'Revoke Instance Admin' }).click();
+
+  await expect(page.getByRole('alert')).toHaveText(
+    'The instance needs an Instance Admin: make someone else Instance Admin first.',
+  );
+  await expect(row.getByRole('button', { name: 'Revoke Instance Admin' })).toBeVisible();
 });

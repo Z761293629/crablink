@@ -69,6 +69,47 @@ async fn behind_a_trusted_proxy_the_country_comes_from_the_first_forwarded_addre
     );
 }
 
+/// Recording a Click never holds up the redirect, even when the database is stuck.
+#[tokio::test]
+async fn the_redirect_does_not_wait_for_its_click_to_be_recorded() {
+    use tower::ServiceExt;
+    let app = app().await;
+    app.create(json!({ "code": "fast", "target": "https://example.com" }))
+        .await;
+    let mut lock = app.pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE clicks IN EXCLUSIVE MODE")
+        .execute(&mut *lock)
+        .await
+        .unwrap();
+
+    let req = visitor_request(HOST, "/fast", &[("user-agent", BROWSER_UA)]);
+    let redirect = app.router.clone().oneshot(req);
+    let res = tokio::time::timeout(std::time::Duration::from_secs(10), redirect)
+        .await
+        .expect("the redirect waited for the Click")
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::FOUND);
+    lock.commit().await.unwrap();
+    let click = res.extensions().get::<crablink_server::ClickRecording>();
+    click.expect("a Click is being recorded").done().await;
+    assert_eq!(click_count(&app, "fast").await, 1);
+}
+
+#[tokio::test]
+async fn behind_a_trusted_proxy_with_no_forwarded_address_the_country_comes_from_the_socket() {
+    let app = app_behind_proxy().await;
+    app.create(json!({ "code": "geo", "target": "https://example.com" }))
+        .await;
+
+    app.visit("/geo", &[("user-agent", BROWSER_UA)]).await;
+
+    assert_eq!(
+        countries(&app, "geo").await,
+        json!([{ "value": "FR", "count": 1 }])
+    );
+}
+
 #[tokio::test]
 async fn without_proxy_trust_the_country_comes_from_the_socket() {
     let app = app().await;
@@ -95,7 +136,7 @@ async fn clicks_are_counted_per_hour_or_day_and_broken_down() {
     let app = app_behind_proxy().await;
     app.create(json!({ "code": "stats", "target": "https://example.com" }))
         .await;
-    let visits = [
+    let clicks_made = [
         ("2026-03-01T10:15:00Z", BROWSER_UA, Some(HN), NZ_IP),
         ("2026-03-01T10:45:00Z", IPHONE_SAFARI, None, NZ_IP),
         (
@@ -113,7 +154,7 @@ async fn clicks_are_counted_per_hour_or_day_and_broken_down() {
             NZ_IP,
         ),
     ];
-    for (at, ua, referrer, ip) in visits {
+    for (at, ua, referrer, ip) in clicks_made {
         app.set_now(at);
         let mut headers = vec![("user-agent", ua), ("x-forwarded-for", ip)];
         headers.extend(referrer.map(|r| ("referer", r)));
@@ -244,7 +285,7 @@ async fn workspace_clicks_total_its_links_and_rank_the_top_links() {
         .bearer("POST", &path, Some(body), Some(&other.key))
         .await;
     assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
-    let visits = [
+    let clicks_made = [
         ("2026-03-01T10:00:00Z", "/one"),
         ("2026-03-01T11:00:00Z", "/two"),
         ("2026-03-01T12:00:00Z", "/two"),
@@ -256,7 +297,7 @@ async fn workspace_clicks_total_its_links_and_rank_the_top_links() {
         ("2026-03-03T00:00:00Z", "/one"),
         ("2026-03-03T00:00:00Z", "/one"),
     ];
-    for (at, path) in visits {
+    for (at, path) in clicks_made {
         app.set_now(at);
         let res = app.visit(path, &[("user-agent", BROWSER_UA)]).await;
         assert_eq!(res.status, StatusCode::FOUND, "{path}");
@@ -288,5 +329,44 @@ async fn workspace_clicks_total_its_links_and_rank_the_top_links() {
             ],
             "top_links": [link("two", 3), link("three", 2), link("one", 1)],
         })
+    );
+}
+
+/// Clicks are kept forever: a Workspace's past totals never shrink when a Link is
+/// deleted or its Domain removed.
+#[tokio::test]
+async fn workspace_clicks_still_count_deleted_links_and_removed_domains() {
+    let app = app().await;
+    app.approved_domain("go.example.com").await;
+    app.create(json!({ "code": "gone", "target": "https://example.com" }))
+        .await;
+    app.create(
+        json!({ "code": "away", "domain": "go.example.com", "target": "https://example.com" }),
+    )
+    .await;
+    app.set_now("2026-03-01T10:00:00Z");
+    app.visit("/gone", &[("user-agent", BROWSER_UA)]).await;
+    let res = app
+        .visit_on("go.example.com", "/away", &[("user-agent", BROWSER_UA)])
+        .await;
+    assert_eq!(res.status, StatusCode::FOUND, "{}", res.text);
+
+    let res = app.api("DELETE", "/links/gone", None).await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.text);
+    let path = format!("/api/workspaces/{}/domains/go.example.com", app.owner.slug);
+    let res = app.as_user("DELETE", &path, None, &app.owner.cookie).await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.text);
+
+    let res = app
+        .api(
+            "GET",
+            "/clicks?from=2026-03-01T00:00:00Z&to=2026-03-02T00:00:00Z",
+            None,
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+    assert_eq!(
+        res.json()["series"],
+        json!([{ "time": "2026-03-01T00:00:00Z", "count": 2 }])
     );
 }

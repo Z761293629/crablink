@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AcceptInvite, ChangePassword } from './Account';
-import { Admin } from './Admin';
 import { api, type Membership, type User } from './api';
 import { Clicks } from './Clicks';
 import { Domains } from './Domains';
+import { InstanceAdmin } from './InstanceAdmin';
 import { Links } from './Links';
 import { errorMessage, languages, setLanguage } from './i18n';
 import { ManageWorkspace } from './Workspace';
+import logo from './assets/crablink-horizontal.svg';
+import logoReversed from './assets/crablink-horizontal-reversed.svg';
 
 // ponytail: pages are plain links that reload the SPA; add a router when a page keeps state worth not reloading.
 const page = location.pathname.replace(/^\/app\/?/, '').replace(/\/$/, '');
@@ -75,7 +77,7 @@ export function App() {
   else if (user === undefined) main = null;
   else if (!user) main = <SignIn onSignedIn={signedInAs} />;
   else if (error !== undefined) main = <p role="alert">{errorMessage(t, error)}</p>;
-  else if (page === 'admin' && user.instance_admin) main = <Admin />;
+  else if (page === 'admin' && user.instance_admin) main = <InstanceAdmin />;
   else if (page === 'account') main = <ChangePassword />;
   else if (!workspaces) main = null;
   else if (page === 'workspace')
@@ -94,7 +96,11 @@ export function App() {
   return (
     <>
       <header>
-        <strong>crablink</strong>
+        {/* The reversed lockup has a white wordmark for dark backgrounds (logo/GUIDELINES.md). */}
+        <picture className="logo">
+          <source srcSet={logoReversed} media="(prefers-color-scheme: dark)" />
+          <img src={logo} alt="crablink" />
+        </picture>
         <LanguageSwitcher />
         {user && (
           <>

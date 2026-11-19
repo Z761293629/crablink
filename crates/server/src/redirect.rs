@@ -22,9 +22,9 @@ pub(crate) async fn redirect(
     socket: Option<Extension<ConnectInfo<SocketAddr>>>,
 ) -> Response {
     let socket = socket.map(|Extension(ConnectInfo(addr))| addr.ip());
-    let host = crate::users::request_host(&headers, &uri).unwrap_or_default();
+    let domain = crate::request_host(&headers, &uri).unwrap_or_default();
     // Unlike the management API, redirect error bodies are plain text.
-    follow(&s, host, &code, &headers, socket)
+    follow(&s, domain, &code, &headers, socket)
         .await
         .unwrap_or_else(|e| (e.status(), e.to_string()).into_response())
 }
@@ -32,12 +32,12 @@ pub(crate) async fn redirect(
 /// Redirects to the Target of a live (not deleted, not expired) Link, recording a Click.
 async fn follow(
     s: &AppState,
-    host: &str,
+    domain: &str,
     code: &str,
     headers: &HeaderMap,
     socket: Option<IpAddr>,
 ) -> Result<Response, ApiError> {
-    let Some(domain_id) = crate::domains::served(&s.pool, host).await? else {
+    let Some(domain_id) = crate::domains::served(&s.pool, domain).await? else {
         return Ok((StatusCode::NOT_FOUND, "not found").into_response());
     };
     let live: Option<(i64, String)> = sqlx::query_as(
@@ -51,12 +51,16 @@ async fn follow(
     .fetch_optional(&s.pool)
     .await?;
     if let Some((id, target)) = live {
-        clicks::record(s, id, headers, socket).await;
+        let click = clicks::record(s, id, headers, socket);
         let headers = [
             (header::LOCATION, target),
             (header::CACHE_CONTROL, "private, max-age=0".into()),
         ];
-        return Ok((StatusCode::FOUND, headers).into_response());
+        let mut res = (StatusCode::FOUND, headers).into_response();
+        if let Some(click) = click {
+            res.extensions_mut().insert(click);
+        }
+        return Ok(res);
     }
     let exists = sqlx::query("SELECT 1 FROM links WHERE domain_id = $1 AND code = $2")
         .bind(domain_id)

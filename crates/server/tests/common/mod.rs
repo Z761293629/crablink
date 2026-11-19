@@ -30,7 +30,7 @@ pub const PASSWORD: &str = "correct horse battery";
 /// The User whose personal Workspace and API Key `TestApp::api` uses.
 pub const OWNER: &str = "owner@example.com";
 /// The Instance Admin `TestApp::instance_admin` signs in as.
-pub const ADMIN: &str = "admin@example.com";
+pub const INSTANCE_ADMIN: &str = "admin@example.com";
 /// The socket address `TestApp::visit` comes from; the fake country lookup puts it in France.
 pub const SOCKET_IP: &str = "192.0.2.1";
 /// An address the fake country lookup puts in New Zealand.
@@ -116,9 +116,26 @@ pub struct TestApp {
     pub owner: Account,
 }
 
+/// A visitor's request for `path` on Domain `host` from `SOCKET_IP`, sending `headers`.
+pub fn visitor_request(host: &str, path: &str, headers: &[(&str, &str)]) -> Request<Body> {
+    let mut req = Request::get(path).header(header::HOST, host);
+    for (name, value) in headers {
+        req = req.header(*name, *value);
+    }
+    let mut req = req.body(Body::empty()).unwrap();
+    let socket = SocketAddr::new(SOCKET_IP.parse().unwrap(), 50000);
+    req.extensions_mut().insert(ConnectInfo(socket));
+    req
+}
+
 impl TestApp {
+    /// Sends `req`; after a redirect, also waits for its Click to be recorded, so
+    /// tests see it at once.
     pub async fn send(&self, req: Request<Body>) -> Res {
         let resp = self.router.clone().oneshot(req).await.unwrap();
+        if let Some(click) = resp.extensions().get::<crablink_server::ClickRecording>() {
+            click.done().await;
+        }
         Res::read(resp).await
     }
 
@@ -261,48 +278,46 @@ impl TestApp {
         self.send(req.body(Body::empty()).unwrap()).await
     }
 
-    /// Signs in as the Instance Admin `ADMIN`, creating them if missing; returns the cookie.
+    /// Signs in as the Instance Admin `INSTANCE_ADMIN`, creating them if missing; returns the cookie.
     pub async fn instance_admin(&self) -> String {
         // Already created by an earlier call is fine.
-        let _ = crablink_server::create_user(&self.pool, ADMIN, PASSWORD, true).await;
-        self.sign_in(ADMIN, PASSWORD).await
+        let _ = crablink_server::create_user(&self.pool, INSTANCE_ADMIN, PASSWORD, true).await;
+        self.sign_in(INSTANCE_ADMIN, PASSWORD).await
     }
 
-    /// `POST /api/workspaces/{slug}/domains` adding `host`, as the session `cookie`.
-    pub async fn add_domain(&self, cookie: &str, slug: &str, host: &str) -> Res {
+    /// `POST /api/workspaces/{slug}/domains` adding `domain`, as the session `cookie`.
+    pub async fn add_domain(&self, cookie: &str, slug: &str, domain: &str) -> Res {
         let path = format!("/api/workspaces/{slug}/domains");
-        let body = serde_json::json!({ "host": host });
+        let body = serde_json::json!({ "domain": domain });
         self.as_user("POST", &path, Some(body), cookie).await
     }
 
-    /// Sets Domain `host`'s status (`approved`, `rejected`, …) as the Instance Admin,
+    /// Sets `domain`'s status (`approved`, `rejected`, …) as the Instance Admin,
     /// asserting `200`.
-    pub async fn set_domain_status(&self, host: &str, status: &str) {
+    pub async fn set_domain_status(&self, domain: &str, status: &str) {
         let admin = self.instance_admin().await;
-        let path = format!("/api/admin/domains/{host}");
+        let path = format!("/api/admin/domains/{domain}");
         let body = serde_json::json!({ "status": status });
         let res = self.as_user("PATCH", &path, Some(body), &admin).await;
         assert_eq!(res.status, StatusCode::OK, "{}", res.text);
     }
 
-    /// Adds `host` to `OWNER`'s Workspace and approves it.
-    pub async fn approved_domain(&self, host: &str) {
+    /// Adds `domain` to `OWNER`'s Workspace and approves it.
+    pub async fn approved_domain(&self, domain: &str) {
         let (cookie, slug) = (&self.owner.cookie, &self.owner.slug);
-        let res = self.add_domain(cookie, slug, host).await;
+        let res = self.add_domain(cookie, slug, domain).await;
         assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
-        self.set_domain_status(host, "approved").await;
+        self.set_domain_status(domain, "approved").await;
     }
 
     /// A visitor following a Short URL from `SOCKET_IP`, sending `headers`.
     pub async fn visit(&self, path: &str, headers: &[(&str, &str)]) -> Res {
-        let mut req = Request::get(path).header(header::HOST, HOST);
-        for (name, value) in headers {
-            req = req.header(*name, *value);
-        }
-        let mut req = req.body(Body::empty()).unwrap();
-        let socket = SocketAddr::new(SOCKET_IP.parse().unwrap(), 50000);
-        req.extensions_mut().insert(ConnectInfo(socket));
-        self.send(req).await
+        self.visit_on(HOST, path, headers).await
+    }
+
+    /// `visit` on Domain `host`.
+    pub async fn visit_on(&self, host: &str, path: &str, headers: &[(&str, &str)]) -> Res {
+        self.send(visitor_request(host, path, headers)).await
     }
 
     /// A request with `OWNER`'s API Key to `path` under `OWNER`'s Workspace, e.g.

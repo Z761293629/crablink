@@ -55,7 +55,7 @@
     "links": "Links",
     "clicks": "Clicks",
     "domains": "Domains",
-    "admin": "Admin",
+    "admin": "Instance Admin",
     "switcher": "Workspace",
     "workspace": "Manage Workspace",
     "account": "Account"
@@ -96,14 +96,14 @@
   },
   "domains": {
     "title": "Domains",
-    "host": "Host",
+    "domain": "Domain",
     "status": "Status",
     "dnsRecord": "DNS record",
     "default": "Default Domain",
     "dns": "Point a custom Domain at {{host}} with a CNAME record. It works once an Instance Admin approves it.",
     "add": "Add Domain",
     "remove": "Remove",
-    "confirmRemove": "Remove {{host}}? Its Links become Deleted Links, and their Codes stay taken.",
+    "confirmRemove": "Remove {{domain}}? Its Links become Deleted Links, and their Codes stay taken.",
     "statuses": {
       "pending": "Pending",
       "approved": "Approved",
@@ -204,6 +204,7 @@
     "user_not_found": "No such User.",
     "already_member": "Already in this Workspace.",
     "last_owner": "A Workspace needs an Owner: make someone else Owner first.",
+    "last_instance_admin": "The instance needs an Instance Admin: make someone else Instance Admin first.",
     "internal": "Something went wrong on the server. Try again.",
     "invalid_domain": "Enter a host name such as go.example.com.",
     "domain_taken": "That Domain is the Default Domain or another Workspace’s.",

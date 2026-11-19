@@ -2,13 +2,16 @@ mod common;
 
 use common::*;
 
-/// The Codes `crablink ls` prints, first column, newest first.
+/// The Codes of the Short URLs `crablink ls` prints, first column, newest first.
 fn ls_codes(s: &TestServer, args: &[&str]) -> Vec<String> {
     let out = s.cli(&[&["ls"], args].concat());
     assert!(out.success, "{}", out.stderr);
     out.stdout
         .lines()
-        .map(|l| l.split_whitespace().next().unwrap().to_string())
+        .map(|l| {
+            let short_url = l.split_whitespace().next().unwrap();
+            short_url.rsplit('/').next().unwrap().to_string()
+        })
         .collect()
 }
 

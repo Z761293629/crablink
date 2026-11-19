@@ -107,7 +107,7 @@ fn tui_reload_keeps_the_default_domain_link_selected_not_its_code_twin() {
     tui.keys("jr");
 
     let screen = tui.screen();
-    let detail = screen.lines().find(|l| l.contains("Short URL")).unwrap();
+    let detail = screen.lines().rfind(|l| l.contains("Short URL")).unwrap();
     assert!(detail.contains(&format!("{}/sale", s.url)), "{screen}");
 }
 
@@ -177,4 +177,41 @@ fn qr_with_domain_saves_the_qr_code_of_the_link_on_that_domain() {
     let custom = s.api().qr("sale", Some("go.example.com"), svg).unwrap();
     assert_ne!(custom, s.api().qr("sale", None, svg).unwrap());
     assert_eq!(std::fs::read(&path).unwrap(), custom);
+}
+
+#[test]
+fn tui_lists_and_confirms_deletes_by_short_url_so_code_twins_differ() {
+    let s = same_code_on_two_domains();
+    let default = s.url.split("://").last().unwrap();
+    let mut tui = s.tui();
+
+    let screen = tui.screen();
+    let custom = screen.find("go.example.com/sale").expect(&screen);
+    let twin = screen.find(&format!("{default}/sale")).expect(&screen);
+    assert!(custom < twin, "{screen}");
+    tui.keys("d");
+    let screen = tui.screen();
+    let confirm = screen.lines().find(|l| l.contains("Delete")).unwrap();
+    assert!(confirm.contains("go.example.com/sale"), "{screen}");
+}
+
+#[test]
+fn ls_shows_each_links_short_url_with_its_domain() {
+    let s = same_code_on_two_domains();
+    let default = s.url.split("://").last().unwrap();
+
+    let out = s.cli(&["ls"]);
+
+    assert!(out.success, "{}", out.stderr);
+    let lines: Vec<&str> = out.stdout.lines().collect();
+    assert!(
+        lines[0].starts_with("go.example.com/sale "),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        lines[1].starts_with(&format!("{default}/sale ")),
+        "{}",
+        out.stdout
+    );
 }

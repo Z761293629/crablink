@@ -2,7 +2,7 @@
 //! time range with breakdowns.
 
 use std::net::IpAddr;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 
 use axum::Json;
 use axum::extract::rejection::QueryRejection;
@@ -13,6 +13,7 @@ use crablink_api::{
     ClickBreakdown, ClickBucket, ClickStats, ClicksQuery, Interval, TopLink, WorkspaceClicks,
     WorkspaceClicksQuery,
 };
+use tokio::task::JoinHandle;
 
 use crate::error::ApiError;
 use crate::workspaces::Caller;
@@ -48,27 +49,46 @@ pub fn dbip_country_lookup(path: &str) -> Result<CountryLookup, maxminddb::MaxMi
     }))
 }
 
-/// Records a Click on Link `link_id` unless the visitor is a bot or link-preview
-/// fetcher. `socket` is the peer address. Never fails: an error is logged and the
-/// redirect goes ahead.
-pub(crate) async fn record(
+/// A Click being stored after its redirect has been answered, so that a slow database
+/// never slows the redirect. It rides on the redirect's response, where only the
+/// in-process tests look for it.
+#[derive(Clone)]
+pub struct ClickRecording(Arc<Mutex<Option<JoinHandle<()>>>>);
+
+impl ClickRecording {
+    /// Waits until the Click is stored, or failing to store it has been logged.
+    pub async fn done(&self) {
+        let task = self.0.lock().unwrap_or_else(PoisonError::into_inner).take();
+        if let Some(task) = task {
+            // A panic in the task was already reported by the runtime.
+            let _ = task.await;
+        }
+    }
+}
+
+/// Starts recording a Click on Link `link_id` unless the visitor is a bot or
+/// link-preview fetcher. `socket` is the peer address. Never fails: an error is logged
+/// and the redirect goes ahead.
+// ponytail: a Click still being stored when the server shuts down is lost; track the
+// tasks and wait for them on shutdown if that ever matters.
+pub(crate) fn record(
     s: &AppState,
     link_id: i64,
     headers: &HeaderMap,
     socket: Option<IpAddr>,
-) {
+) -> Option<ClickRecording> {
     let text = |name| headers.get(name).and_then(|v| v.to_str().ok());
     let ua = text(header::USER_AGENT).unwrap_or("");
     if BOTS.is_bot(ua) {
-        return;
+        return None;
     }
-    let ip = if s.trust_proxy {
+    let forwarded = || {
         text(header::HeaderName::from_static("x-forwarded-for"))
             .and_then(|v| v.split(',').next())
             .and_then(|first| first.trim().parse().ok())
-    } else {
-        socket
     };
+    // A request that reached us without the proxy adding the header came from the socket.
+    let ip = s.trust_proxy.then(forwarded).flatten().or(socket);
     // The IP goes no further than this lookup.
     let country = ip.and_then(|ip| (s.country)(ip));
     let referrer_host = text(header::REFERER)
@@ -78,7 +98,7 @@ pub(crate) async fn record(
         .iter()
         .find(|(token, _)| ua.contains(token))
         .map(|(_, name)| *name);
-    let done = sqlx::query(
+    let insert = sqlx::query(
         "WITH c AS (INSERT INTO clicks (link_id, at, referrer_host, country, device, browser) \
          VALUES ($1, $2, $3, $4, $5, $6)) \
          UPDATE links SET click_count = click_count + 1 WHERE id = $1",
@@ -88,12 +108,14 @@ pub(crate) async fn record(
     .bind(referrer_host)
     .bind(country)
     .bind(device(ua))
-    .bind(browser)
-    .execute(&s.pool)
-    .await;
-    if let Err(e) = done {
-        eprintln!("cannot record a Click: {e}");
-    }
+    .bind(browser);
+    let pool = s.pool.clone();
+    let task = tokio::spawn(async move {
+        if let Err(e) = insert.execute(&pool).await {
+            eprintln!("cannot record a Click: {e}");
+        }
+    });
+    Some(ClickRecording(Arc::new(Mutex::new(Some(task)))))
 }
 
 /// `tablet`, `mobile` or `desktop`. An iPad asking for the desktop site, as Safari
@@ -196,17 +218,7 @@ pub(crate) async fn link_clicks(
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
     let unit = bucket_unit(q.from, q.to, q.interval)?;
-    let link_id: i64 = sqlx::query_scalar(
-        "SELECT l.id FROM links l JOIN domains d ON d.id = l.domain_id \
-         WHERE l.workspace_id = $1 AND d.host = lower($2) AND l.code = $3 \
-         AND l.deleted_at IS NULL",
-    )
-    .bind(workspace_id)
-    .bind(q.domain.as_deref().unwrap_or(&s.default_domain))
-    .bind(&code)
-    .fetch_optional(&s.pool)
-    .await?
-    .ok_or(ApiError::LinkNotFound)?;
+    let link_id = crate::links::link_id(&s, workspace_id, q.domain.as_deref(), &code).await?;
     let by = async |sql: &'static str| -> Result<Vec<ClickBreakdown>, ApiError> {
         let rows: Vec<(Option<String>, i64)> = sqlx::query_as(sql)
             .bind(link_id)
@@ -232,7 +244,8 @@ pub(crate) async fn link_clicks(
 const TOP_LINKS: i64 = 10;
 
 /// `GET /api/workspaces/{slug}/clicks`: the Clicks of all the Workspace's Links over a
-/// time range, per hour or day (UTC), and the Links with the most of them.
+/// time range, per hour or day (UTC), Deleted Links included so past totals never
+/// shrink, and the live Links with the most of them.
 pub(crate) async fn workspace_clicks(
     State(s): State<AppState>,
     caller: Caller,
@@ -242,8 +255,8 @@ pub(crate) async fn workspace_clicks(
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
     let unit = bucket_unit(q.from, q.to, q.interval)?;
-    let sql =
-        series_sql!("IN (SELECT id FROM links WHERE workspace_id = $4 AND deleted_at IS NULL)");
+    // A removed Domain's Links keep their Workspace; a deleted Workspace's are no one's.
+    let sql = series_sql!("IN (SELECT id FROM links WHERE workspace_id = $4)");
     let series = series(&s, sql, unit, (q.from, q.to), workspace_id).await?;
     let top: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT l.code, d.host, count(*) FROM clicks c \

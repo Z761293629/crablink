@@ -591,7 +591,7 @@ impl App {
             Mode::Form(form) => render_form(f, main, form),
             Mode::Delete => {
                 if let Some(l) = self.selected() {
-                    render_delete(f, main, &l.code);
+                    render_delete(f, main, &crate::short_url(l));
                 }
             }
             // Over the whole screen, sidebar included: a QR code needs all the room it can get.
@@ -738,11 +738,11 @@ fn tail(s: &str, n: usize) -> &str {
 }
 
 /// The delete confirmation, centred over `area`.
-fn render_delete(f: &mut Frame, area: Rect, code: &str) {
+fn render_delete(f: &mut Frame, area: Rect, short_url: &str) {
     let text = vec![
         Line::from(vec![
             Span::from("Delete "),
-            Span::from(code).bold(),
+            Span::from(short_url).bold(),
             Span::from("?"),
         ]),
         Line::from("Its Code will never be reused."),
@@ -752,8 +752,8 @@ fn render_delete(f: &mut Frame, area: Rect, code: &str) {
             Span::from(" deletes, any other key cancels").dim(),
         ]),
     ];
-    // Wide enough for a 64-character Custom Code: "Delete " + Code + "?" + border and padding.
-    let width = (code.chars().count() as u16 + 12).max(40);
+    // Wide enough for the Short URL: "Delete " + Short URL + "?" + border and padding.
+    let width = (short_url.chars().count() as u16 + 12).max(40);
     let area = area.centered(
         Constraint::Length(width),
         Constraint::Length(text.len() as u16 + 2),
@@ -799,12 +799,13 @@ fn matching<'a>(links: &'a [Link], filter: &str) -> Vec<&'a Link> {
         .collect()
 }
 
-/// The list, `width` columns wide. Code and Expiry are as wide as their longest visible
-/// value (the Code bounded so the Target keeps 10 columns); the Target gets the rest and
-/// is what gets truncated.
+/// The list, `width` columns wide. Short URL and Expiry are as wide as their longest
+/// visible value (the Short URL bounded so the Target keeps 10 columns, losing the start of
+/// its Domain before its Code); the Target gets the rest and is what gets truncated.
 fn link_table(links: &[&Link], now: DateTime<Utc>, width: u16) -> Table<'static> {
-    const HEADER: [&str; 4] = ["Code", "Click Count", "Expiry", "Target"];
+    const HEADER: [&str; 4] = ["Short URL", "Click Count", "Expiry", "Target"];
     let expiries: Vec<String> = links.iter().map(|l| crate::expiry(l, now)).collect();
+    let short_urls: Vec<String> = links.iter().map(|l| crate::short_url(l)).collect();
     let widest = |header: &str, values: Vec<&str>| {
         values
             .into_iter()
@@ -817,24 +818,32 @@ fn link_table(links: &[&Link], now: DateTime<Utc>, width: u16) -> Table<'static>
     let expiry = widest(HEADER[2], expiries.iter().map(String::as_str).collect());
     // Highlight symbol, three column gaps, and the Target's minimum.
     let room = width.saturating_sub(1 + 3 * 2 + clicks + expiry + 10);
-    let code = widest(HEADER[0], links.iter().map(|l| l.code.as_str()).collect()).min(room);
-    let rows = links.iter().zip(expiries).map(|(l, e)| {
-        Row::new(vec![
-            Line::from(l.code.clone()).bold(),
-            Line::from(l.click_count.to_string()).right_aligned(),
-            if l.is_expired(now) {
-                Line::from(e).fg(CRAB_RED)
-            } else {
-                Line::from(e).dim()
-            },
-            Line::from(l.target.clone()).dim(),
-        ])
-    });
+    let short_url = widest(HEADER[0], short_urls.iter().map(String::as_str).collect()).min(room);
+    let rows = links
+        .iter()
+        .zip(short_urls)
+        .zip(expiries)
+        .map(|((l, s), e)| {
+            let s = match s.chars().count() > short_url as usize {
+                true => format!("…{}", tail(&s, (short_url as usize).saturating_sub(1))),
+                false => s,
+            };
+            Row::new(vec![
+                Line::from(s).bold(),
+                Line::from(l.click_count.to_string()).right_aligned(),
+                if l.is_expired(now) {
+                    Line::from(e).fg(CRAB_RED)
+                } else {
+                    Line::from(e).dim()
+                },
+                Line::from(l.target.clone()).dim(),
+            ])
+        });
     let header = Row::new(HEADER)
         .style(Style::new().underlined().dim())
         .bottom_margin(1);
     let widths = [
-        Constraint::Length(code),
+        Constraint::Length(short_url),
         Constraint::Length(clicks),
         Constraint::Length(expiry),
         Constraint::Min(10),

@@ -2,7 +2,7 @@
 // the web UI and an Instance Admin would. Import `test` and `expect` from here.
 
 import { test as base, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { admin, baseURL } from '../playwright.config';
+import { baseURL, instanceAdmin } from '../playwright.config';
 
 /** A User with their personal Workspace, and a session for seeding data through the API. */
 export interface User {
@@ -50,7 +50,7 @@ export { expect };
 
 /** An invite link for `email`, made by the Instance Admin. */
 export async function inviteUrl(request: APIRequestContext, email: string) {
-  const adminCookie = await signInApi(request, admin.email, admin.password);
+  const adminCookie = await signInApi(request, instanceAdmin.email, instanceAdmin.password);
   const { url } = (await call(request, adminCookie, 'POST', '/admin/invites', { email })) as { url: string };
   return url;
 }

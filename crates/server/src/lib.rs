@@ -5,7 +5,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode, Uri, header};
 use axum::routing::{delete, get, patch, post};
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
@@ -23,7 +23,7 @@ mod users;
 mod web;
 mod workspaces;
 
-pub use clicks::dbip_country_lookup;
+pub use clicks::{ClickRecording, dbip_country_lookup};
 pub use db::connect;
 pub use error::ApiError;
 pub use links::random_code;
@@ -72,6 +72,22 @@ struct AppState {
     default_host: Arc<str>,
 }
 
+impl AppState {
+    /// The Domain a request names (e.g. `?domain=`), the Default Domain when it names none.
+    fn domain_or_default<'a>(&'a self, requested: Option<&'a str>) -> &'a str {
+        requested.unwrap_or(&self.default_domain)
+    }
+}
+
+/// The host a request was sent to, with its port if any: the `Host` header, or the
+/// URI's authority (HTTP/2).
+fn request_host<'a>(headers: &'a HeaderMap, uri: &'a Uri) -> Option<&'a str> {
+    headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .or_else(|| uri.authority().map(|a| a.as_str()))
+}
+
 /// Builds the full HTTP app, first creating the Default Domain from `base_url`
 /// (`CRABLINK_BASE_URL`: its host, and port if any) if missing. Serve it with
 /// `ConnectInfo<SocketAddr>` so Clicks can find the visitor's country.
@@ -117,7 +133,7 @@ pub async fn app(
         .route("/api-keys", post(create_api_key).get(list_api_keys))
         .route("/api-keys/{id}", delete(revoke_api_key))
         .route("/domains", post(add_domain).get(list_domains))
-        .route("/domains/{host}", delete(remove_domain))
+        .route("/domains/{domain}", delete(remove_domain))
         .route("/members", post(add_member).get(list_workspace_users))
         .route(
             "/members/{email}",
@@ -126,7 +142,7 @@ pub async fn app(
     let admin = Router::new()
         .route("/invites", post(create_invite))
         .route("/domains", get(list_managed_domains))
-        .route("/domains/{host}", patch(update_managed_domain))
+        .route("/domains/{domain}", patch(update_managed_domain))
         .route("/users", get(list_users))
         .route("/users/{id}", patch(update_user))
         .route("/users/{id}/password", post(reset_password));
