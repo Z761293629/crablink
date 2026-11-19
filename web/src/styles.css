@@ -1,110 +1,886 @@
-/* Follows the system's light or dark theme through system colors. The status colors
-   reach 4.5:1 on Canvas in both themes (WCAG 2.2 AA); Crab Red is never small text. */
+/* crablink web UI. Tokens follow the system's light or dark theme; the pass keeps its light paper in both.
+   Contrast is WCAG 2.2 AA: text ≥ 4.5:1, field borders and focus rings ≥ 3:1.
+   Crab Red fills only the primary action and marks a fresh Link; never small text. */
+
+@import '@fontsource-variable/inter/wght.css';
+@import '@fontsource-variable/jetbrains-mono/wght.css';
+
 :root {
-  color-scheme: light dark;
-  --danger: light-dark(#b42318, #ff8a7a);
-  --ok: light-dark(#1a7f37, #4ac26b);
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
+  color-scheme: light;
+  --ink: #17181c;
+  --band: #17181c;
+  --ground: #e8eaed;
+  --surface: #ffffff;
+  --surface-2: #f6f7f8;
+  --text: #17181c;
+  --on-text: #ffffff;
+  --muted: #565b64;
+  --line: #d9dce0;
+  --line-strong: #c3c7cd;
+  --field-line: #868c96;
+  --tag: #e8eaed;
+  --accent: #e0412a;
+  /* Crab Red a step deeper, so white button text reaches 4.5:1. */
+  --accent-fill: #d13b24;
+  --accent-press: #b5311d;
+  --danger: #b42318;
+  --ok: #13622b;
+  --warn: #8a5300;
+  --focus: #17181c;
+  --notch: var(--ground);
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%2317181c' stroke-width='1.6'/%3E%3C/svg%3E");
+  --font-sans:
+    'Inter Variable', Inter, system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Noto Sans CJK SC', sans-serif;
+  --font-mono:
+    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC',
+    'Microsoft YaHei', monospace;
+  --radius: 6px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --pass-shadow: 0 1px 2px rgb(23 24 28 / 0.06), 0 12px 28px -10px rgb(23 24 28 / 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --band: #0e0f12;
+    --ground: #17181c;
+    --surface: #1e1f24;
+    --surface-2: #24262c;
+    --text: #edeef0;
+    --on-text: #17181c;
+    --muted: #a3a8b1;
+    --line: #2f3137;
+    --line-strong: #3d4048;
+    --field-line: #6f7580;
+    --tag: #2f3137;
+    --danger: #ff8a7a;
+    --ok: #5cc97c;
+    --warn: #f2b451;
+    --focus: #edeef0;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%23edeef0' stroke-width='1.6'/%3E%3C/svg%3E");
+    --pass-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 16px 36px -12px rgb(0 0 0 / 0.7);
+  }
+}
+
+/* The pass is paper: light in either theme. */
+.pass {
+  color-scheme: light;
+  --surface: #ffffff;
+  --surface-2: #f6f7f8;
+  --text: #17181c;
+  --on-text: #ffffff;
+  --muted: #565b64;
+  --line: #e1e3e7;
+  --line-strong: #c3c7cd;
+  --field-line: #868c96;
+  --tag: #e8eaed;
+  --danger: #b42318;
+  --focus: #17181c;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%2317181c' stroke-width='1.6'/%3E%3C/svg%3E");
+  color: var(--text);
+}
+
+/* The header band is Shell Ink in either theme. */
+.band {
+  color-scheme: dark;
+  --text: #ffffff;
+  --muted: #b8bcc2;
+  --surface: transparent;
+  --field-line: #6b7079;
+  --focus: #ffffff;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%23ffffff' stroke-width='1.6'/%3E%3C/svg%3E");
+}
+
+/* ---------- Base and browser surfaces ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--ground);
+  -webkit-text-size-adjust: 100%;
+  scrollbar-color: var(--line-strong) transparent;
 }
 
 body {
   margin: 0;
-  background: Canvas;
-  color: CanvasText;
+  min-height: 100dvh;
+  font: 400 0.9375rem/1.5 var(--font-sans);
+  color: var(--text);
+  background: var(--ground);
+  -webkit-font-smoothing: antialiased;
+  caret-color: var(--text);
 }
 
-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+::selection {
+  background: var(--ink);
+  color: #ffffff;
 }
 
-/* At least the logo's 120px minimum width; the header's padding and gap keep its 2X clear space. */
-header .logo {
-  display: flex;
-  margin-right: auto;
+@media (prefers-color-scheme: dark) {
+  ::selection {
+    background: #e8eaed;
+    color: var(--ink);
+  }
 }
 
-header .logo img {
-  height: 2.25rem;
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
-main {
-  max-width: 64rem;
-  margin: 0 auto;
-  padding: 1rem;
+a {
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
 }
 
 h1 {
-  font-size: 1.5rem;
+  font-size: 1.375rem;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 
-.narrow {
-  display: grid;
-  gap: 1rem;
-  max-width: 22rem;
-  margin: 2rem auto;
+h2 {
+  font-size: 1rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
-.narrow label,
-.create-link label,
-.link-filter label {
-  display: grid;
-  gap: 0.25rem;
+code,
+output,
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Wraps to one field per line on a phone. */
-.create-link,
-.link-filter {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-.create-link label,
-.link-filter label {
-  flex: 1 1 12rem;
+/* The mono micro-label: field names, column heads, segment keys. */
+.micro,
+th {
+  font: 500 0.6875rem/1.2 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
-.csv-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.csv-tools .table,
-.csv-tools [role='alert'] {
-  flex-basis: 100%;
-  margin: 0;
-}
-
-.create-link [role='alert'] {
-  flex-basis: 100%;
-  margin: 0;
-}
-
-td.actions > * + * {
-  margin-left: 0.5rem;
-}
-
-input,
-select,
-button {
-  font: inherit;
-  padding: 0.4rem 0.6rem;
+:lang(zh) .micro,
+:lang(zh) th {
+  font: 600 0.75rem/1.2 var(--font-sans);
+  letter-spacing: 0.04em;
 }
 
 [role='alert'] {
   color: var(--danger);
+  font-weight: 500;
 }
+
+[role='status'] {
+  color: var(--ok);
+  font-weight: 500;
+}
+
+/* ---------- Controls ---------- */
+
+button,
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.5rem;
+  padding: 0 1rem;
+  font: 600 0.875rem/1 var(--font-sans);
+  color: var(--text);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.1s;
+}
+
+button:hover,
+.button:hover {
+  border-color: var(--text);
+}
+
+button:active,
+.button:active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button.primary {
+  color: var(--on-text);
+  background: var(--text);
+  border-color: var(--text);
+}
+
+button.primary:hover {
+  background: color-mix(in srgb, var(--text) 86%, var(--on-text));
+}
+
+button.accent,
+.button.accent {
+  color: #ffffff;
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+}
+
+button.accent:hover,
+.button.accent:hover {
+  background: var(--accent-press);
+  border-color: var(--accent-press);
+}
+
+button.danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 70%, transparent);
+}
+
+button.danger:hover {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+
+button.small,
+.button.small {
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  font-size: 0.8125rem;
+}
+
+input,
+select {
+  height: 2.5rem;
+  min-width: 0;
+  padding: 0 0.75rem;
+  font: 400 0.9375rem/1 var(--font-sans);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+}
+
+input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+input:hover,
+select:hover {
+  border-color: var(--text);
+}
+
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+  border-color: var(--focus);
+}
+
+select {
+  appearance: none;
+  padding-right: 2.25rem;
+  cursor: pointer;
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 0.75rem;
+}
+
+input[type='datetime-local'],
+input.mono {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+input[readonly] {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  background: var(--surface-2);
+}
+
+/* A file input lives inside a label styled as a button. */
+.file input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.file:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.field {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* ---------- Header band ---------- */
+
+.band {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: 'logo ws tabs tools';
+  align-items: center;
+  column-gap: 1.5rem;
+  min-height: 3.75rem;
+  padding: 0 2rem;
+  color: var(--text);
+  background: var(--band);
+  border-bottom: 1px solid #2a2c33;
+}
+
+/* 36px high keeps the lockup over its 120px minimum width; the band's padding and gaps
+   keep its 2X clear space (logo/GUIDELINES.md). */
+.band .logo {
+  grid-area: logo;
+  display: flex;
+}
+
+.band .logo img {
+  display: block;
+  height: 2.25rem;
+}
+
+.band .ws {
+  grid-area: ws;
+}
+
+.band select {
+  height: 2.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background-color: transparent;
+}
+
+.band-button {
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  gap: 0.625rem;
+  font-weight: 500;
+  background: transparent;
+  border-color: var(--field-line);
+}
+
+.band-button[aria-expanded='true'] {
+  border-color: var(--text);
+}
+
+.band-button .stamp {
+  color: var(--muted);
+}
+
+.ws-name {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chevron {
+  width: 0.75rem;
+  height: 0.5rem;
+  flex: none;
+  transition: transform 0.2s var(--ease-out);
+}
+
+[aria-expanded='true'] > .chevron {
+  transform: rotate(180deg);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  font: 600 0.75rem/1 var(--font-mono);
+  color: var(--ink);
+  background: #e8eaed;
+  border-radius: 50%;
+}
+
+.band .email {
+  max-width: 16rem;
+  overflow: hidden;
+  font: 400 0.8125rem/1 var(--font-mono);
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.band .tabs {
+  grid-area: tabs;
+  display: flex;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.band .tabs a {
+  display: flex;
+  align-items: center;
+  padding: 0 0.875rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: inset 0 -3px 0 transparent;
+  transition:
+    color 0.15s,
+    box-shadow 0.15s;
+}
+
+.band .tabs a:hover {
+  color: var(--text);
+}
+
+.band .tabs a[aria-current='page'] {
+  color: var(--text);
+  box-shadow: inset 0 -3px 0 var(--text);
+}
+
+.band .tabs a:focus-visible {
+  outline-offset: -4px;
+}
+
+.band .tools {
+  grid-area: tools;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-self: end;
+}
+
+/* Popovers: a light sheet under their button, in the page's theme. */
+.menu-wrap {
+  position: relative;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  left: 0;
+  z-index: 30;
+  display: grid;
+  gap: 0.25rem;
+  min-width: 15rem;
+  padding: 0.375rem;
+  color-scheme: light;
+  --text: #17181c;
+  --muted: #565b64;
+  --surface: #ffffff;
+  --surface-2: #f1f2f4;
+  --line: #e1e3e7;
+  --field-line: #868c96;
+  --focus: #17181c;
+  --danger: #b42318;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%2317181c' stroke-width='1.6'/%3E%3C/svg%3E");
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid #c3c7cd;
+  border-radius: 10px;
+  box-shadow: var(--pass-shadow);
+  animation: drop 0.18s var(--ease-out) backwards;
+}
+
+.popover.end {
+  right: 0;
+  left: auto;
+}
+
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-0.375rem);
+  }
+}
+
+.popover ul,
+.settings ul {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.popover ul + ul,
+.popover ul + .menu-field,
+.popover .menu-field + .item {
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  font: 500 0.875rem/1 var(--font-sans);
+  color: var(--text);
+  text-align: left;
+  text-decoration: none;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+}
+
+.item:hover {
+  background: var(--surface-2);
+}
+
+.item:active {
+  transform: none;
+}
+
+.item[aria-current='true']::after {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--text);
+  border-radius: 50%;
+}
+
+.menu-field {
+  padding: 0.5rem 0.75rem 0.625rem;
+}
+
+.menu-field select {
+  width: 100%;
+}
+
+.popover.menu {
+  min-width: 10rem;
+}
+
+.popover.menu [role='menuitem'] {
+  justify-content: flex-start;
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  font-weight: 500;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+}
+
+.popover.menu [role='menuitem']:hover,
+.popover.menu [role='menuitem']:focus-visible {
+  background: var(--surface-2);
+  outline-offset: -2px;
+}
+
+.popover.menu .danger {
+  color: var(--danger);
+}
+
+button.icon {
+  width: 2.25rem;
+  padding: 0;
+}
+
+button.icon svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
+/* The phone's bottom tab bar. */
+.tabbar {
+  display: none;
+}
+
+@media (max-width: 47.99rem) {
+  .band {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'logo ws tools';
+    column-gap: 0.75rem;
+    padding: 0.625rem 1rem;
+  }
+
+  .band .ws {
+    justify-self: end;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .band .tools:not(:has(select)) {
+    display: none;
+  }
+
+  .band .tabs,
+  .band .menu-wrap.user {
+    display: none;
+  }
+
+  .band-button {
+    max-width: 100%;
+  }
+
+  .ws-name {
+    min-width: 0;
+    max-width: 9rem;
+  }
+
+  .band-button .stamp {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .ws .popover {
+    right: 0;
+    left: auto;
+  }
+
+  .tabbar {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--band);
+    border-top: 1px solid #2a2c33;
+  }
+
+  .tabbar a {
+    display: grid;
+    place-items: center;
+    min-height: 3.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #b8bcc2;
+    text-decoration: none;
+    box-shadow: inset 0 3px 0 transparent;
+  }
+
+  .tabbar a[aria-current='page'] {
+    color: #ffffff;
+    box-shadow: inset 0 3px 0 #ffffff;
+  }
+
+  .tabbar a:focus-visible {
+    outline-color: #ffffff;
+    outline-offset: -4px;
+  }
+
+  body {
+    padding-bottom: calc(3.25rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 63.99rem) {
+  .band {
+    column-gap: 1rem;
+    padding: 0 1.25rem;
+  }
+
+  .band .email {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+/* Toasts sit at the bottom, above the phone's tab bar. */
+.toasts {
+  position: fixed;
+  inset: auto 0 1.5rem;
+  z-index: 40;
+  display: grid;
+  justify-items: center;
+  padding: 0 1rem;
+  pointer-events: none;
+}
+
+.toast {
+  max-width: min(32rem, 100%);
+  padding: 0.75rem 1.125rem;
+  font: 500 0.875rem/1.4 var(--font-sans);
+  color: #ffffff;
+  overflow-wrap: anywhere;
+  background: var(--ink);
+  border: 1px solid #3a3d45;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px -10px rgb(0 0 0 / 0.45);
+  animation: toast 0.3s var(--ease-out) backwards;
+}
+
+@keyframes toast {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .toasts {
+    bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---------- Page frame ---------- */
+
+main {
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 2rem 2rem 4rem;
+}
+
+main.flush {
+  max-width: none;
+  padding: 0;
+}
+
+@media (max-width: 59.99rem) {
+  main {
+    padding: 1.25rem 1rem 3rem;
+  }
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.page-head .title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.page-head > .field {
+  min-width: 12rem;
+}
+
+.page-head .lede {
+  flex-basis: 100%;
+  max-width: 68ch;
+  color: var(--muted);
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  font: 500 0.6875rem/1.2 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* A white sheet holding one section of a page. */
+.sheet {
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.sheet + .sheet,
+.sheet + .breakdowns,
+.sheet + [role='alert'],
+[role='alert'] + .sheet {
+  margin-top: 1.25rem;
+}
+
+.sheet > h2 {
+  margin-bottom: 1rem;
+}
+
+.sheet > .row + .table,
+.sheet > .table + .row,
+.sheet > .table + .secret,
+.sheet > .secret + .row,
+.sheet > p + .row {
+  margin-top: 1.25rem;
+}
+
+.empty {
+  color: var(--muted);
+}
+
+/* A form or a group of buttons on one line, wrapping on a phone. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.row .field {
+  flex: 1 1 14rem;
+  max-width: 24rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* ---------- Tables: the board grammar ---------- */
 
 .table {
   overflow-x: auto;
@@ -113,140 +889,1144 @@ button {
 table {
   width: 100%;
   border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
 }
 
-th,
-td {
-  padding: 0.5rem;
+th {
+  padding: 0 0.75rem 0.625rem;
   text-align: left;
-  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+  white-space: nowrap;
+  border-bottom: 2px solid var(--text);
+}
+
+td {
+  padding: 0.75rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line);
+}
+
+th.num,
+td.num {
+  text-align: right;
+}
+
+td.num {
+  font: 500 0.9375rem/1.2 var(--font-mono);
+}
+
+td.mono {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+/* A state as a mono stamp: Default, Pending, Approved, Rejected, Owner. */
+.stamp {
+  display: inline-block;
+  padding: 0.1875rem 0.4375rem;
+  font: 600 0.6875rem/1.2 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
+
+:lang(zh) .stamp {
+  font-family: var(--font-sans);
+  letter-spacing: 0.04em;
+}
+
+.stamp.pending {
+  color: var(--warn);
+}
+
+.stamp.approved {
+  color: var(--ok);
+}
+
+.stamp.rejected,
+.stamp.expired {
+  color: var(--danger);
+}
+
+.stamp.fresh {
+  border-color: var(--accent);
+}
+
+/* ---------- Links: board and pass ---------- */
+
+.links {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(28rem, 42%);
+  min-height: calc(100dvh - 3.75rem);
+}
+
+.board-col {
+  --notch: var(--surface);
+  min-width: 0;
+  padding: 1.75rem 1.75rem 4rem 2rem;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+
+.pane {
+  min-width: 0;
+  padding: 1.75rem 1.75rem 4rem;
+}
+
+.pane-inner {
+  position: sticky;
+  top: 1.75rem;
+}
+
+@media (max-width: 59.99rem) {
+  .links {
+    display: block;
+    min-height: 0;
+  }
+
+  .board-col {
+    padding: 1.25rem 1rem 3rem;
+    border-right: 0;
+  }
+
+  .board-col > .pass {
+    margin-bottom: 1.5rem;
+  }
+}
+
+.board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.filters input,
+.filters select {
+  height: 2.25rem;
+  font-size: 0.8125rem;
+}
+
+.filters > label:first-child {
+  flex: 1 1 12rem;
+  max-width: 22rem;
+}
+
+.filters > label:first-child input {
+  width: 100%;
+}
+
+@media (max-width: 47.99rem) {
+  .filters > label:first-child {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
+.filters .csv {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.filters .csv .button,
+.filters .csv .file {
+  font-weight: 500;
+}
+
+.import {
+  flex-basis: 100%;
+  margin-top: 0.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.import td {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+/* The flight path: a dashed line that draws out while the board loads. */
+.flightpath {
+  height: 2px;
+  margin-bottom: 0.25rem;
+  background: repeating-linear-gradient(90deg, var(--text) 0 6px, transparent 6px 11px);
+  transform-origin: left;
+  opacity: 0;
+}
+
+.flightpath.on {
+  opacity: 1;
+  animation: draw 1.6s var(--ease-out) backwards;
+}
+
+@keyframes draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(0.92);
+  }
+}
+
+table.board {
+  table-layout: fixed;
+}
+
+table.board col.c-short {
+  width: 30%;
+}
+
+table.board col.c-count {
+  width: 4.75rem;
+}
+
+table.board col.c-acts {
+  width: 10.25rem;
+}
+
+.c-acts {
+  position: relative;
+  z-index: 1;
+}
+
+/* An open menu rises over the rows below it. */
+.c-acts:has(.popover) {
+  z-index: 5;
+}
+
+.row-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.375rem;
+}
+
+.row-acts .button,
+.row-acts button {
+  height: 2rem;
+  padding: 0 0.625rem;
+  font-size: 0.75rem;
+}
+
+.row-acts button.icon {
+  width: 2rem;
+  padding: 0;
+}
+
+.row-acts .popover {
+  right: 0;
+  left: auto;
+}
+
+.board tbody tr.is-selected .row-acts .button,
+.board tbody tr.is-selected .row-acts button {
+  color: var(--text);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--text) 45%, transparent);
+}
+
+.board tbody tr {
+  position: relative;
+  transition: background-color 0.15s;
+}
+
+.board tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.board td {
+  padding: 0.875rem 0.75rem;
+}
+
+/* The row's one control covers the whole row, so the whole row picks the Link. */
+.pick {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  font: 400 0.875rem/1.35 var(--font-mono);
+  color: inherit;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  background: none;
+  border: 0;
+}
+
+.pick::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+}
+
+.pick:hover {
+  border: 0;
+}
+
+.pick:active {
+  transform: none;
+}
+
+.pick:focus-visible {
+  outline: none;
+}
+
+.pick:focus-visible::after {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.pick .host {
+  color: var(--muted);
+}
+
+.pick .code {
+  font-weight: 650;
+}
+
+.board .target {
+  display: block;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-td.target {
-  max-width: 24rem;
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.625rem;
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+}
+
+.meta:empty {
+  display: none;
+}
+
+.tag {
+  padding: 0.0625rem 0.5rem;
+  font-weight: 500;
+  background: var(--tag);
+  border-radius: 999px;
+}
+
+.meta .when {
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+
+/* Selected: the row inverts, Shell Ink on light, light on dark. */
+.board tbody tr.is-selected {
+  --text: #ffffff;
+  --muted: #b8bcc2;
+  --tag: #34363c;
+  --focus: #ffffff;
+  --danger: #ff8a7a;
+  color: var(--text);
+  background: var(--ink);
+}
+
+.board tr.is-selected > td {
+  border-bottom-color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  .board tbody tr.is-selected {
+    --text: #17181c;
+    --muted: #565b64;
+    --tag: #ffffff;
+    --focus: #17181c;
+    --danger: #b42318;
+    background: #e8eaed;
+  }
+
+  .board tr.is-selected > td {
+    border-bottom-color: #e8eaed;
+  }
+}
+
+/* Fresh: a Link just issued or changed carries its Crab Red status chip and a faint
+   tint until it is picked. */
+.board tbody tr.is-fresh:not(.is-selected) {
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.board-empty {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+  padding: 2rem 0.75rem;
+  color: var(--muted);
+}
+
+.more {
+  margin-top: 1.25rem;
+}
+
+.detail > td {
+  padding: 0.75rem 0 1.25rem;
+}
+
+@media (max-width: 59.99rem) {
+  table.board,
+  .board tbody,
+  .board thead {
+    display: block;
+  }
+
+  .board colgroup {
+    display: none;
+  }
+
+  .board tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .board thead tr {
+    border-bottom: 2px solid var(--text);
+  }
+
+  .board th,
+  .board td {
+    border-bottom: 0;
+  }
+
+  .board th:nth-child(2),
+  .board th:nth-child(4) {
+    display: none;
+  }
+
+  .board .c-target {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    padding-top: 0;
+    padding-bottom: 0.5rem;
+  }
+
+  .board .c-acts {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    padding-top: 0;
+  }
+
+  .row-acts {
+    justify-content: flex-start;
+  }
+
+  .row-acts .popover {
+    right: auto;
+    left: 0;
+  }
+
+  .board .detail {
+    display: block;
+    border-bottom: 0;
+  }
+
+  .board .detail > td {
+    display: block;
+  }
+}
+
+/* The pass: route, segments, perforation, stub with the QR scan block. */
+.pass {
+  container: pass / inline-size;
+}
+
+.pass-cap {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.625rem;
+}
+
+.pane .pass-cap {
+  color: var(--muted);
+}
+
+.pass-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 0 10.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  box-shadow: var(--pass-shadow);
+}
+
+.pass-card.print {
+  animation: print 0.34s var(--ease-out) backwards;
+}
+
+@keyframes print {
+  from {
+    opacity: 0;
+    transform: translateY(-1.25rem);
+  }
+}
+
+.pass-main {
+  min-width: 0;
+  padding: 1.5rem 1.5rem 1.25rem 1.75rem;
+}
+
+.perf {
+  position: relative;
+  border-left: 2px dashed var(--line-strong);
+}
+
+.perf::before,
+.perf::after {
+  content: '';
+  position: absolute;
+  left: -0.8125rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: var(--notch);
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.perf::before {
+  top: -0.8125rem;
+  clip-path: inset(50% 0 0 0);
+}
+
+.perf::after {
+  bottom: -0.8125rem;
+  clip-path: inset(0 0 50% 0);
+}
+
+.stub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 1.5rem 1rem 1.25rem;
+  background: var(--surface-2);
+  border-radius: 0 13px 13px 0;
+}
+
+.pass.tearing .stub {
+  animation: tear 0.28s var(--ease-out);
+}
+
+@keyframes tear {
+  45% {
+    transform: var(--tear, translate(0.625rem, 0.1875rem) rotate(2.5deg));
+  }
+}
+
+@container pass (max-width: 30rem) {
+  .pass-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .perf {
+    height: 0;
+    border-top: 2px dashed var(--line-strong);
+    border-left: 0;
+  }
+
+  .perf::before,
+  .perf::after {
+    top: -0.8125rem;
+    bottom: auto;
+  }
+
+  .perf::before {
+    left: -0.8125rem;
+    clip-path: inset(0 0 0 50%);
+  }
+
+  .perf::after {
+    right: -0.8125rem;
+    left: auto;
+    clip-path: inset(0 50% 0 0);
+  }
+
+  .stub {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    border-radius: 0 0 13px 13px;
+    --tear: translate(0.1875rem, 0.625rem) rotate(1deg);
+  }
+
+  .stub .qr {
+    grid-row: span 3;
+  }
+
+  .stub .short {
+    text-align: left;
+  }
+}
+
+/* The route: from the Short URL to the Target's host, like SFO to ORD. */
+.route {
+  display: grid;
+  grid-template-columns: fit-content(64%) minmax(2.5rem, 1fr) fit-content(34%);
+  align-items: end;
+  gap: 1rem;
+}
+
+.route .from,
+.route .to {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.route .to {
+  text-align: right;
+}
+
+.route .micro {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-nav {
+.route .code {
+  font: 650 clamp(1.625rem, 1.1rem + 2.4cqi, 2.375rem) / 1.05 var(--font-mono);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.route .code.placeholder {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.route .host {
+  overflow: hidden;
+  font: 500 0.9375rem/1.3 var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route .host.placeholder {
+  color: var(--muted);
+}
+
+.flight {
+  container-type: inline-size;
+  position: relative;
+  height: 1.25rem;
+  margin-bottom: 0.4rem;
+}
+
+.flight::before {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 1.5px dashed var(--line-strong);
+}
+
+.flight .plane {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--ink);
+  background: var(--surface);
+  animation: fly 0.4s var(--ease-out) backwards;
+}
+
+@keyframes fly {
+  from {
+    transform: translateX(calc(-100cqi + 1.25rem));
+  }
+}
+
+.segs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin: 1.25rem 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.seg {
+  min-width: 0;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.seg.l {
+  padding-right: 1rem;
+  border-right: 1px solid var(--line);
+}
+
+.seg.r {
+  padding-left: 1rem;
+}
+
+.seg.wide {
+  grid-column: 1 / -1;
+}
+
+.seg:last-child {
+  border-bottom: 0;
+}
+
+.seg dd {
+  margin: 0.3125rem 0 0;
+  font: 500 0.875rem/1.4 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.seg dd.big {
+  font-size: 1.75rem;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.to-clicks {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  text-decoration: none;
+}
+
+.to-clicks .micro {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.to-clicks:hover .micro {
+  color: var(--text);
+}
+
+.seg dd.prose {
+  font-family: var(--font-sans);
+}
+
+.seg dd.tags {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+  gap: 0.375rem;
 }
 
-h2 {
-  font-size: 1.15rem;
-  margin-top: 2rem;
+.tag {
+  white-space: nowrap;
 }
 
-form.inline,
-label.inline {
+.seg dd input,
+.seg dd select {
+  width: 100%;
+}
+
+.seg .hint {
+  margin-top: 0.25rem;
+}
+
+.target-field {
+  margin-top: 1.25rem;
+}
+
+.target-field input {
+  width: 100%;
+  height: 3rem;
+  font: 500 1rem/1 var(--font-mono);
+}
+
+.qr {
+  display: block;
+  width: 7.75rem;
+  aspect-ratio: 1;
+  padding: 0.375rem;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.qr img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.qr.blank {
+  display: grid;
+  place-items: center;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--muted);
+  text-align: center;
+  background: transparent;
+  border: 1.5px dashed var(--line-strong);
+}
+
+.stub .short {
+  max-width: 100%;
+  font: 500 0.75rem/1.4 var(--font-mono);
+  color: var(--muted);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.stub .short a {
+  color: var(--text);
+}
+
+.stub .acts {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.stub .acts > * {
+  width: 100%;
+}
+
+.plane-sm {
+  width: 1rem;
+  height: 1rem;
+  animation: fly-in 0.3s var(--ease-out) backwards;
+}
+
+@keyframes fly-in {
+  from {
+    opacity: 0;
+    transform: translateX(-0.75rem);
+  }
+}
+
+.pass-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1rem;
-  margin: 1rem 0;
+  gap: 0.5rem;
+  margin-top: 1rem;
 }
 
-label.inline input {
-  flex: 1;
-  min-width: 16rem;
+.pass-actions .danger {
+  margin-left: auto;
 }
 
-td button + button {
-  margin-left: 0.5rem;
+.pass [role='alert'] {
+  margin-top: 0.75rem;
 }
 
-/* Click charts: one hue, its own step per theme. */
-.chart,
-.breakdowns {
-  --series: light-dark(#2a78d6, #3987e5);
-  --muted: color-mix(in srgb, CanvasText 60%, transparent);
+.pane-empty {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+  padding: 2rem 1.5rem;
+  color: var(--muted);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 14px;
 }
 
+/* Split-flap figures: each character flips down into place. */
+.flap {
+  display: inline-block;
+  white-space: pre;
+}
+
+.flap > span {
+  display: inline-block;
+  transform-origin: 50% 0;
+  animation: flap 0.26s var(--ease-out) backwards;
+}
+
+@keyframes flap {
+  from {
+    opacity: 0.25;
+    transform: scaleY(0.08);
+  }
+}
+
+/* ---------- Clicks ---------- */
+
+/* The chart: its total, peak and bar width as segments over the bars. */
 .chart {
-  margin: 1rem 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.chart figcaption,
+.chart .seg-head {
+  padding: 0 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .chart figcaption {
-  font-size: 1.25rem;
-  font-weight: 600;
+  align-self: end;
+  padding-left: 0;
+  font: 650 1.75rem/1.1 var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+.chart .seg-head {
+  border-left: 1px solid var(--line);
+}
+
+.chart .value {
+  margin-top: 0.375rem;
+  font: 600 1.125rem/1.2 var(--font-mono);
+}
+
+.chart svg,
+.chart-axis {
+  grid-column: 1 / -1;
 }
 
 .chart svg {
   display: block;
   width: 100%;
-  height: 10rem;
-  fill: var(--series);
+  height: 11rem;
+  fill: var(--text);
 }
 
-.chart svg rect:hover:not([fill]) {
-  opacity: 0.8;
+.chart svg g:hover rect:not([fill]) {
+  fill: var(--muted);
 }
 
 .chart .axis {
-  stroke: color-mix(in srgb, CanvasText 25%, transparent);
+  stroke: var(--text);
+}
+
+.chart .peak {
+  stroke: var(--line);
+  stroke-dasharray: 4 4;
 }
 
 .chart-axis {
   display: flex;
   justify-content: space-between;
-  font-size: 0.85rem;
-  color: var(--muted);
+  margin-top: 0.5rem;
 }
 
+@media (max-width: 40rem) {
+  .chart {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .chart figcaption {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+    padding-bottom: 0.75rem;
+  }
+
+  .chart .seg-head:nth-of-type(1) {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+/* Breakdowns are segments: one sheet, hairlines between. */
 .breakdowns {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 0 2rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 1.25rem;
+  overflow: hidden;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+@media (max-width: 40rem) {
+  .breakdowns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.breakdowns section {
+  padding: 1.25rem 1.5rem 1.5rem;
+  background: var(--surface);
+}
+
+.breakdowns h2 {
+  margin-bottom: 0.75rem;
 }
 
 .breakdowns td {
-  white-space: normal;
+  padding: 0.5rem 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
 }
 
-.breakdowns td.count {
+.breakdowns td.num {
   width: 1%;
-  text-align: right;
+  padding-left: 1rem;
+  font-size: 0.875rem;
 }
 
-.breakdowns .bar {
-  height: 4px;
-  margin-top: 0.25rem;
-  border-radius: 2px;
-  background: var(--series);
+.breakdowns tr:last-child td {
+  border-bottom: 0;
 }
 
-/* A form or a group of buttons on one line, wrapping on a phone. */
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 0.5rem;
+.bar {
+  height: 3px;
+  margin-top: 0.375rem;
+  background: var(--text);
+  transform-origin: left;
+  animation: grow 0.4s var(--ease-out) backwards;
 }
+
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* ---------- Ticket pages: sign-in, invite, account ---------- */
+
+.ticket {
+  max-width: 25rem;
+  margin: clamp(1.5rem, 8vh, 5rem) auto 0;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  box-shadow: var(--pass-shadow);
+}
+
+.ticket .ticket-body {
+  display: grid;
+  gap: 1rem;
+  padding: 1.75rem 1.75rem 1.5rem;
+}
+
+.ticket h1 {
+  margin-bottom: 0.25rem;
+}
+
+.ticket input {
+  width: 100%;
+}
+
+.ticket .tear {
+  position: relative;
+  padding: 1.25rem 1.75rem 1.5rem;
+  background: var(--surface-2);
+  border-top: 2px dashed var(--line-strong);
+  border-radius: 0 0 13px 13px;
+}
+
+.ticket .tear::before,
+.ticket .tear::after {
+  content: '';
+  position: absolute;
+  top: -0.8125rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: var(--notch);
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.ticket .tear::before {
+  left: -0.8125rem;
+  clip-path: inset(0 0 0 50%);
+}
+
+.ticket .tear::after {
+  right: -0.8125rem;
+  clip-path: inset(0 50% 0 0);
+}
+
+.ticket .tear button {
+  width: 100%;
+  height: 2.75rem;
+}
+
+/* ---------- Manage Workspace, Instance Admin ---------- */
 
 .secret {
-  padding: 0.5rem 1rem;
-  border: 1px solid color-mix(in srgb, CanvasText 30%, transparent);
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface-2);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 8px;
 }
 
 .secret input {
-  width: min(36rem, 80vw);
-  font-family: ui-monospace, monospace;
+  width: min(36rem, 100%);
 }
 
-/* On Canvas rather than the system button face, so its text keeps its contrast. */
-button.danger {
-  color: var(--danger);
-  background: Canvas;
-  border: 1px solid currentColor;
-  border-radius: 3px;
+.secret .field {
+  max-width: 36rem;
 }
 
-[role='status'] {
-  color: var(--ok);
+.stamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.reset {
+  display: block;
+  margin-top: 0.375rem;
+}
+
+.reset output {
+  padding: 0.125rem 0.375rem;
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: 4px;
+}
+
+.invite-link {
+  margin-top: 1.25rem;
+}
+
+.settings + .settings {
+  margin-top: 1.25rem;
+}
+
+.settings h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.settings .menu-field {
+  max-width: 20rem;
+  padding: 0.75rem;
+}
+
+.leave {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* ---------- Motion off when asked ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
