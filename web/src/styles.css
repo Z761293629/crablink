@@ -1278,8 +1278,15 @@ table.board col.c-acts {
   color: var(--muted);
 }
 
+/* The line breaks after the Domain's slash, never inside a Code; a Code too long for the column ends in an ellipsis. */
 .pick .code {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
   font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 .board .target {
@@ -1603,10 +1610,19 @@ table.board col.c-acts {
 
 /* No Code yet: the Generated Code's slots, a display step down, waiting to be filled. */
 .route .code.placeholder {
+  display: flex;
+  gap: 0.35em;
+  /* The slots sit on the flight line: the flight's bottom margin plus half its height. */
+  padding-bottom: calc(0.4rem + 0.625rem - 1px);
+  margin-top: 0.75rem;
   font-size: clamp(1.5rem, 6cqi, 1.875rem);
-  font-weight: 500;
-  letter-spacing: 0.2em;
   color: var(--muted);
+}
+
+.route .code.placeholder .slot {
+  width: 0.7em;
+  height: 2px;
+  background: currentColor;
 }
 
 /* A host too long even for its own line loses its start, keeping the registrable domain. */

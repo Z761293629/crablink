@@ -662,7 +662,9 @@ function Route({ from, code, codeIsPlaceholder, to }: { from: string; code: stri
           // No Code yet: a blank of the Generated Code's seven slots, to be filled.
           <span className="code placeholder">
             <span className="vh">{code}</span>
-            <span aria-hidden="true">_______</span>
+            {Array.from({ length: 7 }, (_, i) => (
+              <span key={i} className="slot" aria-hidden="true" />
+            ))}
           </span>
         ) : (
           <span className="code" title={code}>
@@ -673,10 +675,13 @@ function Route({ from, code, codeIsPlaceholder, to }: { from: string; code: stri
       <div className="flight" aria-hidden="true">
         <Plane className="plane" />
       </div>
-      <p className="to">
-        <span className="micro">{t('links.target')}</span>
-        {to && <span className="host">{to}</span>}
-      </p>
+      {/* No Target yet: the route ends at the plane rather than at a label with nothing under it. */}
+      {to && (
+        <p className="to">
+          <span className="micro">{t('links.target')}</span>
+          <span className="host">{to}</span>
+        </p>
+      )}
     </div>
   );
 }
