@@ -1,4 +1,4 @@
-// Test fixtures: each test gets its own fresh User, set up through the API the way
+// Test fixtures: each test gets its own fresh Users, set up through the API the way
 // the web UI and an Instance Admin would. Import `test` and `expect` from here.
 
 import { test as base, expect, type APIRequestContext, type Page } from '@playwright/test';
@@ -16,30 +16,44 @@ export interface User {
 
 let nextUser = 0;
 
-export const test = base.extend<{ user: User }>({
-  user: async ({ request }, use, testInfo) => {
-    const email = `user-${testInfo.workerIndex}-${Date.now()}-${nextUser++}@example.com`;
-    const password = 'e2e user password';
-    const adminCookie = await signIn(request, admin.email, admin.password);
-    const { url } = (await call(request, adminCookie, 'POST', '/admin/invites', { email })) as { url: string };
-    const token = new URL(url).hash.slice(1);
-    const accepted = await request.post('/api/invites/accept', {
-      headers: { origin: baseURL },
-      data: { token, password },
-    });
-    expect(accepted.status(), await accepted.text()).toBe(200);
-    const cookie = sessionCookie(accepted.headers());
-    const [workspace] = (await call(request, cookie, 'GET', '/workspaces')) as { slug: string }[];
-    await use({
-      email,
-      password,
-      slug: workspace.slug,
-      api: (method, path, body) => call(request, cookie, method, path, body),
-    });
-  },
+/** A fresh email no User has yet. */
+export function newEmail(workerIndex: number) {
+  return `user-${workerIndex}-${Date.now()}-${nextUser++}@example.com`;
+}
+
+async function newUser(request: APIRequestContext, workerIndex: number): Promise<User> {
+  const email = newEmail(workerIndex);
+  const password = 'e2e user password';
+  const token = new URL(await inviteUrl(request, email)).hash.slice(1);
+  const accepted = await request.post('/api/invites/accept', {
+    headers: { origin: baseURL },
+    data: { token, password },
+  });
+  expect(accepted.status(), await accepted.text()).toBe(200);
+  const cookie = sessionCookie(accepted.headers());
+  const [workspace] = (await call(request, cookie, 'GET', '/workspaces')) as { slug: string }[];
+  return {
+    email,
+    password,
+    slug: workspace.slug,
+    api: (method, path, body) => call(request, cookie, method, path, body),
+  };
+}
+
+/** `user` is the one the test drives; `other` is a second User, e.g. to add as a Member. */
+export const test = base.extend<{ user: User; other: User }>({
+  user: async ({ request }, use, testInfo) => use(await newUser(request, testInfo.workerIndex)),
+  other: async ({ request }, use, testInfo) => use(await newUser(request, testInfo.workerIndex)),
 });
 
 export { expect };
+
+/** An invite link for `email`, made by the Instance Admin. */
+export async function inviteUrl(request: APIRequestContext, email: string) {
+  const adminCookie = await signInApi(request, admin.email, admin.password);
+  const { url } = (await call(request, adminCookie, 'POST', '/admin/invites', { email })) as { url: string };
+  return url;
+}
 
 /** Signs `page` in through the web UI's sign-in form. */
 export async function signInPage(page: Page, email: string, password: string) {
@@ -50,7 +64,7 @@ export async function signInPage(page: Page, email: string, password: string) {
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
 }
 
-async function signIn(request: APIRequestContext, email: string, password: string) {
+async function signInApi(request: APIRequestContext, email: string, password: string) {
   const res = await request.post('/api/session', { headers: { origin: baseURL }, data: { email, password } });
   expect(res.status(), await res.text()).toBe(200);
   return sessionCookie(res.headers());

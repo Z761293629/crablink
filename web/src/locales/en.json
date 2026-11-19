@@ -7,7 +7,17 @@
     "submit": "Sign in"
   },
   "signOut": "Sign out",
-  "workspace": "Workspace",
+  "workspace": {
+    "none": "You're not in any Workspace yet. Create one to start.",
+    "name": "Name",
+    "rename": "Rename",
+    "newName": "New Workspace name",
+    "create": "Create Workspace",
+    "leave": "Leave Workspace",
+    "confirmLeave": "Leave {{name}}? You lose access to its Links.",
+    "delete": "Delete Workspace",
+    "confirmDelete": "Delete {{name}}? Its Links become Deleted Links, keeping their Codes taken, and its API Keys stop working."
+  },
   "links": {
     "title": "Links",
     "shortUrl": "Short URL",
@@ -34,7 +44,10 @@
   "nav": {
     "links": "Links",
     "domains": "Domains",
-    "admin": "Admin"
+    "admin": "Admin",
+    "switcher": "Workspace",
+    "workspace": "Manage Workspace",
+    "account": "Account"
   },
   "invite": {
     "title": "Accept invite",
@@ -87,6 +100,44 @@
       "resetPassword": "Reset password",
       "newPassword": "New password:"
     }
+  },
+  "members": {
+    "title": "Members",
+    "email": "Email",
+    "role": "Role",
+    "addEmail": "Member's email",
+    "add": "Add member",
+    "makeOwner": "Make Owner",
+    "makeMember": "Make Member",
+    "remove": "Remove",
+    "confirmRemove": "Remove {{email}} from this Workspace?"
+  },
+  "roles": {
+    "owner": "Owner",
+    "member": "Member"
+  },
+  "apiKeys": {
+    "title": "API Keys",
+    "empty": "No API Keys yet.",
+    "name": "Name",
+    "prefix": "Starts with",
+    "createdAt": "Created",
+    "lastUsed": "Last used",
+    "never": "Never",
+    "revoke": "Revoke",
+    "confirmRevoke": "Revoke {{name}}? Programs using it stop working at once.",
+    "newName": "API Key name",
+    "create": "Create API Key",
+    "secret": "Secret",
+    "copy": "Copy",
+    "secretOnce": "The secret of {{name}}: copy it now, it won't be shown again."
+  },
+  "account": {
+    "title": "Account",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "change": "Change password",
+    "changed": "Password changed."
   },
   "errors": {
     "network": "Can't reach the server. Check your connection and try again.",
