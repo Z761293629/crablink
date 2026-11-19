@@ -94,7 +94,7 @@ test('taking a Code that is already taken says so, in either language', async ({
   await expect(page.getByRole('alert')).toHaveText('That Code is already taken.');
 
   await openUserMenu(page);
-  await page.getByLabel('Language').selectOption('zh-CN');
+  await page.getByRole('radio', { name: '简体中文' }).check();
   await page.getByRole('button', { name: '创建', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('该短码已被占用。');
 });

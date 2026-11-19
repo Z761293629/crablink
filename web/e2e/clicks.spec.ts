@@ -33,7 +33,7 @@ test("following a Short URL shows in the Link's chart and the Workspace's, in ei
   await expect(page.getByRole('row').filter({ hasText: shortUrl })).toContainText('1');
 
   await openUserMenu(page);
-  await page.getByLabel('Language').selectOption('zh-CN');
+  await page.getByRole('radio', { name: '简体中文' }).check();
   await expect(page.getByRole('heading', { name: '工作区点击' })).toBeVisible();
   await expect(page.locator('.total')).toHaveText('1 次点击');
 });

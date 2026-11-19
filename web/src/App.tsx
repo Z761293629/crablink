@@ -292,9 +292,7 @@ function AccountItems({ user, onSignOut }: { user: User; onSignOut: () => void }
           </li>
         )}
       </ul>
-      <div className="menu-field">
-        <LanguageSwitcher visibleLabel />
-      </div>
+      <LanguageToggle />
       <button className="item" onClick={onSignOut}>
         {t('signOut')}
       </button>
@@ -326,11 +324,12 @@ function Settings({ user, workspace, onSignOut }: { user: User; workspace?: Memb
   );
 }
 
-function LanguageSwitcher({ visibleLabel }: { visibleLabel?: boolean }) {
+/** The language as a select, alone in the signed-out band. */
+function LanguageSwitcher() {
   const { t, i18n } = useTranslation();
   return (
-    <label className={visibleLabel ? 'field' : undefined}>
-      <span className={visibleLabel ? 'micro' : 'vh'}>{t('language')}</span>
+    <label>
+      <span className="vh">{t('language')}</span>
       <select name="language" value={i18n.language} onChange={(e) => setLanguage(e.target.value)}>
         {Object.entries(languages).map(([lng, name]) => (
           <option key={lng} value={lng}>
@@ -339,6 +338,30 @@ function LanguageSwitcher({ visibleLabel }: { visibleLabel?: boolean }) {
         ))}
       </select>
     </label>
+  );
+}
+
+/** The language as one click between its two segments, inside the account menu: no dropdown in a dropdown. */
+function LanguageToggle() {
+  const { t, i18n } = useTranslation();
+  return (
+    <fieldset className="menu-field lang-toggle">
+      <legend className="micro">{t('language')}</legend>
+      <div className="segmented">
+        {Object.entries(languages).map(([lng, name]) => (
+          <label key={lng} lang={lng}>
+            <input
+              type="radio"
+              name="language"
+              value={lng}
+              checked={i18n.language === lng}
+              onChange={() => setLanguage(lng)}
+            />
+            {name}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
