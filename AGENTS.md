@@ -2,6 +2,8 @@ crablink is a short-link service: a Rust workspace of `crates/server` (HTTP API 
 
 CI fails on any clippy warning, so before committing run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`.
 
+The web UI is `web/` (React + Vite, embedded into the server at `/app` from `web/dist`; ADR-0008). After changing it, run in `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm build`, then `pnpm e2e` (Playwright against the real server on an embedded Postgres, `crates/server/examples/e2e.rs`).
+
 Name every domain concept with its term from [GLOSSARY.md](GLOSSARY.md) (Link, Code, Target, …) in code, tests, issues and commits.
 
 ## Agent skills

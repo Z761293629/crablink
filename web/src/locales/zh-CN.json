@@ -1,0 +1,43 @@
+{
+  "language": "语言",
+  "signIn": {
+    "title": "登录",
+    "email": "邮箱",
+    "password": "密码",
+    "submit": "登录"
+  },
+  "signOut": "退出登录",
+  "links": {
+    "shortUrl": "短网址",
+    "target": "目标网址",
+    "clickCount": "点击次数",
+    "expiry": "过期时间",
+    "never": "永不过期",
+    "empty": "还没有链接。"
+  },
+  "errors": {
+    "network": "无法连接服务器，请检查网络后重试。",
+    "unauthorized": "尚未登录，或登录已过期。",
+    "forbidden": "没有权限执行此操作。",
+    "invalid_credentials": "邮箱或密码错误。",
+    "origin_mismatch": "该请求来自其他网站，已被拒绝。",
+    "wrong_password": "当前密码错误。",
+    "invalid_email": "请输入形如 name@example.com 的邮箱。",
+    "password_too_short": "密码至少需要 8 个字符。",
+    "email_taken": "该邮箱已被占用。",
+    "not_found": "未找到。",
+    "invite_not_found": "该邀请链接不存在。",
+    "invite_expired": "该邀请链接已过期。",
+    "invite_used": "该邀请链接已被使用。",
+    "link_not_found": "该链接不存在。",
+    "link_expired": "该链接已过期。",
+    "invalid_target": "目标网址必须是完整的 http:// 或 https:// 网址，且不能指向本实例。",
+    "invalid_code": "短码须为 3-64 个字符，只能包含 A-Z、a-z、0-9、_ 或 -。",
+    "code_reserved": "该短码为保留字。",
+    "code_taken": "该短码已被占用。",
+    "user_not_found": "没有该用户。",
+    "already_member": "已在此工作区中。",
+    "last_owner": "工作区必须有一位所有者：请先将其他人设为所有者。",
+    "internal": "服务器出错了，请重试。"
+  }
+}

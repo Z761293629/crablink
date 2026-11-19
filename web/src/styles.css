@@ -1,0 +1,81 @@
+/* Follows the system's light or dark theme through system colors. */
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  background: Canvas;
+  color: CanvasText;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+}
+
+header strong {
+  margin-right: auto;
+}
+
+main {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+.sign-in {
+  display: grid;
+  gap: 1rem;
+  max-width: 22rem;
+  margin: 2rem auto;
+}
+
+.sign-in label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+}
+
+[role='alert'] {
+  color: #d33;
+}
+
+.table {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+  white-space: nowrap;
+}
+
+td.target {
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -17,6 +17,7 @@ mod links;
 mod members;
 mod redirect;
 mod users;
+mod web;
 mod workspaces;
 
 pub use db::connect;
@@ -117,6 +118,7 @@ pub async fn app(
     Ok(Router::new()
         .nest("/api", api)
         .route("/health", get(|| async { "ok" }))
+        .nest_service("/app", get(web::serve))
         .route("/{code}", get(redirect))
         .fallback(|| async { (StatusCode::NOT_FOUND, "not found") })
         .with_state(state))
