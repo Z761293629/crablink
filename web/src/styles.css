@@ -79,3 +79,33 @@ td.target {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+nav {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin-top: 2rem;
+}
+
+form.inline,
+label.inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 1rem 0;
+}
+
+label.inline input {
+  flex: 1;
+  min-width: 16rem;
+}
+
+td button + button {
+  margin-left: 0.5rem;
+}
