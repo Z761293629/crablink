@@ -260,11 +260,13 @@ function UserMenu({ user, onSignOut }: { user: User; onSignOut: () => void }) {
         <span className="avatar" aria-hidden="true">
           {user.email[0].toUpperCase()}
         </span>
-        <span className="email">{user.email}</span>
+        {/* Only the avatar shows: the switcher beside it often names a Workspace after this same email. */}
+        <span className="vh">{user.email}</span>
         <Chevron />
       </button>
       {open && (
         <div id={id} className="popover end">
+          <p className="menu-who">{user.email}</p>
           <AccountItems user={user} onSignOut={onSignOut} />
         </div>
       )}
