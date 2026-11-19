@@ -1,9 +1,17 @@
 // `/app/clicks`: the switcher's Workspace's Clicks with its top Links, or with
 // `?code=&domain=` one of its Links' Clicks with breakdowns.
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, linkPath, type ClickBreakdown, type ClickBucket, type ClickStats, type WorkspaceClicks } from './api';
+import {
+  api,
+  linkPath,
+  type ClickBreakdown,
+  type ClickBucket,
+  type ClickStats,
+  type Link,
+  type WorkspaceClicks,
+} from './api';
 import { Flap, PageError, Plane } from './ui';
 
 /** The time ranges on offer: `n` buckets of `interval`, ending with the current one. */
@@ -49,6 +57,76 @@ function useClicks<T>(path: string, range: Range) {
     setTries((n) => n + 1);
   };
   return { data, error, retry };
+}
+
+/**
+ * Under a Link's pass, its departures board: the last 7 days of Clicks as split-flap tiles, one a day,
+ * then where most of them came from.
+ */
+export function LinkBoard({ slug, link }: { slug: string; link: Link }) {
+  const { t, i18n } = useTranslation();
+  const id = useId();
+  const { data, error, retry } = useClicks<ClickStats>(linkPath(slug, link, '/clicks'), '7d');
+  const countryName = useCountryName();
+  // Day buckets are UTC days, named in UTC.
+  const day = new Intl.DateTimeFormat(i18n.language, { weekday: 'short', timeZone: 'UTC' });
+  const number = new Intl.NumberFormat(i18n.language);
+  const total = data?.series.reduce((sum, b) => sum + b.count, 0) ?? 0;
+  const tops: [string, ClickBreakdown | undefined, (v: string | null) => string][] = data
+    ? [
+        [t('links.board.referrer'), data.referrers[0], (v) => v ?? t('clicks.direct')],
+        [t('links.board.country'), data.countries[0], countryName],
+        [t('links.board.device'), data.devices[0], (v) => (v ? t(`clicks.device.${v}`, { defaultValue: v }) : t('clicks.unknown'))],
+      ]
+    : [];
+  return (
+    <section className="board-7d" aria-labelledby={id}>
+      <div className="board-7d-head">
+        <h2 id={id} className="micro">
+          <Plane className="plane" />
+          {t('clicks.ranges.7d')}
+        </h2>
+        <a className="micro" href={clicksHref(link)}>
+          {t('links.board.all')}
+        </a>
+      </div>
+      {error !== undefined ? (
+        <PageError error={error} onRetry={retry} />
+      ) : (
+        <>
+          <ol className="days" aria-busy={!data}>
+            {(data?.series ?? Array.from({ length: 7 }, () => undefined)).map((b, i) => (
+              <li key={b?.time ?? i} className={b?.count ? 'on' : undefined}>
+                <span className="micro">{b ? day.format(new Date(b.time)) : '\u00a0'}</span>
+                <span className="tile">{b && <Flap text={number.format(b.count)} />}</span>
+              </li>
+            ))}
+          </ol>
+          {data &&
+            (total === 0 ? (
+              <p className="quiet">{link.click_count === 0 ? t('links.board.empty') : t('clicks.none')}</p>
+            ) : (
+              <table className="tops">
+                <tbody>
+                  {tops.map(
+                    ([label, top, name]) =>
+                      top && (
+                        <tr key={label}>
+                          <th scope="row">{label}</th>
+                          <td>{name(top.value)}</td>
+                          <td className="num">
+                            <Flap text={number.format(top.count)} />
+                          </td>
+                        </tr>
+                      ),
+                  )}
+                </tbody>
+              </table>
+            ))}
+        </>
+      )}
+    </section>
+  );
 }
 
 /** The server lists at most this many top Links. */

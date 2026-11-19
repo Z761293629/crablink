@@ -91,7 +91,14 @@
     "confirmRetargetAction": "Change Target",
     "retargetFrom": "From",
     "retargetTo": "To",
-    "confirmRetargetNote": "Every printed QR code and shared copy of this Short URL will point to the new Target."
+    "confirmRetargetNote": "Every printed QR code and shared copy of this Short URL will point to the new Target.",
+    "board": {
+      "all": "All Clicks",
+      "referrer": "Top referrer",
+      "country": "Top country",
+      "device": "Top device",
+      "empty": "No Clicks yet. Share the Short URL or put up its QR code, and Clicks show up here."
+    }
   },
   "nav": {
     "links": "Links",

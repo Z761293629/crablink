@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, linkPath, type Domain, type ImportedRow, type Link, type LinkPage } from './api';
-import { clicksHref } from './Clicks';
+import { clicksHref, LinkBoard } from './Clicks';
 import { errorMessage } from './i18n';
 import {
   Chevron,
@@ -509,7 +509,10 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
           <div className="pane-inner">
             {editor ||
               (selected ? (
-                pass(selected)
+                <>
+                  {pass(selected)}
+                  <LinkBoard key={`board ${selected.short_url}`} slug={slug} link={selected} />
+                </>
               ) : (
                 <section className="pass" aria-label={t('links.selected')}>
                   <div className="pane-empty">

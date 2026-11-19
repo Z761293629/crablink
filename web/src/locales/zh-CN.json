@@ -91,7 +91,14 @@
     "confirmRetargetAction": "改为新目标网址",
     "retargetFrom": "原来",
     "retargetTo": "改为",
-    "confirmRetargetNote": "所有已印出的二维码和分享出去的短网址都会跟着指向新网址。"
+    "confirmRetargetNote": "所有已印出的二维码和分享出去的短网址都会跟着指向新网址。",
+    "board": {
+      "all": "全部点击",
+      "referrer": "主要来源",
+      "country": "主要地区",
+      "device": "主要设备",
+      "empty": "还没有点击。分享短网址或贴出二维码后，点击会显示在这里。"
+    }
   },
   "nav": {
     "links": "链接",
