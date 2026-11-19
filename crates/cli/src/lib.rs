@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, anyhow, bail};
 use chrono::{DateTime, TimeDelta, Utc};
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use crablink_api::{CreateLink, Link, QrFormat, UpdateLink};
 use serde::Serialize;
 
@@ -31,6 +31,15 @@ pub struct Cli {
     /// None: open the TUI.
     #[command(subcommand)]
     pub cmd: Option<Cmd>,
+}
+
+/// A Link on the command line: its Code, and its Domain unless the Default Domain.
+#[derive(Args)]
+pub struct LinkRef {
+    code: String,
+    /// The Link's Domain, e.g. go.example.com (the Default Domain otherwise).
+    #[arg(long)]
+    domain: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -70,20 +79,16 @@ pub enum Cmd {
     },
     /// Show one Link in detail.
     Get {
-        code: String,
-        /// The Link's Domain, e.g. go.example.com (the Default Domain otherwise).
-        #[arg(long)]
-        domain: Option<String>,
+        #[command(flatten)]
+        link: LinkRef,
         /// Print the API's JSON instead.
         #[arg(long)]
         json: bool,
     },
     /// Change a Link's Target and/or Expiry.
     Edit {
-        code: String,
-        /// The Link's Domain, e.g. go.example.com (the Default Domain otherwise).
-        #[arg(long)]
-        domain: Option<String>,
+        #[command(flatten)]
+        link: LinkRef,
         #[arg(long)]
         target: Option<String>,
         /// RFC 3339 timestamp, or a duration from now like 30m, 12h, 7d.
@@ -98,17 +103,13 @@ pub enum Cmd {
     },
     /// Delete a Link (its Code is never reused).
     Rm {
-        code: String,
-        /// The Link's Domain, e.g. go.example.com (the Default Domain otherwise).
-        #[arg(long)]
-        domain: Option<String>,
+        #[command(flatten)]
+        link: LinkRef,
     },
     /// Show a Link's QR code in the terminal, or save it to a file.
     Qr {
-        code: String,
-        /// The Link's Domain, e.g. go.example.com (the Default Domain otherwise).
-        #[arg(long)]
-        domain: Option<String>,
+        #[command(flatten)]
+        link: LinkRef,
         /// Save to this file instead: .svg or .png.
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -178,43 +179,41 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
                 );
             }
         })?,
-        Cmd::Get { code, domain, json } => {
-            show_link(&api.get(&code, domain.as_deref())?, json, now)?
+        Cmd::Get { link, json } => {
+            show_link(&api.get(&link.code, link.domain.as_deref())?, json, now)?
         }
         Cmd::Edit {
-            code,
-            domain,
+            link,
             target,
             expires,
             no_expires,
             json,
         } => {
             let body = edit_body(target, expires, no_expires, now)?;
-            show_link(&api.update(&code, domain.as_deref(), &body)?, json, now)?;
+            show_link(
+                &api.update(&link.code, link.domain.as_deref(), &body)?,
+                json,
+                now,
+            )?;
         }
-        Cmd::Rm { code, domain } => {
-            api.delete(&code, domain.as_deref())?;
-            eprintln!("Deleted {code}");
+        Cmd::Rm { link } => {
+            api.delete(&link.code, link.domain.as_deref())?;
+            eprintln!("Deleted {}", link.code);
         }
         Cmd::Qr {
-            code,
-            domain,
+            link,
             output: Some(path),
         } => {
             let format = qr_format(&path)?;
-            std::fs::write(&path, api.qr(&code, domain.as_deref(), format)?)
+            std::fs::write(&path, api.qr(&link.code, link.domain.as_deref(), format)?)
                 .with_context(|| format!("cannot write {}", path.display()))?;
             eprintln!("Saved {}", path.display());
         }
-        Cmd::Qr {
-            code,
-            domain,
-            output: None,
-        } => {
+        Cmd::Qr { link, output: None } => {
             if !std::io::stdout().is_terminal() {
                 bail!("stdout is not a terminal: pass -o <file.svg|file.png> to save the QR code");
             }
-            let link = api.get(&code, domain.as_deref())?;
+            let link = api.get(&link.code, link.domain.as_deref())?;
             // As the server refuses `-o`: its Short URL no longer redirects.
             if link.is_expired(now) {
                 bail!("Link {} has expired: no QR code", link.code);
