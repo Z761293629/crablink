@@ -33,6 +33,7 @@ fn expired_links_are_marked_and_deleted_links_are_absent() {
         target: "https://example.com/old".into(),
         code: Some("old".into()),
         expires_at: Some("2020-01-01T00:00:00Z".parse().unwrap()),
+        domain: None,
     })
     .unwrap();
     srv.create("gone", "https://example.com/gone");
@@ -211,6 +212,7 @@ fn the_detail_pane_shows_the_whole_link_and_the_list_truncates_long_targets() {
             target: target.into(),
             code: Some("long".into()),
             expires_at: Some("2099-01-02T03:04:05Z".parse().unwrap()),
+            domain: None,
         })
         .unwrap();
 
@@ -426,6 +428,7 @@ fn v_on_an_expired_link_shows_an_error_instead_of_its_qr_code() {
             target: "https://example.com/old".into(),
             code: Some("old".into()),
             expires_at: Some("2020-01-01T00:00:00Z".parse().unwrap()),
+            domain: None,
         })
         .unwrap();
     let mut tui = srv.tui();
@@ -695,6 +698,7 @@ fn e_edits_the_selected_links_target_with_the_code_read_only() {
             target: "https://example.com/before".into(),
             code: Some("abc".into()),
             expires_at: Some("2099-01-02T03:04:05Z".parse().unwrap()),
+            domain: None,
         })
         .unwrap();
     let mut tui = srv.tui();
@@ -855,6 +859,7 @@ fn editing_only_the_target_leaves_a_sub_second_expiry_unchanged() {
             target: "https://example.com/before".into(),
             code: Some("abc".into()),
             expires_at: Some(expires_at),
+            domain: None,
         })
         .unwrap();
     let before = srv.api().get("abc").unwrap().expires_at;

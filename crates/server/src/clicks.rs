@@ -123,7 +123,7 @@ macro_rules! breakdown_sql {
     };
 }
 
-/// `GET /api/workspaces/{slug}/links/{code}/clicks`: the Link's Clicks over a time
+/// `GET /api/workspaces/{slug}/links/{code}/clicks?domain=`: the Link's Clicks over a time
 /// range, per hour or day (UTC), and by Referrer, country, device and browser.
 pub(crate) async fn link_clicks(
     State(s): State<AppState>,
@@ -146,11 +146,12 @@ pub(crate) async fn link_clicks(
         )));
     }
     let link_id: i64 = sqlx::query_scalar(
-        "SELECT id FROM links \
-         WHERE workspace_id = $1 AND domain_id = $2 AND code = $3 AND deleted_at IS NULL",
+        "SELECT l.id FROM links l JOIN domains d ON d.id = l.domain_id \
+         WHERE l.workspace_id = $1 AND d.host = lower($2) AND l.code = $3 \
+         AND l.deleted_at IS NULL",
     )
     .bind(workspace_id)
-    .bind(s.domain_id)
+    .bind(q.domain.as_deref().unwrap_or(&s.default_domain))
     .bind(&code)
     .fetch_optional(&s.pool)
     .await?

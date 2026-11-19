@@ -339,6 +339,7 @@ impl Form {
                 target: self.target.clone(),
                 code: (!self.code.is_empty()).then(|| self.code.clone()),
                 expires_at,
+                domain: None,
             })?
         };
         Ok(link.code)

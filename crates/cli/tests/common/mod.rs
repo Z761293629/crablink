@@ -20,6 +20,8 @@ use ratatui::{Terminal, backend::TestBackend};
 
 const EMAIL: &str = "owner@example.com";
 const PASSWORD: &str = "correct horse battery";
+/// The Instance Admin who approves Domains.
+const ADMIN: &str = "admin@example.com";
 
 /// A running server and the credentials the CLI uses on it; the server lives until
 /// the test process exits.
@@ -44,6 +46,9 @@ pub fn server() -> TestServer {
                 .await
                 .unwrap();
             crablink_server::create_user(&pool, EMAIL, PASSWORD, false)
+                .await
+                .unwrap();
+            crablink_server::create_user(&pool, ADMIN, PASSWORD, true)
                 .await
                 .unwrap();
             let app = crablink_server::app(
@@ -72,17 +77,8 @@ pub fn server() -> TestServer {
 /// Signs in as `EMAIL` like a browser would and issues an API Key of their personal
 /// Workspace; returns its secret and the Workspace's slug.
 fn issue_api_key(url: &str) -> (String, String) {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .http_status_as_error(true)
-        .build()
-        .into();
-    let res = agent
-        .post(format!("{url}/api/session"))
-        .header("Origin", url)
-        .send_json(serde_json::json!({ "email": EMAIL, "password": PASSWORD }))
-        .unwrap();
-    let set_cookie = res.headers()["set-cookie"].to_str().unwrap();
-    let cookie = set_cookie.split(';').next().unwrap().to_string();
+    let agent = browser();
+    let cookie = sign_in(url, EMAIL);
     let workspaces: serde_json::Value = agent
         .get(format!("{url}/api/workspaces"))
         .header("Cookie", &cookie)
@@ -104,7 +100,44 @@ fn issue_api_key(url: &str) -> (String, String) {
     (key["secret"].as_str().unwrap().to_string(), slug)
 }
 
+/// An HTTP client that fails on any non-2xx status.
+fn browser() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .http_status_as_error(true)
+        .build()
+        .into()
+}
+
+/// Signs in as `email` like a browser would; returns the `Cookie` header value.
+fn sign_in(url: &str, email: &str) -> String {
+    let res = browser()
+        .post(format!("{url}/api/session"))
+        .header("Origin", url)
+        .send_json(serde_json::json!({ "email": email, "password": PASSWORD }))
+        .unwrap();
+    let set_cookie = res.headers()["set-cookie"].to_str().unwrap();
+    set_cookie.split(';').next().unwrap().to_string()
+}
+
 impl TestServer {
+    /// Adds custom Domain `host` to the Workspace as its Owner, and approves it as an
+    /// Instance Admin.
+    pub fn approved_domain(&self, host: &str) {
+        let (url, slug) = (&self.url, &self.workspace);
+        browser()
+            .post(format!("{url}/api/workspaces/{slug}/domains"))
+            .header("Cookie", &sign_in(url, EMAIL))
+            .header("Origin", url)
+            .send_json(serde_json::json!({ "host": host }))
+            .unwrap();
+        browser()
+            .patch(format!("{url}/api/admin/domains/{host}"))
+            .header("Cookie", &sign_in(url, ADMIN))
+            .header("Origin", url)
+            .send_json(serde_json::json!({ "status": "approved" }))
+            .unwrap();
+    }
+
     /// The CLI's authenticated API client for this server.
     pub fn api(&self) -> Api {
         Creds {
@@ -123,6 +156,7 @@ impl TestServer {
                 target: target.into(),
                 code: Some(code.into()),
                 expires_at: None,
+                domain: None,
             })
             .unwrap()
     }

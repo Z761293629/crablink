@@ -13,6 +13,64 @@ pub struct CreateLink {
     /// Expiry; a past value means "expired now".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<DateTime<Utc>>,
+    /// The Domain the Link lives on: the Default Domain when absent, else an approved
+    /// Domain of the Workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+}
+
+/// Query of `GET`, `PATCH` and `DELETE /api/workspaces/{slug}/links/{code}`: the
+/// Domain of the Link, the Default Domain when absent.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LinkDomain {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+}
+
+/// Body of `POST /api/workspaces/{slug}/domains`: a custom Domain for the Workspace,
+/// pending until an Instance Admin approves it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddDomain {
+    /// A host name such as `go.example.com`, without a port.
+    pub host: String,
+}
+
+/// Whether a custom Domain may be used: only an approved one redirects, takes Links
+/// and gets a certificate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DomainStatus {
+    Pending,
+    Approved,
+    Rejected,
+}
+
+/// A Domain a Workspace can see, as listed by `GET /api/workspaces/{slug}/domains`:
+/// the Default Domain, then its own custom Domains.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Domain {
+    /// Addresses the Domain in `/api/workspaces/{slug}/domains/{host}`.
+    pub host: String,
+    /// Always `approved` for the Default Domain.
+    pub status: DomainStatus,
+    /// Whether this is the instance's Default Domain, shared by every Workspace.
+    pub default: bool,
+}
+
+/// A custom Domain as an Instance Admin sees it, from `GET /api/admin/domains`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManagedDomain {
+    /// Addresses the Domain in `/api/admin/domains/{host}`.
+    pub host: String,
+    pub status: DomainStatus,
+    /// The slug of the Workspace that added it.
+    pub workspace: String,
+}
+
+/// Body of `PATCH /api/admin/domains/{host}`: approves or rejects it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateDomain {
+    pub status: DomainStatus,
 }
 
 /// Body of `PATCH /api/workspaces/{slug}/links/{code}`. An absent field is left unchanged.
@@ -362,6 +420,16 @@ pub enum ErrorKind {
     /// Removing or demoting the Workspace's last Owner, themself included: it would
     /// leave no one to manage it.
     LastOwner,
+    /// A Domain host that isn't a host name such as `go.example.com`.
+    InvalidDomain,
+    /// The Domain is the Default Domain or another Workspace's.
+    DomainTaken,
+    /// The Workspace has no custom Domain with this host; for an Instance Admin, no
+    /// Workspace has.
+    DomainNotFound,
+    /// A Link on a Domain that is neither the Default Domain nor an approved Domain of
+    /// the Workspace.
+    DomainNotApproved,
     /// The server failed; details are in its log, never in `error`. Includes running out
     /// of free Generated Codes, where retrying may help.
     Internal,
@@ -394,6 +462,9 @@ pub struct LinkPage {
 pub struct QrQuery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<QrFormat>,
+    /// The Domain of the Link, the Default Domain when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
 }
 
 /// The file format of a Link's QR code.
@@ -430,6 +501,9 @@ pub struct ClicksQuery {
     pub to: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interval: Option<Interval>,
+    /// The Domain of the Link, the Default Domain when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
 }
 
 /// The width of a time bucket of Clicks.

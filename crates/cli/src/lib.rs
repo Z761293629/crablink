@@ -46,6 +46,9 @@ pub enum Cmd {
         /// RFC 3339 timestamp, or a duration from now like 30m, 12h, 7d.
         #[arg(long)]
         expires: Option<String>,
+        /// The Domain the Link lives on, e.g. go.example.com (the Default Domain otherwise).
+        #[arg(long)]
+        domain: Option<String>,
         /// Print the API's JSON for the new Link instead.
         #[arg(long)]
         json: bool,
@@ -110,6 +113,7 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
             target,
             code,
             expires,
+            domain,
             json,
         } => {
             let expires_at = expires.map(|e| expires_flag(&e, now)).transpose()?;
@@ -117,6 +121,7 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
                 target,
                 code,
                 expires_at,
+                domain,
             })?;
             if json {
                 print_json(&link)?;

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### 新功能
+
+- **自定义 Domain**：Owner 用 `/api/workspaces/{ws}/domains` 添加（pending）、列出、移除自定义 Domain；Instance Admin 用 `/api/admin/domains` 批准或拒绝。Link 可建在 Default Domain 或已批准的 Domain 上（`domain` 字段，CLI `crablink create --domain`），同一个 Code 可存在于不同 Domain；单个 Link 用 `?domain=` 定位。移除 Domain 后其 Link 变为已删除，再被任何 Workspace 添加时这些 Code 仍被占用。`GET /internal/domain-allowed?domain=` 供 Caddy on-demand TLS 询问，`deploy/Caddyfile` 已配好。(#59)
+
+### 行为变化
+
+- **跳转按 `Host` 找 Domain**：`GET /{code}` 只在 `Host` 是 Default Domain（`CRABLINK_BASE_URL` 的 host 和端口）或已批准的 Domain 时跳转，其余 404；用别的地址（比如 IP）直接访问 server 不再跳转。(#59)
+
 ## 0.4.0
 
 多用户的地基：Postgres、User 登录、Workspace、API Key。所有破坏性改动都集中在这一版，升级前请读完下面一节。
