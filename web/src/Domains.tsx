@@ -1,34 +1,28 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, firstWorkspace, type Domain, type Membership } from './api';
+import { api, type Domain, type Membership } from './api';
 import { errorMessage } from './i18n';
 
-/** The Default Domain and the custom Domains of the User's first Workspace; Owners add and remove them. */
-export function Domains() {
+/** The Default Domain and the custom Domains of `workspace`; Owners add and remove them. */
+export function Domains({ workspace }: { workspace: Membership }) {
   const { t } = useTranslation();
-  const [workspace, setWorkspace] = useState<Membership>();
   const [domains, setDomains] = useState<Domain[]>();
   const [error, setError] = useState<unknown>();
 
   const load = async (slug: string) => setDomains(await api<Domain[]>('GET', `/workspaces/${slug}/domains`));
 
   useEffect(() => {
-    (async () => {
-      const first = await firstWorkspace();
-      if (!first) return setDomains([]);
-      setWorkspace(first);
-      await load(first.slug);
-    })().catch(setError);
-  }, []);
+    api<Domain[]>('GET', `/workspaces/${workspace.slug}/domains`).then(setDomains, setError);
+  }, [workspace.slug]);
 
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
     try {
-      await api('POST', `/workspaces/${workspace!.slug}/domains`, { host: new FormData(form).get('host') });
+      await api('POST', `/workspaces/${workspace.slug}/domains`, { host: new FormData(form).get('host') });
       form.reset();
       setError(undefined);
-      await load(workspace!.slug);
+      await load(workspace.slug);
     } catch (err) {
       setError(err);
     }
@@ -37,15 +31,15 @@ export function Domains() {
   async function remove(host: string) {
     if (!confirm(t('domains.confirmRemove', { host }))) return;
     try {
-      await api('DELETE', `/workspaces/${workspace!.slug}/domains/${encodeURIComponent(host)}`);
-      await load(workspace!.slug);
+      await api('DELETE', `/workspaces/${workspace.slug}/domains/${encodeURIComponent(host)}`);
+      await load(workspace.slug);
     } catch (err) {
       setError(err);
     }
   }
 
   if (!domains) return error === undefined ? null : <p role="alert">{errorMessage(t, error)}</p>;
-  const owner = workspace?.role === 'owner';
+  const owner = workspace.role === 'owner';
   // DNS points at a host name, never a port.
   const target = domains.find((d) => d.default)?.host.replace(/:\d+$/, '');
   return (

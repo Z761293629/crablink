@@ -11,6 +11,25 @@ export interface Membership {
   role: 'owner' | 'member';
 }
 
+export interface WorkspaceUser {
+  email: string;
+  role: Membership['role'];
+}
+
+export interface ApiKey {
+  id: number;
+  name: string;
+  /** The secret's first characters, to tell keys apart. */
+  prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+/** Only in the response that creates the key: the secret is never shown again. */
+export interface NewApiKey extends ApiKey {
+  secret: string;
+}
+
 export interface Link {
   code: string;
   domain: string;
@@ -73,11 +92,6 @@ export interface ManagedUser {
   email: string;
   instance_admin: boolean;
   disabled: boolean;
-}
-
-/** The signed-in User's first Workspace by name: their personal one until they join others. */
-export async function firstWorkspace(): Promise<Membership | undefined> {
-  return (await api<Membership[]>('GET', '/workspaces'))[0];
 }
 
 /** An error response: `kind` is stable, `message` is the server's English text. */

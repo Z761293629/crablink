@@ -1,5 +1,5 @@
-// `/app/clicks?workspace={slug}[&code=&domain=]`: one Link's Clicks with breakdowns, or
-// the whole Workspace's with its top Links.
+// `/app/clicks`: the switcher's Workspace's Clicks with its top Links, or with
+// `?code=&domain=` one of its Links' Clicks with breakdowns.
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -10,19 +10,13 @@ import { errorMessage } from './i18n';
 const RANGES = { '24h': ['hour', 24], '7d': ['day', 7], '30d': ['day', 30], '90d': ['day', 90] } as const;
 type Range = keyof typeof RANGES;
 
-/** The page's address for a Workspace's Clicks, or one of its Links' when given. */
-export function clicksHref(slug: string, link?: { code: string; domain: string }): string {
-  const q = new URLSearchParams({ workspace: slug });
-  if (link) {
-    q.set('code', link.code);
-    q.set('domain', link.domain);
-  }
-  return `/app/clicks?${q}`;
+/** The address of a Link's Clicks page. */
+export function clicksHref(link: { code: string; domain: string }): string {
+  return `/app/clicks?${new URLSearchParams({ code: link.code, domain: link.domain })}`;
 }
 
-export function ClicksPage() {
+export function Clicks({ slug }: { slug: string }) {
   const q = new URLSearchParams(location.search);
-  const slug = q.get('workspace') ?? '';
   const code = q.get('code');
   const domain = q.get('domain') ?? '';
   return code ? <LinkClicks slug={slug} code={code} domain={domain} /> : <WorkspaceClicksView slug={slug} />;
@@ -76,7 +70,7 @@ function LinkClicks({ slug, code, domain }: { slug: string; code: string; domain
   return (
     <>
       <p>
-        <a href={clicksHref(slug)}>{t('clicks.workspaceTitle')}</a>
+        <a href="/app/clicks">{t('clicks.workspaceTitle')}</a>
       </p>
       <h1>{t('clicks.linkTitle', { url: `${domain}/${code}` })}</h1>
       <RangePicker range={range} onChange={setRange} />
@@ -133,7 +127,7 @@ function WorkspaceClicksView({ slug }: { slug: string }) {
                     {data.top_links.map((l) => (
                       <tr key={l.short_url}>
                         <td>
-                          <a href={clicksHref(slug, l)}>{l.short_url}</a>
+                          <a href={clicksHref(l)}>{l.short_url}</a>
                         </td>
                         <td>{l.count}</td>
                       </tr>
