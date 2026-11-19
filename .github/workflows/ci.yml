@@ -38,3 +38,41 @@ jobs:
           # unauthenticated rate limit a shared runner IP easily exhausts.
           GITHUB_TOKEN: ${{ github.token }}
       - run: docker build .
+
+  # The web UI (web/): lint, typecheck, build, then Playwright against the real server with the
+  # build embedded. The ci job above builds and tests Rust without it, as contributors may.
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v6
+        with:
+          path: ~/.theseus/postgresql
+          key: embedded-postgres-18-${{ runner.os }}
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7

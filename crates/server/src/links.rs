@@ -1,6 +1,6 @@
 //! `/api/workspaces/{slug}/links`: Link management handlers, Target and Custom Code
-//! validation, and QR codes. Every Link lives on the Default Domain for now, so a
-//! Code addresses one within its Workspace.
+//! validation, and QR codes. A Link is addressed by its Code and `?domain=`, the
+//! Default Domain when absent.
 
 use axum::Json;
 use axum::extract::rejection::{JsonRejection, QueryRejection};
@@ -8,6 +8,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
+use sqlx::PgConnection;
 
 use crate::AppState;
 use crate::error::ApiError;
@@ -34,6 +35,7 @@ struct LinkRow {
     expires_at: Option<DateTime<Utc>>,
     click_count: i64,
     domain: String,
+    tags: Vec<String>,
 }
 
 impl LinkRow {
@@ -48,6 +50,7 @@ impl LinkRow {
             updated_at: self.updated_at,
             expires_at: self.expires_at,
             click_count: self.click_count,
+            tags: self.tags,
         }
     }
 }
@@ -56,8 +59,66 @@ impl LinkRow {
 /// with `concat!` (sqlx only accepts static SQL).
 macro_rules! link_columns {
     () => {
-        "l.code, l.target, l.created_at, l.updated_at, l.expires_at, l.click_count, d.host AS domain"
+        "l.code, l.target, l.created_at, l.updated_at, l.expires_at, l.click_count, \
+         d.host AS domain, ARRAY(SELECT t.name FROM link_tags lt JOIN tags t ON t.id = lt.tag_id \
+         WHERE lt.link_id = l.id ORDER BY t.name) AS tags"
     };
+}
+
+/// The Link with this id, deleted or not.
+async fn link_by_id(conn: &mut PgConnection, id: i64) -> sqlx::Result<LinkRow> {
+    sqlx::query_as(concat!(
+        "SELECT ",
+        link_columns!(),
+        " FROM links l JOIN domains d ON d.id = l.domain_id WHERE l.id = $1"
+    ))
+    .bind(id)
+    .fetch_one(conn)
+    .await
+}
+
+/// Trimmed Tag names, each 1-64 characters with no comma (CSV joins a Link's Tags
+/// with commas) or control character.
+fn tag_names(tags: &[String]) -> Result<Vec<String>, ApiError> {
+    tags.iter()
+        .map(|t| {
+            let t = t.trim();
+            let ok = (1..=64).contains(&t.chars().count())
+                && !t.chars().any(|c| c == ',' || c.is_control());
+            ok.then(|| t.to_owned()).ok_or(ApiError::InvalidTag)
+        })
+        .collect()
+}
+
+/// Replaces the Link's Tags with `names`, creating those new to the Workspace.
+async fn set_tags(
+    conn: &mut PgConnection,
+    workspace_id: i64,
+    link_id: i64,
+    names: &[String],
+) -> sqlx::Result<()> {
+    sqlx::query("DELETE FROM link_tags WHERE link_id = $1")
+        .bind(link_id)
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query(
+        "INSERT INTO tags (workspace_id, name) SELECT $1, unnest($2::text[]) \
+         ON CONFLICT (workspace_id, name) DO NOTHING",
+    )
+    .bind(workspace_id)
+    .bind(names)
+    .execute(&mut *conn)
+    .await?;
+    sqlx::query(
+        "INSERT INTO link_tags (link_id, tag_id) \
+         SELECT $1, id FROM tags WHERE workspace_id = $2 AND name = ANY($3)",
+    )
+    .bind(link_id)
+    .bind(workspace_id)
+    .bind(names)
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
 }
 
 /// A Target must be an absolute `http(s)` URL not on `default_host`, the Default
@@ -104,7 +165,8 @@ fn validate_custom_code(code: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// `POST /api/workspaces/{slug}/links`: a Link on the Default Domain.
+/// `POST /api/workspaces/{slug}/links`: a Link on the Default Domain or an approved
+/// Domain of the Workspace.
 pub(crate) async fn create_link(
     State(s): State<AppState>,
     caller: Caller,
@@ -113,71 +175,244 @@ pub(crate) async fn create_link(
 ) -> Result<(StatusCode, Json<crablink_api::Link>), ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Json(req) = req?;
+    let link = insert_link(&s, workspace_id, req).await?;
+    Ok((StatusCode::CREATED, Json(link)))
+}
+
+/// Creates a Link in Workspace `workspace_id`; shared by create and CSV import.
+async fn insert_link(
+    s: &AppState,
+    workspace_id: i64,
+    req: crablink_api::CreateLink,
+) -> Result<crablink_api::Link, ApiError> {
     validate_target(&req.target, &s.default_host)?;
     if let Some(code) = &req.code {
         validate_custom_code(code)?;
     }
+    let tags = tag_names(&req.tags)?;
+    let domain = s.domain_or_default(req.domain.as_deref());
+    let domain_id = crate::domains::usable(&s.pool, workspace_id, domain)
+        .await?
+        .ok_or(ApiError::DomainNotApproved)?;
     let now = (s.clock)();
+    let mut tx = s.pool.begin().await?;
     // Insert and let the unique constraint reject a taken Code; never check first (ADR-0003).
+    let mut id = None;
     for _ in 0..MAX_CODE_ATTEMPTS {
-        let inserted = sqlx::query_as::<_, LinkRow>(concat!(
-            "WITH l AS (INSERT INTO links \
+        id = sqlx::query_scalar::<_, i64>(
+            "INSERT INTO links \
              (code, target, created_at, updated_at, expires_at, domain_id, workspace_id) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *) SELECT ",
-            link_columns!(),
-            " FROM l JOIN domains d ON d.id = l.domain_id"
-        ))
+             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             ON CONFLICT (domain_id, code) DO NOTHING RETURNING id",
+        )
         .bind(req.code.clone().unwrap_or_else(|| (s.codes)()))
         .bind(&req.target)
         .bind(now)
         .bind(now)
         .bind(req.expires_at)
-        .bind(s.domain_id)
+        .bind(domain_id)
         .bind(workspace_id)
-        .fetch_one(&s.pool)
-        .await;
-        match inserted {
-            Ok(row) => return Ok((StatusCode::CREATED, Json(row.into_dto(&s.scheme)))),
-            // A taken Custom Code is the caller's to fix: never overwrite, never retry.
-            Err(sqlx::Error::Database(e)) if e.is_unique_violation() && req.code.is_some() => {
-                return Err(ApiError::CodeTaken);
-            }
-            Err(sqlx::Error::Database(e)) if e.is_unique_violation() => continue,
-            Err(e) => return Err(e.into()),
+        .fetch_optional(&mut *tx)
+        .await?;
+        // A taken Custom Code is the caller's to fix: never overwrite, never retry.
+        if id.is_some() || req.code.is_some() {
+            break;
         }
     }
-    Err(ApiError::CodesExhausted)
+    let Some(id) = id else {
+        return Err(match req.code {
+            Some(_) => ApiError::CodeTaken,
+            None => ApiError::CodesExhausted,
+        });
+    };
+    if !tags.is_empty() {
+        set_tags(&mut tx, workspace_id, id, &tags).await?;
+    }
+    let link = link_by_id(&mut tx, id).await?;
+    tx.commit().await?;
+    Ok(link.into_dto(&s.scheme))
 }
 
-/// `GET /api/workspaces/{slug}/links/{code}`: one Link; 404 if missing or deleted.
+/// The columns of `links.csv`, in `CsvRow`'s field order.
+const CSV_COLUMNS: [&str; 6] = ["Code", "Domain", "Target", "Expiry", "Tags", "Click Count"];
+
+/// A row of `links.csv`, its fields in `CSV_COLUMNS` order. Export fills every column;
+/// on import empty or missing cells are `None` (a Generated Code, the Default Domain,
+/// no Expiry) and Click Count is ignored.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CsvRow {
+    code: Option<String>,
+    domain: Option<String>,
+    target: String,
+    expiry: Option<DateTime<Utc>>,
+    /// Tag names joined with commas, which Tags never contain.
+    tags: String,
+    #[serde(skip_deserializing)]
+    click_count: i64,
+}
+
+fn csv_error(e: impl std::fmt::Display) -> ApiError {
+    eprintln!("cannot write links.csv: {e}");
+    ApiError::Internal
+}
+
+/// `GET /api/workspaces/{slug}/links.csv`: every Link `list_links` would list, oldest
+/// first, as CSV.
+pub(crate) async fn export_links(
+    State(s): State<AppState>,
+    caller: Caller,
+    Path(slug): Path<String>,
+) -> Result<Response, ApiError> {
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    let rows = sqlx::query_as::<_, LinkRow>(concat!(
+        "SELECT ",
+        link_columns!(),
+        " FROM links l JOIN domains d ON d.id = l.domain_id \
+         WHERE l.workspace_id = $1 AND l.deleted_at IS NULL \
+         AND (d.is_default OR d.workspace_id = $1) ORDER BY l.id"
+    ))
+    .bind(workspace_id)
+    .fetch_all(&s.pool)
+    .await?;
+    let mut out = csv::WriterBuilder::new()
+        .has_headers(false)
+        .from_writer(Vec::new());
+    // Written by hand: `serialize` would only write a header with a first row.
+    out.write_record(CSV_COLUMNS).map_err(csv_error)?;
+    for r in rows {
+        out.serialize(CsvRow {
+            code: Some(r.code),
+            domain: Some(r.domain),
+            target: r.target,
+            expiry: r.expires_at,
+            tags: r.tags.join(","),
+            click_count: r.click_count,
+        })
+        .map_err(csv_error)?;
+    }
+    let body = out.into_inner().map_err(csv_error)?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "text/csv; charset=utf-8"),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"links.csv\"",
+            ),
+        ],
+        body,
+    )
+        .into_response())
+}
+
+/// `POST /api/workspaces/{slug}/links.csv`: creates a Link from each row of a CSV in
+/// the export's format, never touching existing Links. Not atomic: a row that fails
+/// (taken Code, unusable Domain, bad cell) is skipped and reported with its `kind`.
+pub(crate) async fn import_links(
+    State(s): State<AppState>,
+    caller: Caller,
+    Path(slug): Path<String>,
+    body: String,
+) -> Result<Json<Vec<crablink_api::ImportedRow>>, ApiError> {
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    let mut reader = csv::Reader::from_reader(body.as_bytes());
+    let headers = reader
+        .headers()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    // Where each column but Click Count is in this file, if anywhere.
+    let columns: Vec<Option<usize>> = CSV_COLUMNS[..5]
+        .iter()
+        .map(|c| headers.iter().position(|h| h == *c))
+        .collect();
+    let mut results = Vec::new();
+    for record in reader.records() {
+        let line = match &record {
+            Ok(r) => r.position(),
+            Err(e) => e.position(),
+        }
+        .map_or(0, csv::Position::line);
+        let row = record.and_then(|r| {
+            let cell = |c: &Option<usize>| c.and_then(|i| r.get(i)).unwrap_or("");
+            csv::StringRecord::from_iter(columns.iter().map(cell)).deserialize::<CsvRow>(None)
+        });
+        let created = match row {
+            Ok(row) => {
+                let req = crablink_api::CreateLink {
+                    target: row.target,
+                    code: row.code,
+                    expires_at: row.expiry,
+                    domain: row.domain,
+                    tags: row
+                        .tags
+                        .split(',')
+                        .filter(|t| !t.trim().is_empty())
+                        .map(str::to_owned)
+                        .collect(),
+                };
+                insert_link(&s, workspace_id, req).await
+            }
+            Err(e) => Err(ApiError::BadRequest(e.to_string())),
+        };
+        results.push(match created {
+            Ok(link) => crablink_api::ImportedRow {
+                line,
+                short_url: Some(link.short_url),
+                skipped: None,
+            },
+            Err(e) => crablink_api::ImportedRow {
+                line,
+                short_url: None,
+                skipped: Some(e.body()),
+            },
+        });
+    }
+    Ok(Json(results))
+}
+
+/// `GET /api/workspaces/{slug}/links/{code}?domain=`: one Link; 404 if missing or deleted.
 pub(crate) async fn get_link(
     State(s): State<AppState>,
     caller: Caller,
     Path((slug, code)): Path<(String, String)>,
+    query: Result<Query<crablink_api::LinkDomain>, QueryRejection>,
 ) -> Result<Json<crablink_api::Link>, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
-    fetch_link(&s, workspace_id, &code).await.map(Json)
+    let Query(q) = query?;
+    fetch_link(&s, workspace_id, q.domain.as_deref(), &code)
+        .await
+        .map(Json)
 }
 
-/// The Workspace's live or expired Link with this Code; 404 if missing or deleted.
-async fn fetch_link(
+/// The id of the Workspace's live or expired Link with this Code on `domain` (the
+/// Default Domain when `None`); 404 if missing or deleted.
+pub(crate) async fn link_id(
     s: &AppState,
     workspace_id: i64,
+    domain: Option<&str>,
     code: &str,
-) -> Result<crablink_api::Link, ApiError> {
-    sqlx::query_as::<_, LinkRow>(concat!(
-        "SELECT ",
-        link_columns!(),
-        " FROM links l JOIN domains d ON d.id = l.domain_id \
-         WHERE l.workspace_id = $1 AND l.domain_id = $2 AND l.code = $3 AND l.deleted_at IS NULL"
-    ))
+) -> Result<i64, ApiError> {
+    sqlx::query_scalar(
+        "SELECT l.id FROM links l JOIN domains d ON d.id = l.domain_id \
+         WHERE l.workspace_id = $1 AND d.host = lower($2) AND l.code = $3 \
+         AND l.deleted_at IS NULL",
+    )
     .bind(workspace_id)
-    .bind(s.domain_id)
+    .bind(s.domain_or_default(domain))
     .bind(code)
     .fetch_optional(&s.pool)
     .await?
-    .map(|row| row.into_dto(&s.scheme))
     .ok_or(ApiError::LinkNotFound)
+}
+
+/// `link_id`'s Link as its DTO.
+async fn fetch_link(
+    s: &AppState,
+    workspace_id: i64,
+    domain: Option<&str>,
+    code: &str,
+) -> Result<crablink_api::Link, ApiError> {
+    let id = link_id(s, workspace_id, domain, code).await?;
+    let row = link_by_id(&mut *s.pool.acquire().await?, id).await?;
+    Ok(row.into_dto(&s.scheme))
 }
 
 /// `GET /api/workspaces/{slug}/links/{code}/qr?format=svg|png`: the QR code of the
@@ -190,7 +425,7 @@ pub(crate) async fn link_qr(
 ) -> Result<Response, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
-    let link = fetch_link(&s, workspace_id, &code).await?;
+    let link = fetch_link(&s, workspace_id, q.domain.as_deref(), &code).await?;
     // Its Short URL no longer redirects, so a QR code of it would only mislead.
     if link.is_expired((s.clock)()) {
         return Err(ApiError::LinkExpired);
@@ -214,38 +449,46 @@ pub(crate) async fn link_qr(
     Ok(([(header::CONTENT_TYPE, format.content_type())], body).into_response())
 }
 
-/// `PATCH /api/workspaces/{slug}/links/{code}`: changes Target and/or Expiry, never
-/// the Code; 404 if missing or deleted.
+/// `PATCH /api/workspaces/{slug}/links/{code}?domain=`: changes Target and/or Expiry,
+/// never the Code or Domain; 404 if missing or deleted.
 pub(crate) async fn update_link(
     State(s): State<AppState>,
     caller: Caller,
     Path((slug, code)): Path<(String, String)>,
+    query: Result<Query<crablink_api::LinkDomain>, QueryRejection>,
     req: Result<Json<crablink_api::UpdateLink>, JsonRejection>,
 ) -> Result<Json<crablink_api::Link>, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    let Query(q) = query?;
     let Json(req) = req?;
     if let Some(target) = &req.target {
         validate_target(target, &s.default_host)?;
     }
-    sqlx::query_as::<_, LinkRow>(concat!(
-        "UPDATE links l SET target = COALESCE($1, l.target), \
-         expires_at = CASE WHEN $2 THEN $3 ELSE l.expires_at END, updated_at = $4 \
-         FROM domains d WHERE d.id = l.domain_id \
-         AND l.workspace_id = $5 AND l.domain_id = $6 AND l.code = $7 AND l.deleted_at IS NULL \
-         RETURNING ",
-        link_columns!()
-    ))
+    let tags = req.tags.as_deref().map(tag_names).transpose()?;
+    let id = link_id(&s, workspace_id, q.domain.as_deref(), &code).await?;
+    let mut tx = s.pool.begin().await?;
+    // Still live: it may have been deleted since `link_id` found it.
+    let updated = sqlx::query(
+        "UPDATE links SET target = COALESCE($1, target), \
+         expires_at = CASE WHEN $2 THEN $3 ELSE expires_at END, updated_at = $4 \
+         WHERE id = $5 AND deleted_at IS NULL",
+    )
     .bind(&req.target)
     .bind(req.expires_at.is_some())
     .bind(req.expires_at.flatten())
     .bind((s.clock)())
-    .bind(workspace_id)
-    .bind(s.domain_id)
-    .bind(&code)
-    .fetch_optional(&s.pool)
-    .await?
-    .map(|row| Json(row.into_dto(&s.scheme)))
-    .ok_or(ApiError::LinkNotFound)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(ApiError::LinkNotFound);
+    }
+    if let Some(tags) = &tags {
+        set_tags(&mut tx, workspace_id, id, tags).await?;
+    }
+    let link = link_by_id(&mut tx, id).await?;
+    tx.commit().await?;
+    Ok(Json(link.into_dto(&s.scheme)))
 }
 
 const DEFAULT_PAGE: u32 = 50;
@@ -259,7 +502,9 @@ struct ListRow {
 }
 
 /// `GET /api/workspaces/{slug}/links`: the Workspace's live and expired Links on the
-/// Default Domain, newest (highest id) first. The cursor is the id of the previous
+/// Default Domain and its own custom Domains (not a former Default Domain), newest
+/// (highest id) first, only those with Tag `tag` and whose Code or Target contains
+/// `q` (ignoring case) when given. The cursor is the id of the previous
 /// page's last Link, so each page is an index range scan.
 pub(crate) async fn list_links(
     State(s): State<AppState>,
@@ -286,13 +531,19 @@ pub(crate) async fn list_links(
         "SELECT l.id, ",
         link_columns!(),
         " FROM links l JOIN domains d ON d.id = l.domain_id \
-         WHERE l.workspace_id = $3 AND l.domain_id = $4 AND l.deleted_at IS NULL AND l.id < $1 \
+         WHERE l.workspace_id = $3 AND l.deleted_at IS NULL AND l.id < $1 \
+         AND (d.is_default OR d.workspace_id = $3) \
+         AND ($4::text IS NULL OR EXISTS (SELECT 1 FROM link_tags lt \
+              JOIN tags t ON t.id = lt.tag_id WHERE lt.link_id = l.id AND t.name = $4)) \
+         AND ($5::text IS NULL OR strpos(lower(l.code), lower($5)) > 0 \
+              OR strpos(lower(l.target), lower($5)) > 0) \
          ORDER BY l.id DESC LIMIT $2"
     ))
     .bind(before)
     .bind(i64::from(limit) + 1)
     .bind(workspace_id)
-    .bind(s.domain_id)
+    .bind(&q.tag)
+    .bind(&q.q)
     .fetch_all(&s.pool)
     .await?;
     let next_cursor = if rows.len() > limit as usize {
@@ -310,25 +561,44 @@ pub(crate) async fn list_links(
     }))
 }
 
-/// `DELETE /api/workspaces/{slug}/links/{code}`: marks the Link deleted (ADR-0002).
-/// The row stays so its Code is never reused on its Domain; 404 if missing or already
-/// deleted.
+/// `GET /api/workspaces/{slug}/tags`: the names of the Workspace's Tags on at least
+/// one live Link, sorted.
+pub(crate) async fn list_tags(
+    State(s): State<AppState>,
+    caller: Caller,
+    Path(slug): Path<String>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    let tags = sqlx::query_scalar(
+        "SELECT t.name FROM tags t WHERE t.workspace_id = $1 AND EXISTS \
+         (SELECT 1 FROM link_tags lt JOIN links l ON l.id = lt.link_id \
+          WHERE lt.tag_id = t.id AND l.deleted_at IS NULL) \
+         ORDER BY t.name",
+    )
+    .bind(workspace_id)
+    .fetch_all(&s.pool)
+    .await?;
+    Ok(Json(tags))
+}
+
+/// `DELETE /api/workspaces/{slug}/links/{code}?domain=`: marks the Link deleted
+/// (ADR-0002). The row stays so its Code is never reused on its Domain; 404 if missing
+/// or already deleted.
 pub(crate) async fn delete_link(
     State(s): State<AppState>,
     caller: Caller,
     Path((slug, code)): Path<(String, String)>,
+    query: Result<Query<crablink_api::LinkDomain>, QueryRejection>,
 ) -> Result<StatusCode, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
-    let done = sqlx::query(
-        "UPDATE links SET deleted_at = $1 \
-         WHERE workspace_id = $2 AND domain_id = $3 AND code = $4 AND deleted_at IS NULL",
-    )
-    .bind((s.clock)())
-    .bind(workspace_id)
-    .bind(s.domain_id)
-    .bind(&code)
-    .execute(&s.pool)
-    .await?;
+    let Query(q) = query?;
+    let id = link_id(&s, workspace_id, q.domain.as_deref(), &code).await?;
+    // Still live: a concurrent delete may have got there first.
+    let done = sqlx::query("UPDATE links SET deleted_at = $1 WHERE id = $2 AND deleted_at IS NULL")
+        .bind((s.clock)())
+        .bind(id)
+        .execute(&s.pool)
+        .await?;
     if done.rows_affected() == 0 {
         return Err(ApiError::LinkNotFound);
     }

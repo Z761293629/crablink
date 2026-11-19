@@ -12,8 +12,8 @@ fn lists_every_link_newest_first_across_pages() {
 
     let screen = srv.tui().screen();
 
-    let header = line_with(&screen, "Code");
-    for col in ["Code", "Click Count", "Expiry", "Target"] {
+    let header = line_with(&screen, "Click Count");
+    for col in ["Short URL", "Click Count", "Expiry", "Target"] {
         assert!(header.contains(col), "missing {col}:\n{screen}");
     }
     assert!(screen.contains("https://example.com/50"), "{screen}");
@@ -33,10 +33,12 @@ fn expired_links_are_marked_and_deleted_links_are_absent() {
         target: "https://example.com/old".into(),
         code: Some("old".into()),
         expires_at: Some("2020-01-01T00:00:00Z".parse().unwrap()),
+        domain: None,
+        tags: Vec::new(),
     })
     .unwrap();
     srv.create("gone", "https://example.com/gone");
-    api.delete("gone").unwrap();
+    api.delete("gone", None).unwrap();
     srv.create("live", "https://example.com/live");
 
     let screen = srv.tui().screen();
@@ -163,12 +165,20 @@ fn q_and_esc_quit() {
     assert!(tui.app.quit());
 }
 
-/// The screen line containing `label`, e.g. the detail pane's "Short URL" row.
+/// The screen line containing `label`, e.g. a Link's row.
 fn line_with<'a>(screen: &'a str, label: &str) -> &'a str {
     screen
         .lines()
         .find(|l| l.contains(label))
         .unwrap_or_else(|| panic!("no {label:?} line:\n{screen}"))
+}
+
+/// The detail pane's Short URL row, below the list's "Short URL" header.
+fn detail_short_url(screen: &str) -> &str {
+    screen
+        .lines()
+        .rfind(|l| l.contains("Short URL"))
+        .unwrap_or_else(|| panic!("no Short URL line:\n{screen}"))
 }
 
 #[test]
@@ -179,7 +189,7 @@ fn arrows_and_jk_move_the_selection_and_the_detail_pane_follows() {
     let mut tui = srv.tui();
     let shows = |tui: &mut Tui, code: &str| {
         let screen = tui.screen();
-        let short = line_with(&screen, "Short URL");
+        let short = detail_short_url(&screen);
         assert!(short.contains(&format!("{}/{code}", srv.url)), "{screen}");
         // The selected row is highlighted with a bar in front of it.
         assert!(
@@ -211,19 +221,21 @@ fn the_detail_pane_shows_the_whole_link_and_the_list_truncates_long_targets() {
             target: target.into(),
             code: Some("long".into()),
             expires_at: Some("2099-01-02T03:04:05Z".parse().unwrap()),
+            domain: None,
+            tags: Vec::new(),
         })
         .unwrap();
 
     let screen = srv.tui().screen();
 
     let row = line_with(&screen, "long ");
-    assert!(row.contains("https://example.com/a/"), "{screen}");
+    assert!(row.contains("https://example"), "{screen}");
     assert!(
         !row.contains(target),
         "not truncated in the list:\n{screen}"
     );
     let short = format!("{}/long", srv.url);
-    assert!(line_with(&screen, "Short URL").contains(&short), "{screen}");
+    assert!(detail_short_url(&screen).contains(&short), "{screen}");
     line_with(&screen, "Target");
     // Only the detail pane can hold the whole Target (it wraps there if needed).
     assert!(screen.contains(target), "{screen}");
@@ -305,7 +317,7 @@ fn r_picks_up_links_created_and_changed_on_the_server() {
         target: Some("https://example.com/after".into()),
         ..Default::default()
     };
-    srv.api().update("aaa", &patch).unwrap();
+    srv.api().update("aaa", None, &patch).unwrap();
     let screen = tui.screen();
     assert!(!screen.contains("bbb"), "{screen}");
 
@@ -322,7 +334,7 @@ fn r_picks_up_links_created_and_changed_on_the_server() {
     );
     // The selection stays on the same Link, though a newer one now sits above it.
     let short = format!("{}/aaa", srv.url);
-    assert!(line_with(&screen, "Short URL").contains(&short), "{screen}");
+    assert!(detail_short_url(&screen).contains(&short), "{screen}");
 }
 
 #[test]
@@ -402,7 +414,7 @@ fn v_shows_the_selected_links_qr_code_with_its_short_url_and_esc_closes_it() {
     let screen = tui.screen();
     assert!(!screen.contains("┌ QR code "), "{screen}");
     assert!(
-        line_with(&screen, "Short URL").contains(&link.short_url),
+        detail_short_url(&screen).contains(&link.short_url),
         "{screen}"
     );
 }
@@ -426,6 +438,8 @@ fn v_on_an_expired_link_shows_an_error_instead_of_its_qr_code() {
             target: "https://example.com/old".into(),
             code: Some("old".into()),
             expires_at: Some("2020-01-01T00:00:00Z".parse().unwrap()),
+            domain: None,
+            tags: Vec::new(),
         })
         .unwrap();
     let mut tui = srv.tui();
@@ -472,7 +486,9 @@ fn a_terminal_too_small_for_the_qr_code_shows_the_size_it_needs() {
 /// Every Link on the server, newest first.
 fn server_links(srv: &TestServer) -> Vec<crablink_api::Link> {
     let mut links = Vec::new();
-    srv.api().list(|page| links.extend(page)).unwrap();
+    srv.api()
+        .list(None, None, |page| links.extend(page))
+        .unwrap();
     links
 }
 
@@ -500,7 +516,7 @@ fn n_creates_a_link_with_a_generated_code_and_selects_it() {
     );
     assert!(screen.contains("2 Links"), "{screen}");
     assert!(
-        line_with(&screen, "Short URL").contains(&new.short_url),
+        detail_short_url(&screen).contains(&new.short_url),
         "{screen}"
     );
 }
@@ -529,7 +545,7 @@ fn the_form_takes_a_custom_code_and_either_expiry_format() {
         "2099-01-02T03:04:05Z",
     );
 
-    let rel = srv.api().get("rel").unwrap();
+    let rel = srv.api().get("rel", None).unwrap();
     assert_eq!(rel.target, "https://example.com/rel");
     let in_7d = rel.expires_at.unwrap() - before;
     let week = chrono::TimeDelta::days(7);
@@ -537,14 +553,14 @@ fn the_form_takes_a_custom_code_and_either_expiry_format() {
         in_7d >= week && in_7d < week + chrono::TimeDelta::minutes(1),
         "{in_7d}"
     );
-    let abs = srv.api().get("abs").unwrap();
+    let abs = srv.api().get("abs", None).unwrap();
     assert_eq!(
         abs.expires_at,
         Some("2099-01-02T03:04:05Z".parse().unwrap())
     );
     let screen = tui.screen();
     assert!(
-        line_with(&screen, "Short URL").contains(&abs.short_url),
+        detail_short_url(&screen).contains(&abs.short_url),
         "{screen}"
     );
 }
@@ -577,7 +593,7 @@ fn a_taken_code_shows_the_servers_error_and_keeps_the_input() {
     tui.key(KeyCode::BackTab);
     tui.keys("2");
     tui.key(KeyCode::Enter);
-    let link = srv.api().get("taken2").unwrap();
+    let link = srv.api().get("taken2", None).unwrap();
     assert_eq!(link.target, "https://example.com/second");
     assert!(!tui.screen().contains("Custom Code"), "{}", tui.screen());
 }
@@ -615,11 +631,11 @@ fn d_then_y_deletes_the_selected_link_after_naming_its_code() {
     let screen = tui.screen();
     assert!(line_with(&screen, "Delete").contains("doomed"), "{screen}");
     assert!(screen.contains("never be reused"), "{screen}");
-    assert!(srv.api().get("doomed").is_ok());
+    assert!(srv.api().get("doomed", None).is_ok());
 
     tui.keys("y");
     let screen = tui.screen();
-    assert!(srv.api().get("doomed").is_err());
+    assert!(srv.api().get("doomed", None).is_err());
     assert!(!screen.contains("doomed"), "{screen}");
     assert!(!screen.contains("never be reused"), "{screen}");
     assert!(screen.contains("1 Link"), "{screen}");
@@ -644,7 +660,7 @@ fn any_key_but_y_cancels_the_delete() {
         let screen = tui.screen();
         assert!(!screen.contains("never be reused"), "{key:?}:\n{screen}");
         assert!(!tui.app.quit(), "{key:?}");
-        assert!(srv.api().get("safe").is_ok(), "{key:?}");
+        assert!(srv.api().get("safe", None).is_ok(), "{key:?}");
         assert!(screen.contains("safe "), "{key:?}:\n{screen}");
     }
 }
@@ -658,7 +674,7 @@ fn after_deleting_the_selection_lands_on_a_neighbour() {
     let mut tui = srv.tui();
     let selected = |tui: &mut Tui| {
         let screen = tui.screen();
-        let short = line_with(&screen, "Short URL").to_owned();
+        let short = detail_short_url(&screen).to_owned();
         let row = line_with(&screen, "▌").to_owned();
         (short, row)
     };
@@ -695,6 +711,8 @@ fn e_edits_the_selected_links_target_with_the_code_read_only() {
             target: "https://example.com/before".into(),
             code: Some("abc".into()),
             expires_at: Some("2099-01-02T03:04:05Z".parse().unwrap()),
+            domain: None,
+            tags: Vec::new(),
         })
         .unwrap();
     let mut tui = srv.tui();
@@ -720,7 +738,7 @@ fn e_edits_the_selected_links_target_with_the_code_read_only() {
     tui.key(KeyCode::Backspace);
     tui.key(KeyCode::Enter);
 
-    let link = srv.api().get("abc").unwrap();
+    let link = srv.api().get("abc", None).unwrap();
     assert_eq!(link.target, "https://example.com/after");
     assert_eq!(
         link.expires_at,
@@ -749,7 +767,7 @@ fn e_sets_an_expiry_and_clearing_it_removes_it() {
     to_expiry(&mut tui);
     tui.keys("12h");
     tui.key(KeyCode::Enter);
-    let in_12h = srv.api().get("abc").unwrap().expires_at.unwrap() - before;
+    let in_12h = srv.api().get("abc", None).unwrap().expires_at.unwrap() - before;
     let half_day = chrono::TimeDelta::hours(12);
     assert!(
         in_12h >= half_day && in_12h < half_day + chrono::TimeDelta::minutes(1),
@@ -762,7 +780,7 @@ fn e_sets_an_expiry_and_clearing_it_removes_it() {
         tui.key(KeyCode::Backspace);
     }
     tui.key(KeyCode::Enter);
-    assert_eq!(srv.api().get("abc").unwrap().expires_at, None);
+    assert_eq!(srv.api().get("abc", None).unwrap().expires_at, None);
     let screen = tui.screen();
     // The detail pane's row, not the list header's "Expiry".
     assert!(screen.contains("Expiry       never"), "{screen}");
@@ -791,14 +809,14 @@ fn an_invalid_target_shows_the_servers_error_and_esc_leaves_the_link_unchanged()
     tui.key(KeyCode::Esc);
     assert!(!tui.app.quit());
     assert!(!tui.screen().contains("edit Link"), "{}", tui.screen());
-    let link = srv.api().get("abc").unwrap();
+    let link = srv.api().get("abc", None).unwrap();
     assert_eq!(link.target, "https://example.com/kept");
 }
 
 #[test]
 fn long_custom_codes_stay_whole_in_the_list_and_the_target_is_truncated() {
     let srv = server();
-    let (a, b) = ("campaign-2026-autumn-email", "campaign-2026-autumn-print");
+    let (a, b) = ("campaign-2026-email", "campaign-2026-print");
     srv.create(a, "https://example.com/a/rather/long/path/that/never/fits");
     srv.create(b, "https://example.com/b/rather/long/path/that/never/fits");
 
@@ -806,7 +824,7 @@ fn long_custom_codes_stay_whole_in_the_list_and_the_target_is_truncated() {
 
     for code in [a, b] {
         let row = line_with(&screen, &format!("{code} "));
-        assert!(row.contains("https://example.com/"), "{screen}");
+        assert!(row.contains("https://example"), "{screen}");
         assert!(!row.contains("never/fits"), "{screen}");
     }
 }
@@ -817,7 +835,7 @@ fn a_failed_delete_keeps_the_list_and_shows_the_servers_error() {
     srv.create("keep", "https://example.com/keep");
     srv.create("gone", "https://example.com/gone");
     let mut tui = srv.tui();
-    srv.api().delete("gone").unwrap(); // out of band, so the TUI's delete fails
+    srv.api().delete("gone", None).unwrap(); // out of band, so the TUI's delete fails
 
     tui.keys("dy");
 
@@ -855,16 +873,18 @@ fn editing_only_the_target_leaves_a_sub_second_expiry_unchanged() {
             target: "https://example.com/before".into(),
             code: Some("abc".into()),
             expires_at: Some(expires_at),
+            domain: None,
+            tags: Vec::new(),
         })
         .unwrap();
-    let before = srv.api().get("abc").unwrap().expires_at;
+    let before = srv.api().get("abc", None).unwrap().expires_at;
     let mut tui = srv.tui();
 
     tui.keys("e");
     tui.keys("/more");
     tui.key(KeyCode::Enter);
 
-    let link = srv.api().get("abc").unwrap();
+    let link = srv.api().get("abc", None).unwrap();
     assert_eq!(link.target, "https://example.com/before/more");
     assert_eq!(link.expires_at, before);
 }

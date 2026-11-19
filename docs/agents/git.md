@@ -14,7 +14,7 @@ Branches pushed to GitHub follow [Conventional Branch 1.1.0](https://conventiona
 Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/): `type(scope): description`.
 
 - Types: `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `build`, `ci`, `chore`, `revert`.
-- Scope names the area touched: `api`, `server`, `cli` (the crates), `tui` (`crates/cli/src/tui.rs`; the rest of the CLI is `cli`), `brand`, `release`. Leave it out when a change spans several.
+- Scope names the area touched: `api`, `server`, `cli` (the crates), `tui` (`crates/cli/src/tui.rs`; the rest of the CLI is `cli`), `web` (the web UI in `web/`), `brand`, `release`. Leave it out when a change spans several.
 - The issue a commit works on goes at the end of the description as a reference: `feat(tui): delete the selected Link after confirmation (#27)`.
 
 ## Pull requests

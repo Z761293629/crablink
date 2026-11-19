@@ -104,18 +104,39 @@ async fn an_instance_admin_makes_another_user_an_instance_admin() {
 }
 
 #[tokio::test]
-async fn an_instance_admin_cant_disable_or_demote_themselves() {
+async fn the_last_instance_admin_cant_be_disabled_or_demoted() {
     let app = app().await;
     let admin = instance_admin(&app).await;
+    // A disabled Instance Admin can't run the instance either.
+    patch_user(&app, &admin, OWNER, json!({ "instance_admin": true })).await;
+    patch_user(&app, &admin, OWNER, json!({ "disabled": true })).await;
 
     for body in [
         json!({ "disabled": true }),
         json!({ "instance_admin": false }),
     ] {
         let res = patch_user(&app, &admin, ROOT, body).await;
-        assert_eq!(res.json()["kind"], "bad_request", "{}", res.text);
+        assert_eq!(res.status, StatusCode::CONFLICT, "{}", res.text);
+        assert_eq!(res.json()["kind"], "last_instance_admin", "{}", res.text);
     }
     assert!(signed_in(&app, &admin).await);
+    assert_eq!(listed(&app, &admin, ROOT).await["instance_admin"], true);
+}
+
+#[tokio::test]
+async fn an_instance_admin_steps_down_once_another_runs_the_instance() {
+    let app = app().await;
+    let admin = instance_admin(&app).await;
+    patch_user(&app, &admin, OWNER, json!({ "instance_admin": true })).await;
+
+    let res = patch_user(&app, &admin, ROOT, json!({ "instance_admin": false })).await;
+
+    assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+    assert_eq!(res.json()["instance_admin"], false);
+    let res = app
+        .as_user("GET", "/api/admin/users", None, &app.owner.cookie)
+        .await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.text);
 }
 
 #[tokio::test]

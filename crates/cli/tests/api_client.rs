@@ -12,13 +12,15 @@ fn api_client_creates_links_and_lists_them_across_pages() {
                 target: format!("https://example.com/{i}"),
                 code: Some(format!("link{i:03}")),
                 expires_at: None,
+                domain: None,
+                tags: Vec::new(),
             })
             .unwrap();
         assert_eq!(link.code, format!("link{i:03}"));
     }
 
     let mut pages = Vec::new();
-    api.list(|page| pages.push(page)).unwrap();
+    api.list(None, None, |page| pages.push(page)).unwrap();
 
     assert!(
         pages.len() > 1,

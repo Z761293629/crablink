@@ -1,0 +1,252 @@
+/* Follows the system's light or dark theme through system colors. The status colors
+   reach 4.5:1 on Canvas in both themes (WCAG 2.2 AA); Crab Red is never small text. */
+:root {
+  color-scheme: light dark;
+  --danger: light-dark(#b42318, #ff8a7a);
+  --ok: light-dark(#1a7f37, #4ac26b);
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  background: Canvas;
+  color: CanvasText;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+}
+
+/* At least the logo's 120px minimum width; the header's padding and gap keep its 2X clear space. */
+header .logo {
+  display: flex;
+  margin-right: auto;
+}
+
+header .logo img {
+  height: 2.25rem;
+}
+
+main {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+.narrow {
+  display: grid;
+  gap: 1rem;
+  max-width: 22rem;
+  margin: 2rem auto;
+}
+
+.narrow label,
+.create-link label,
+.link-filter label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+/* Wraps to one field per line on a phone. */
+.create-link,
+.link-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.create-link label,
+.link-filter label {
+  flex: 1 1 12rem;
+}
+
+.csv-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.csv-tools .table,
+.csv-tools [role='alert'] {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.create-link [role='alert'] {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+td.actions > * + * {
+  margin-left: 0.5rem;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+}
+
+[role='alert'] {
+  color: var(--danger);
+}
+
+.table {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+  white-space: nowrap;
+}
+
+td.target {
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin-top: 2rem;
+}
+
+form.inline,
+label.inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 1rem 0;
+}
+
+label.inline input {
+  flex: 1;
+  min-width: 16rem;
+}
+
+td button + button {
+  margin-left: 0.5rem;
+}
+
+/* Click charts: one hue, its own step per theme. */
+.chart,
+.breakdowns {
+  --series: light-dark(#2a78d6, #3987e5);
+  --muted: color-mix(in srgb, CanvasText 60%, transparent);
+}
+
+.chart {
+  margin: 1rem 0;
+}
+
+.chart figcaption {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.chart svg {
+  display: block;
+  width: 100%;
+  height: 10rem;
+  fill: var(--series);
+}
+
+.chart svg rect:hover:not([fill]) {
+  opacity: 0.8;
+}
+
+.chart .axis {
+  stroke: color-mix(in srgb, CanvasText 25%, transparent);
+}
+
+.chart-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.breakdowns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0 2rem;
+}
+
+.breakdowns td {
+  white-space: normal;
+}
+
+.breakdowns td.count {
+  width: 1%;
+  text-align: right;
+}
+
+.breakdowns .bar {
+  height: 4px;
+  margin-top: 0.25rem;
+  border-radius: 2px;
+  background: var(--series);
+}
+
+/* A form or a group of buttons on one line, wrapping on a phone. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+}
+
+.secret {
+  padding: 0.5rem 1rem;
+  border: 1px solid color-mix(in srgb, CanvasText 30%, transparent);
+}
+
+.secret input {
+  width: min(36rem, 80vw);
+  font-family: ui-monospace, monospace;
+}
+
+/* On Canvas rather than the system button face, so its text keeps its contrast. */
+button.danger {
+  color: var(--danger);
+  background: Canvas;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
+
+[role='status'] {
+  color: var(--ok);
+}

@@ -392,11 +392,7 @@ impl<S: Sync> FromRequestParts<S> for SameOrigin {
 
 /// Whether the `Origin` header names the host the request was sent to.
 fn same_origin(parts: &Parts) -> bool {
-    let host = parts
-        .headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
-        .or_else(|| parts.uri.authority().map(|a| a.as_str()));
+    let host = crate::request_host(&parts.headers, &parts.uri);
     let origin = parts
         .headers
         .get(header::ORIGIN)

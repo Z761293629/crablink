@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, anyhow, bail};
 use chrono::{DateTime, TimeDelta, Utc};
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use crablink_api::{CreateLink, Link, QrFormat, UpdateLink};
 use serde::Serialize;
 
@@ -33,6 +33,15 @@ pub struct Cli {
     pub cmd: Option<Cmd>,
 }
 
+/// A Link on the command line: its Code, and its Domain unless the Default Domain.
+#[derive(Args)]
+pub struct LinkRef {
+    code: String,
+    /// The Link's Domain, e.g. go.example.com (the Default Domain otherwise).
+    #[arg(long)]
+    domain: Option<String>,
+}
+
 #[derive(Subcommand)]
 pub enum Cmd {
     /// Prompt for an API Key, learn its Workspace from the server, and save both.
@@ -46,26 +55,40 @@ pub enum Cmd {
         /// RFC 3339 timestamp, or a duration from now like 30m, 12h, 7d.
         #[arg(long)]
         expires: Option<String>,
+        /// The Domain the Link lives on, e.g. go.example.com (the Default Domain otherwise).
+        #[arg(long)]
+        domain: Option<String>,
+        /// A Tag to put on the Link; repeat for more.
+        #[arg(long = "tag", value_name = "TAG")]
+        tags: Vec<String>,
         /// Print the API's JSON for the new Link instead.
         #[arg(long)]
         json: bool,
     },
-    /// List all Links, newest first: Code, Click Count, Expiry, Target.
+    /// List all Links, newest first: Short URL, Click Count, Expiry, Target.
     Ls {
+        /// Only Links with this Tag.
+        #[arg(long)]
+        tag: Option<String>,
+        /// Only Links whose Code or Target contains this, ignoring case.
+        #[arg(long)]
+        search: Option<String>,
         /// Print one JSON array of every Link instead.
         #[arg(long)]
         json: bool,
     },
     /// Show one Link in detail.
     Get {
-        code: String,
+        #[command(flatten)]
+        link: LinkRef,
         /// Print the API's JSON instead.
         #[arg(long)]
         json: bool,
     },
     /// Change a Link's Target and/or Expiry.
     Edit {
-        code: String,
+        #[command(flatten)]
+        link: LinkRef,
         #[arg(long)]
         target: Option<String>,
         /// RFC 3339 timestamp, or a duration from now like 30m, 12h, 7d.
@@ -79,10 +102,14 @@ pub enum Cmd {
         json: bool,
     },
     /// Delete a Link (its Code is never reused).
-    Rm { code: String },
+    Rm {
+        #[command(flatten)]
+        link: LinkRef,
+    },
     /// Show a Link's QR code in the terminal, or save it to a file.
     Qr {
-        code: String,
+        #[command(flatten)]
+        link: LinkRef,
         /// Save to this file instead: .svg or .png.
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -110,6 +137,8 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
             target,
             code,
             expires,
+            domain,
+            tags,
             json,
         } => {
             let expires_at = expires.map(|e| expires_flag(&e, now)).transpose()?;
@@ -117,6 +146,8 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
                 target,
                 code,
                 expires_at,
+                domain,
+                tags,
             })?;
             if json {
                 print_json(&link)?;
@@ -124,51 +155,65 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
                 println!("{}", link.short_url);
             }
         }
-        Cmd::Ls { json: true } => {
+        Cmd::Ls {
+            tag,
+            search,
+            json: true,
+        } => {
             let mut all = Vec::new();
-            api.list(|links| all.extend(links))?;
+            api.list(tag.as_deref(), search.as_deref(), |links| all.extend(links))?;
             print_json(&all)?;
         }
-        Cmd::Ls { json: false } => api.list(|links| {
+        Cmd::Ls {
+            tag,
+            search,
+            json: false,
+        } => api.list(tag.as_deref(), search.as_deref(), |links| {
             for l in &links {
                 println!(
-                    "{:<20} {:>7}  {:<30}  {}",
-                    l.code,
+                    "{:<30} {:>7}  {:<30}  {}",
+                    short_url(l),
                     l.click_count,
                     expiry(l, now),
                     l.target
                 );
             }
         })?,
-        Cmd::Get { code, json } => show_link(&api.get(&code)?, json, now)?,
+        Cmd::Get { link, json } => {
+            show_link(&api.get(&link.code, link.domain.as_deref())?, json, now)?
+        }
         Cmd::Edit {
-            code,
+            link,
             target,
             expires,
             no_expires,
             json,
         } => {
             let body = edit_body(target, expires, no_expires, now)?;
-            show_link(&api.update(&code, &body)?, json, now)?;
+            show_link(
+                &api.update(&link.code, link.domain.as_deref(), &body)?,
+                json,
+                now,
+            )?;
         }
-        Cmd::Rm { code } => {
-            api.delete(&code)?;
-            eprintln!("Deleted {code}");
+        Cmd::Rm { link } => {
+            api.delete(&link.code, link.domain.as_deref())?;
+            eprintln!("Deleted {}", link.code);
         }
         Cmd::Qr {
-            code,
+            link,
             output: Some(path),
         } => {
             let format = qr_format(&path)?;
-            std::fs::write(&path, api.qr(&code, format)?)
+            std::fs::write(&path, api.qr(&link.code, link.domain.as_deref(), format)?)
                 .with_context(|| format!("cannot write {}", path.display()))?;
             eprintln!("Saved {}", path.display());
         }
-        Cmd::Qr { code, output: None } => {
+        Cmd::Qr { link, output: None } => {
             if !std::io::stdout().is_terminal() {
                 bail!("stdout is not a terminal: pass -o <file.svg|file.png> to save the QR code");
             }
-            let link = api.get(&code)?;
+            let link = api.get(&link.code, link.domain.as_deref())?;
             // As the server refuses `-o`: its Short URL no longer redirects.
             if link.is_expired(now) {
                 bail!("Link {} has expired: no QR code", link.code);
@@ -205,7 +250,16 @@ fn edit_body(
         None if no_expires => Some(None),
         None => None,
     };
-    Ok(UpdateLink { target, expires_at })
+    Ok(UpdateLink {
+        target,
+        expires_at,
+        tags: None,
+    })
+}
+
+/// The Short URL as lists show it: the Link's Domain and Code, e.g. `crabl.ink/aZ3k9`.
+pub(crate) fn short_url(l: &Link) -> String {
+    format!("{}/{}", l.domain, l.code)
 }
 
 pub(crate) fn timestamp(t: DateTime<Utc>) -> String {
@@ -246,6 +300,7 @@ fn print_link(l: &Link, now: DateTime<Utc>) {
     println!("Target:      {}", l.target);
     println!("Expiry:      {}", expiry(l, now));
     println!("Click Count: {}", l.click_count);
+    println!("Tags:        {}", l.tags.join(", "));
     println!("Created:     {}", timestamp(l.created_at));
     println!("Updated:     {}", timestamp(l.updated_at));
 }

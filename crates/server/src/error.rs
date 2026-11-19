@@ -57,12 +57,24 @@ pub enum ApiError {
     CodeReserved(String),
     #[error("code already taken")]
     CodeTaken,
+    #[error("tag must be 1-64 characters with no comma or control character")]
+    InvalidTag,
     #[error("no such User")]
     UserNotFound,
     #[error("already in this Workspace")]
     AlreadyMember,
     #[error("a Workspace needs an Owner: make someone else Owner first")]
     LastOwner,
+    #[error("the instance needs an Instance Admin: make someone else Instance Admin first")]
+    LastInstanceAdmin,
+    #[error("domain must be a host name such as go.example.com, without a port")]
+    InvalidDomain,
+    #[error("domain is the Default Domain or another Workspace's")]
+    DomainTaken,
+    #[error("domain not found")]
+    DomainNotFound,
+    #[error("domain is neither the Default Domain nor an approved Domain of this Workspace")]
+    DomainNotApproved,
     #[error("could not generate a free code, try again")]
     CodesExhausted,
     /// Details are logged, never sent.
@@ -92,9 +104,15 @@ impl ApiError {
             Self::InvalidCode => ErrorKind::InvalidCode,
             Self::CodeReserved(_) => ErrorKind::CodeReserved,
             Self::CodeTaken => ErrorKind::CodeTaken,
+            Self::InvalidTag => ErrorKind::InvalidTag,
             Self::UserNotFound => ErrorKind::UserNotFound,
             Self::AlreadyMember => ErrorKind::AlreadyMember,
             Self::LastOwner => ErrorKind::LastOwner,
+            Self::LastInstanceAdmin => ErrorKind::LastInstanceAdmin,
+            Self::InvalidDomain => ErrorKind::InvalidDomain,
+            Self::DomainTaken => ErrorKind::DomainTaken,
+            Self::DomainNotFound => ErrorKind::DomainNotFound,
+            Self::DomainNotApproved => ErrorKind::DomainNotApproved,
             Self::CodesExhausted | Self::Internal => ErrorKind::Internal,
         }
     }
@@ -105,31 +123,45 @@ impl ApiError {
                 StatusCode::UNAUTHORIZED
             }
             Self::Forbidden | Self::OriginMismatch | Self::WrongPassword => StatusCode::FORBIDDEN,
-            Self::NotFound | Self::LinkNotFound | Self::InviteNotFound | Self::UserNotFound => {
-                StatusCode::NOT_FOUND
-            }
+            Self::NotFound
+            | Self::LinkNotFound
+            | Self::InviteNotFound
+            | Self::UserNotFound
+            | Self::DomainNotFound => StatusCode::NOT_FOUND,
             Self::LinkExpired | Self::InviteExpired | Self::InviteUsed => StatusCode::GONE,
             Self::BadRequest(_)
             | Self::InvalidTarget(_)
             | Self::InvalidCode
             | Self::CodeReserved(_)
+            | Self::InvalidTag
             | Self::InvalidEmail
-            | Self::PasswordTooShort => StatusCode::BAD_REQUEST,
-            Self::CodeTaken | Self::EmailTaken | Self::AlreadyMember | Self::LastOwner => {
-                StatusCode::CONFLICT
-            }
+            | Self::PasswordTooShort
+            | Self::InvalidDomain
+            | Self::DomainNotApproved => StatusCode::BAD_REQUEST,
+            Self::CodeTaken
+            | Self::EmailTaken
+            | Self::AlreadyMember
+            | Self::LastOwner
+            | Self::LastInstanceAdmin
+            | Self::DomainTaken => StatusCode::CONFLICT,
             Self::CodesExhausted | Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl ApiError {
+    /// The JSON body: `kind` and the English message.
+    pub(crate) fn body(&self) -> crablink_api::ErrorBody {
+        crablink_api::ErrorBody {
+            kind: self.kind(),
+            error: self.to_string(),
         }
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let body = crablink_api::ErrorBody {
-            kind: self.kind(),
-            error: self.to_string(),
-        };
-        (self.status(), Json(body)).into_response()
+        (self.status(), Json(self.body())).into_response()
     }
 }
 

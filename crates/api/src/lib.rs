@@ -13,6 +13,68 @@ pub struct CreateLink {
     /// Expiry; a past value means "expired now".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<DateTime<Utc>>,
+    /// The Domain the Link lives on: the Default Domain when absent, else an approved
+    /// Domain of the Workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+    /// Tag names; each is created in the Workspace if new.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+}
+
+/// Query of `GET`, `PATCH` and `DELETE /api/workspaces/{slug}/links/{code}`: the
+/// Domain of the Link, the Default Domain when absent.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LinkDomain {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+}
+
+/// Body of `POST /api/workspaces/{slug}/domains`: a custom Domain for the Workspace,
+/// pending until an Instance Admin approves it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddDomain {
+    /// A host name such as `go.example.com`, without a port.
+    pub domain: String,
+}
+
+/// Whether a custom Domain may be used: only an approved one redirects, takes Links
+/// and gets a certificate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DomainStatus {
+    Pending,
+    Approved,
+    Rejected,
+}
+
+/// A Domain a Workspace can see, as listed by `GET /api/workspaces/{slug}/domains`:
+/// the Default Domain, then its own custom Domains.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Domain {
+    /// A host name, with a port for a Default Domain that has one. Addresses the
+    /// Domain in `/api/workspaces/{slug}/domains/{domain}`.
+    pub domain: String,
+    /// Always `approved` for the Default Domain.
+    pub status: DomainStatus,
+    /// Whether this is the instance's Default Domain, shared by every Workspace.
+    pub default: bool,
+}
+
+/// A custom Domain as an Instance Admin sees it, from `GET /api/admin/domains`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManagedDomain {
+    /// Addresses the Domain in `/api/admin/domains/{domain}`.
+    pub domain: String,
+    pub status: DomainStatus,
+    /// The Workspace slug of the Workspace that added it.
+    pub workspace_slug: String,
+}
+
+/// Body of `PATCH /api/admin/domains/{domain}`: approves or rejects it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateDomain {
+    pub status: DomainStatus,
 }
 
 /// Body of `PATCH /api/workspaces/{slug}/links/{code}`. An absent field is left unchanged.
@@ -28,6 +90,9 @@ pub struct UpdateLink {
         skip_serializing_if = "Option::is_none"
     )]
     pub expires_at: Option<Option<DateTime<Utc>>>,
+    /// Replaces all the Link's Tags; `[]` removes them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
 }
 
 /// Wraps any present value (including `null`) in `Some`; `default` covers absence.
@@ -48,6 +113,9 @@ pub struct Link {
     pub updated_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
     pub click_count: i64,
+    /// Its Tags' names, sorted.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 impl Link {
@@ -355,6 +423,9 @@ pub enum ErrorKind {
     CodeReserved,
     /// The Code is taken on its Domain, possibly by a Deleted Link.
     CodeTaken,
+    /// A Tag name that is empty, longer than 64 characters, or has a comma or a
+    /// control character.
+    InvalidTag,
     /// No User has this email or id; on a `/members` route, none in this Workspace.
     UserNotFound,
     /// Adding a User who is already in the Workspace.
@@ -362,6 +433,19 @@ pub enum ErrorKind {
     /// Removing or demoting the Workspace's last Owner, themself included: it would
     /// leave no one to manage it.
     LastOwner,
+    /// Disabling or demoting the instance's last enabled Instance Admin, themself
+    /// included: it would leave no one to run it.
+    LastInstanceAdmin,
+    /// A Domain host that isn't a host name such as `go.example.com`.
+    InvalidDomain,
+    /// The Domain is the Default Domain or another Workspace's.
+    DomainTaken,
+    /// The Workspace has no custom Domain with this host; for an Instance Admin, no
+    /// Workspace has.
+    DomainNotFound,
+    /// A Link on a Domain that is neither the Default Domain nor an approved Domain of
+    /// the Workspace.
+    DomainNotApproved,
     /// The server failed; details are in its log, never in `error`. Includes running out
     /// of free Generated Codes, where retrying may help.
     Internal,
@@ -380,6 +464,12 @@ pub struct ListLinks {
     /// Opaque: pass back the previous page's `next_cursor`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Only Links with this Tag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// Only Links whose Code or Target contains this, ignoring case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub q: Option<String>,
 }
 
 /// Response of `GET /api/workspaces/{slug}/links`: newest first; `next_cursor` is `None` on the last page.
@@ -389,11 +479,26 @@ pub struct LinkPage {
     pub next_cursor: Option<String>,
 }
 
+/// One row of the response of `POST /api/workspaces/{slug}/links.csv`: the created
+/// Link's Short URL, or why the row was skipped.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportedRow {
+    /// The row's line in the CSV file, the header being line 1.
+    pub line: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipped: Option<ErrorBody>,
+}
+
 /// Query of `GET /api/workspaces/{slug}/links/{code}/qr`: SVG when `format` is absent.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QrQuery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<QrFormat>,
+    /// The Domain of the Link, the Default Domain when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
 }
 
 /// The file format of a Link's QR code.
@@ -420,6 +525,85 @@ impl QrFormat {
             QrFormat::Png => "image/png",
         }
     }
+}
+
+/// Query of `GET /api/workspaces/{slug}/links/{code}/clicks`: Clicks at or after
+/// `from` and before `to`, counted per `interval` (a day when absent, in UTC).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClicksQuery {
+    pub from: DateTime<Utc>,
+    pub to: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval: Option<Interval>,
+    /// The Domain of the Link, the Default Domain when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+}
+
+/// The width of a time bucket of Clicks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Interval {
+    Hour,
+    Day,
+}
+
+/// Response of `GET /api/workspaces/{slug}/links/{code}/clicks`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClickStats {
+    /// Every bucket from the one holding `from` up to `to`, empty ones included.
+    pub series: Vec<ClickBucket>,
+    /// By Referrer host; `None` for Clicks with no Referrer.
+    pub referrers: Vec<ClickBreakdown>,
+    /// By ISO 3166-1 alpha-2 country code; `None` where it is unknown.
+    pub countries: Vec<ClickBreakdown>,
+    /// By `desktop`, `mobile` or `tablet`.
+    pub devices: Vec<ClickBreakdown>,
+    /// By browser name, e.g. `Chrome`; `None` where it is unknown.
+    pub browsers: Vec<ClickBreakdown>,
+}
+
+/// The Clicks in the bucket starting at `time`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClickBucket {
+    pub time: DateTime<Utc>,
+    pub count: i64,
+}
+
+/// The Clicks sharing one `value`; breakdowns list the most Clicks first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClickBreakdown {
+    pub value: Option<String>,
+    pub count: i64,
+}
+
+/// Query of `GET /api/workspaces/{slug}/clicks`: Clicks at or after `from` and
+/// before `to`, counted per `interval` (a day when absent, in UTC).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceClicksQuery {
+    pub from: DateTime<Utc>,
+    pub to: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval: Option<Interval>,
+}
+
+/// Response of `GET /api/workspaces/{slug}/clicks`: the Clicks of all the Workspace's
+/// Links, Deleted Links included, since Clicks are kept forever.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceClicks {
+    /// Every bucket from the one holding `from` up to `to`, empty ones included.
+    pub series: Vec<ClickBucket>,
+    /// The live Links with the most Clicks in the range, most first; at most 10.
+    pub top_links: Vec<TopLink>,
+}
+
+/// A Link and its Clicks in the range.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TopLink {
+    pub code: String,
+    pub domain: String,
+    pub short_url: String,
+    pub count: i64,
 }
 
 #[cfg(test)]
@@ -488,6 +672,7 @@ mod tests {
             let req = UpdateLink {
                 target: None,
                 expires_at: dto,
+                tags: None,
             };
             assert_eq!(serde_json::to_value(&req).unwrap(), wire);
             let back: UpdateLink = serde_json::from_value(wire).unwrap();
@@ -507,6 +692,7 @@ mod tests {
             updated_at: t,
             expires_at,
             click_count: 0,
+            tags: Vec::new(),
         };
         let second = chrono::TimeDelta::seconds(1);
         assert!(!link(None).is_expired(t));
