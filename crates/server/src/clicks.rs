@@ -232,7 +232,8 @@ pub(crate) async fn link_clicks(
 const TOP_LINKS: i64 = 10;
 
 /// `GET /api/workspaces/{slug}/clicks`: the Clicks of all the Workspace's Links over a
-/// time range, per hour or day (UTC), and the Links with the most of them.
+/// time range, per hour or day (UTC), Deleted Links included so past totals never
+/// shrink, and the live Links with the most of them.
 pub(crate) async fn workspace_clicks(
     State(s): State<AppState>,
     caller: Caller,
@@ -242,8 +243,8 @@ pub(crate) async fn workspace_clicks(
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
     let unit = bucket_unit(q.from, q.to, q.interval)?;
-    let sql =
-        series_sql!("IN (SELECT id FROM links WHERE workspace_id = $4 AND deleted_at IS NULL)");
+    // A removed Domain's Links keep their Workspace; a deleted Workspace's are no one's.
+    let sql = series_sql!("IN (SELECT id FROM links WHERE workspace_id = $4)");
     let series = series(&s, sql, unit, (q.from, q.to), workspace_id).await?;
     let top: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT l.code, d.host, count(*) FROM clicks c \

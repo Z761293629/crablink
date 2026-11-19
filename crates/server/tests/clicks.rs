@@ -290,3 +290,42 @@ async fn workspace_clicks_total_its_links_and_rank_the_top_links() {
         })
     );
 }
+
+/// Clicks are kept forever: a Workspace's past totals never shrink when a Link is
+/// deleted or its Domain removed.
+#[tokio::test]
+async fn workspace_clicks_still_count_deleted_links_and_removed_domains() {
+    let app = app().await;
+    app.approved_domain("go.example.com").await;
+    app.create(json!({ "code": "gone", "target": "https://example.com" }))
+        .await;
+    app.create(
+        json!({ "code": "away", "domain": "go.example.com", "target": "https://example.com" }),
+    )
+    .await;
+    app.set_now("2026-03-01T10:00:00Z");
+    app.visit("/gone", &[("user-agent", BROWSER_UA)]).await;
+    let res = app
+        .visit_on("go.example.com", "/away", &[("user-agent", BROWSER_UA)])
+        .await;
+    assert_eq!(res.status, StatusCode::FOUND, "{}", res.text);
+
+    let res = app.api("DELETE", "/links/gone", None).await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.text);
+    let path = format!("/api/workspaces/{}/domains/go.example.com", app.owner.slug);
+    let res = app.as_user("DELETE", &path, None, &app.owner.cookie).await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.text);
+
+    let res = app
+        .api(
+            "GET",
+            "/clicks?from=2026-03-01T00:00:00Z&to=2026-03-02T00:00:00Z",
+            None,
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+    assert_eq!(
+        res.json()["series"],
+        json!([{ "time": "2026-03-01T00:00:00Z", "count": 2 }])
+    );
+}

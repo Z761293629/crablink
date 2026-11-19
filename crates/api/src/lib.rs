@@ -584,12 +584,12 @@ pub struct WorkspaceClicksQuery {
 }
 
 /// Response of `GET /api/workspaces/{slug}/clicks`: the Clicks of all the Workspace's
-/// Links.
+/// Links, Deleted Links included, since Clicks are kept forever.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceClicks {
     /// Every bucket from the one holding `from` up to `to`, empty ones included.
     pub series: Vec<ClickBucket>,
-    /// The Links with the most Clicks in the range, most first; at most 10.
+    /// The live Links with the most Clicks in the range, most first; at most 10.
     pub top_links: Vec<TopLink>,
 }
 

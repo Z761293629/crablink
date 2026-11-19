@@ -295,7 +295,12 @@ impl TestApp {
 
     /// A visitor following a Short URL from `SOCKET_IP`, sending `headers`.
     pub async fn visit(&self, path: &str, headers: &[(&str, &str)]) -> Res {
-        let mut req = Request::get(path).header(header::HOST, HOST);
+        self.visit_on(HOST, path, headers).await
+    }
+
+    /// `visit` on Domain `host`.
+    pub async fn visit_on(&self, host: &str, path: &str, headers: &[(&str, &str)]) -> Res {
+        let mut req = Request::get(path).header(header::HOST, host);
         for (name, value) in headers {
             req = req.header(*name, *value);
         }
