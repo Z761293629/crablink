@@ -169,7 +169,7 @@ crablink create https://example.com/a/very/long/path
 crablink create https://rustconf.com --code rust-meetup --expires 7d
 crablink create https://example.com/sale --domain go.example.com   # 建在 Workspace 已批准的自定义 Domain 上
 crablink rm sale --domain go.example.com     # get / edit / rm / qr 同样用 --domain 指定 Domain，默认 Default Domain
-crablink ls                                  # 全部 Link：Code、Click Count、Expiry、Target
+crablink ls                                  # 全部 Link：Short URL、Click Count、Expiry、Target
 crablink get rust-meetup
 crablink edit rust-meetup --target https://rustconf.com/2027
 crablink edit rust-meetup --no-expires       # 或 --expires 30d / RFC 3339，二者互斥

@@ -56,7 +56,7 @@ pub enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// List all Links, newest first: Code, Click Count, Expiry, Target.
+    /// List all Links, newest first: Short URL, Click Count, Expiry, Target.
     Ls {
         /// Only Links with this Tag.
         #[arg(long)]
@@ -170,8 +170,8 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
         } => api.list(tag.as_deref(), search.as_deref(), |links| {
             for l in &links {
                 println!(
-                    "{:<20} {:>7}  {:<30}  {}",
-                    l.code,
+                    "{:<30} {:>7}  {:<30}  {}",
+                    short_url(l),
                     l.click_count,
                     expiry(l, now),
                     l.target
@@ -256,6 +256,11 @@ fn edit_body(
         expires_at,
         tags: None,
     })
+}
+
+/// The Short URL as lists show it: the Link's Domain and Code, e.g. `crabl.ink/aZ3k9`.
+pub(crate) fn short_url(l: &Link) -> String {
+    format!("{}/{}", l.domain, l.code)
 }
 
 pub(crate) fn timestamp(t: DateTime<Utc>) -> String {
