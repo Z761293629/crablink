@@ -1,14 +1,20 @@
 // Managing a Workspace: renaming, deleting and leaving it, its members and its API
 // Keys (Owners only, as the API enforces), and creating a new one.
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type ApiKey, type Membership, type NewApiKey, type WorkspaceUser } from './api';
 import { errorMessage } from './i18n';
 import { useConfirm, useLocationKey } from './ui';
 
-/** Runs an action, showing its error in the page's one alert. */
-type Run = (action: () => Promise<unknown>) => Promise<void>;
+/** Where an action's error shows: in the form that ran it, or over the page. */
+type At = 'page' | 'rename' | 'members' | 'keys' | 'new';
+
+/** Runs an action, showing its error at `at`. */
+type Run = (action: () => Promise<unknown>, at?: At) => Promise<void>;
+
+/** The error of the action run at `at`, if that is where the last one failed. */
+type Alert = (at: At) => ReactNode;
 
 /** Asks "Are you sure?" in the page's dialog; resolves to whether `action` was chosen. */
 type Ask = (message: string, action: string) => Promise<boolean>;
@@ -36,22 +42,23 @@ export function ManageWorkspace({
   onChanged: (prefer?: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const [error, setError] = useState<unknown>();
+  const [error, setError] = useState<{ at: At; error: unknown }>();
   const [dialog, ask] = useConfirm();
-  const run: Run = useCallback(async (action) => {
+  const run: Run = useCallback(async (action, at = 'page') => {
     setError(undefined);
     try {
       await action();
     } catch (err) {
-      setError(err);
+      setError({ at, error: err });
       throw err;
     }
   }, []);
   // An error is already shown; the form keeps what was typed.
-  const attempt = (action: () => Promise<unknown>) => run(action).then(
+  const attempt = (action: () => Promise<unknown>, at?: At) => run(action, at).then(
     () => true,
     () => false,
   );
+  const alert: Alert = (at) => error?.at === at && <p role="alert">{errorMessage(t, error.error)}</p>;
 
   // `#new`, from New Workspace in the switcher: straight to naming it.
   const where = useLocationKey();
@@ -77,7 +84,7 @@ export function ManageWorkspace({
 
   return (
     <div className="counter">
-      {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+      {alert('page')}
       {workspace ? (
         // The Workspace as a pass: its name as the Code, the role and members as segments,
         // and on the stub its API Keys, then leaving and deleting it.
@@ -104,7 +111,7 @@ export function ManageWorkspace({
                       attempt(async () => {
                         await api('PATCH', path!, { name });
                         await onChanged();
-                      }),
+                      }, 'rename'),
                     )}
                   >
                     <label className="micro" htmlFor="ws-rename">
@@ -114,15 +121,24 @@ export function ManageWorkspace({
                       <input id="ws-rename" name="name" defaultValue={workspace.name} required maxLength={100} />
                       <button type="submit">{t('workspace.rename')}</button>
                     </span>
+                    {alert('rename')}
                   </form>
                 )}
                 {owner && (
-                  <Members path={path!} email={email} run={run} attempt={attempt} ask={ask} onChanged={onChanged} />
+                  <Members
+                    path={path!}
+                    email={email}
+                    run={run}
+                    attempt={attempt}
+                    ask={ask}
+                    alert={alert}
+                    onChanged={onChanged}
+                  />
                 )}
               </div>
             </div>
             <div className="tear">
-              {owner && <ApiKeys path={path!} run={run} attempt={attempt} ask={ask} />}
+              {owner && <ApiKeys path={path!} run={run} attempt={attempt} ask={ask} alert={alert} />}
               <p className="leave">
                 <button onClick={leave}>{t('workspace.leave')}</button>
                 {owner && (
@@ -145,7 +161,7 @@ export function ManageWorkspace({
           attempt(async () => {
             const created = await api<Membership>('POST', '/workspaces', { name });
             await onChanged(created.slug);
-          }),
+          }, 'new'),
         )}
       >
         <div className="ticket-body">
@@ -154,6 +170,7 @@ export function ManageWorkspace({
             <span className="micro">{t('workspace.newName')}</span>
             <input name="name" required maxLength={100} />
           </label>
+          {alert('new')}
         </div>
         <div className="tear">
           <button type="submit" className="primary">
@@ -170,8 +187,9 @@ interface SectionProps {
   /** `/workspaces/{slug}`. */
   path: string;
   run: Run;
-  attempt: (action: () => Promise<unknown>) => Promise<boolean>;
+  attempt: (action: () => Promise<unknown>, at?: At) => Promise<boolean>;
   ask: Ask;
+  alert: Alert;
 }
 
 function Members({
@@ -180,10 +198,12 @@ function Members({
   run,
   attempt,
   ask,
+  alert,
   onChanged,
 }: SectionProps & { email: string; onChanged: () => Promise<void> }) {
   const { t } = useTranslation();
-  const [members, setMembers] = useState<WorkspaceUser[]>([]);
+  // None until loaded, so the count never flashes 0.
+  const [members, setMembers] = useState<WorkspaceUser[]>();
   const load = useCallback(
     () => run(async () => setMembers(await api<WorkspaceUser[]>('GET', `${path}/members`))),
     [path, run],
@@ -198,14 +218,15 @@ function Members({
       const url = `${path}/members/${encodeURIComponent(member)}`;
       await (role ? api('PATCH', url, { role }) : api('DELETE', url));
       await (member === email ? onChanged() : load());
-    });
+    }, 'members');
 
   // A Workspace keeps an Owner: the only one isn't offered Make Member.
-  const owners = members.filter((m) => m.role === 'owner').length;
+  const owners = members?.filter((m) => m.role === 'owner').length ?? 0;
   return (
     <section className="seg wide">
       <h2 className="micro">
-        {t('members.title')} · {members.length}
+        {t('members.title')}
+        {members && ` · ${members.length}`}
       </h2>
       <div className="table">
         <table className="gate" aria-label={t('members.title')}>
@@ -217,7 +238,7 @@ function Members({
             </tr>
           </thead>
           <tbody>
-            {members.map((m) => (
+            {members?.map((m) => (
               <tr key={m.email}>
                 <td className="mono">{m.email}</td>
                 <td>
@@ -251,7 +272,7 @@ function Members({
         onSubmit={onSubmit(({ email }) => attempt(async () => {
           await api('POST', `${path}/members`, { email });
           await load();
-        }))}
+        }, 'members'))}
       >
         <label className="field">
           <span className="micro">{t('members.addEmail')}</span>
@@ -261,11 +282,12 @@ function Members({
           {t('members.add')}
         </button>
       </form>
+      {alert('members')}
     </section>
   );
 }
 
-function ApiKeys({ path, run, attempt, ask }: SectionProps) {
+function ApiKeys({ path, run, attempt, ask, alert }: SectionProps) {
   const { t, i18n } = useTranslation();
   const secret = useRef<HTMLInputElement>(null);
   const [copyFailed, setCopyFailed] = useState(false);
@@ -316,7 +338,7 @@ function ApiKeys({ path, run, attempt, ask }: SectionProps) {
                           await api('DELETE', `${path}/api-keys/${key.id}`);
                           if (created?.id === key.id) setCreated(undefined);
                           await load();
-                        })
+                        }, 'keys')
                       }
                     >
                       {t('apiKeys.revoke')}
@@ -360,7 +382,7 @@ function ApiKeys({ path, run, attempt, ask }: SectionProps) {
         onSubmit={onSubmit(({ name }) => attempt(async () => {
           setCreated(await api<NewApiKey>('POST', `${path}/api-keys`, { name }));
           await load();
-        }))}
+        }, 'keys'))}
       >
         <label className="field">
           <span className="micro">{t('apiKeys.newName')}</span>
@@ -370,6 +392,7 @@ function ApiKeys({ path, run, attempt, ask }: SectionProps) {
           {t('apiKeys.create')}
         </button>
       </form>
+      {alert('keys')}
     </section>
   );
 }

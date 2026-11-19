@@ -2,13 +2,15 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type DomainStatus, type ManagedDomain, type ManagedUser } from './api';
 import { errorMessage } from './i18n';
+import { useConfirm } from './ui';
 
 const fetchAll = () =>
   Promise.all([api<ManagedUser[]>('GET', '/admin/users'), api<ManagedDomain[]>('GET', '/admin/domains')]);
 
 /** Instance administration: Users, invites and custom Domains. The API refuses anyone but an Instance Admin. */
-export function InstanceAdmin() {
+export function InstanceAdmin({ me }: { /** The signed-in User's email. */ me: string }) {
   const { t } = useTranslation();
+  const [dialog, ask] = useConfirm();
   const [users, setUsers] = useState<ManagedUser[]>();
   const [domains, setDomains] = useState<ManagedDomain[]>();
   // A just reset password, shown once next to its User.
@@ -45,6 +47,18 @@ export function InstanceAdmin() {
     act(async () => setReset({ id, ...(await api<{ password: string }>('POST', `/admin/users/${id}/password`)) }));
   const setStatus = (domain: string, status: DomainStatus) =>
     act(() => api('PATCH', `/admin/domains/${encodeURIComponent(domain)}`, { status }));
+
+  // Taking something away is asked first: a User signed out, rights revoked, an approved Domain's Short URLs dead.
+  const disable = async (u: ManagedUser) =>
+    (await ask(t('admin.users.confirmDisable', { email: u.email }), t('admin.users.confirmDisableAction'))) &&
+    updateUser(u.id, { disabled: true });
+  const revoke = async (u: ManagedUser) =>
+    (await ask(t('admin.users.confirmRevoke', { email: u.email }), t('admin.users.confirmRevokeAction'))) &&
+    updateUser(u.id, { instance_admin: false });
+  const reject = async (d: ManagedDomain) =>
+    (d.status !== 'approved' ||
+      (await ask(t('admin.domains.confirmReject', { domain: d.domain }), t('admin.domains.confirmRejectAction')))) &&
+    setStatus(d.domain, 'rejected');
 
   async function createInvite(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -88,6 +102,7 @@ export function InstanceAdmin() {
                   <tr key={u.id}>
                     <td className="mono primary">
                       {u.email}
+                      {u.email === me && <span className="micro"> · {t('admin.users.you')}</span>}
                       {reset?.id === u.id && (
                         <label className="reset">
                           <span className="micro">{t('admin.users.newPassword')}</span> <output>{reset.password}</output>
@@ -102,12 +117,23 @@ export function InstanceAdmin() {
                       </span>
                     </td>
                     <td className="actions">
-                      <button className="small" onClick={() => updateUser(u.id, { disabled: !u.disabled })}>
-                        {u.disabled ? t('admin.users.enable') : t('admin.users.disable')}
-                      </button>
-                      <button className="small" onClick={() => updateUser(u.id, { instance_admin: !u.instance_admin })}>
-                        {u.instance_admin ? t('admin.users.revokeAdmin') : t('admin.users.makeAdmin')}
-                      </button>
+                      {/* Never offered on one's own row: an Instance Admin can't lock themself out. */}
+                      {u.email !== me && (
+                        <>
+                          <button
+                            className="small"
+                            onClick={() => (u.disabled ? updateUser(u.id, { disabled: false }) : disable(u))}
+                          >
+                            {u.disabled ? t('admin.users.enable') : t('admin.users.disable')}
+                          </button>
+                          <button
+                            className="small"
+                            onClick={() => (u.instance_admin ? revoke(u) : updateUser(u.id, { instance_admin: true }))}
+                          >
+                            {u.instance_admin ? t('admin.users.revokeAdmin') : t('admin.users.makeAdmin')}
+                          </button>
+                        </>
+                      )}
                       <button className="small" onClick={() => resetPassword(u.id)}>
                         {t('admin.users.resetPassword')}
                       </button>
@@ -154,7 +180,7 @@ export function InstanceAdmin() {
                           </button>
                         )}
                         {d.status !== 'rejected' && (
-                          <button className="small" onClick={() => setStatus(d.domain, 'rejected')}>
+                          <button className="small" onClick={() => reject(d)}>
                             {t('admin.domains.reject')}
                           </button>
                         )}
@@ -192,6 +218,7 @@ export function InstanceAdmin() {
           )}
         </div>
       </form>
+      {dialog}
     </div>
   );
 }

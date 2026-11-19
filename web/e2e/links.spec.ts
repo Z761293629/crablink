@@ -50,7 +50,14 @@ test('a User creates a Link with a Custom Code, changes its Target from the pass
   await pass.getByLabel('Target').fill('https://example.com/second');
   await pass.getByLabel('Expiry').fill('2030-01-02T03:04');
   await pass.getByRole('button', { name: 'Save' }).click();
+  // A new Target repoints every printed copy, so it says from where to where first.
+  await expect(page.getByRole('dialog')).toContainText('https://example.com/first');
+  await expect(page.getByRole('dialog')).toContainText('https://example.com/second');
+  await confirmDialog(page);
+  await expect(page.getByText(`${shortUrl} now points to https://example.com/second`)).toBeVisible();
   await expect(row).toContainText('https://example.com/second');
+  // Saved: focus is back on Change Target.
+  await expect(change).toBeFocused();
   // The row shows the Expiry's day; the pass carries its time.
   await expect(row).toContainText('Jan 2, 2030');
   await expect(pass).toContainText('3:04 AM');
@@ -139,11 +146,19 @@ test("a Link's QR code downloads as PNG or SVG from its pass, and its Short URL 
     expect((await file.failure()) ?? null).toBeNull();
   }
 
-  // The selected row leaves Copy and QR to its pass; another row's QR is a PNG too.
-  await expect(page.getByRole('link', { name: `Download QR of ${code} (PNG)` })).toBeHidden();
+  // Beside the pass at this width a row keeps Copy and QR in its More menu; another row's QR is a PNG too.
+  await expect(page.getByRole('link', { name: `Download QR of ${code} (PNG)` })).toHaveCount(0);
+  const otherRow = page.getByRole('row').filter({ hasText: `${baseURL}/${other}` });
+  await otherRow.getByRole('button', { name: `More: ${other}` }).click();
   const download = page.waitForEvent('download');
-  await page.getByRole('link', { name: `Download QR of ${other} (PNG)` }).click();
+  await page.getByRole('menuitem', { name: 'Download QR' }).click();
   expect((await download).suggestedFilename()).toBe(`${other}.png`);
+
+  // On a screen with room, the row carries its own Copy and QR.
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const wide = page.waitForEvent('download');
+  await page.getByRole('link', { name: `Download QR of ${other} (PNG)` }).click();
+  expect((await wide).suggestedFilename()).toBe(`${other}.png`);
 });
 
 test('when the clipboard refuses, the Short URL shows selected to copy by hand', async ({ page, user }) => {
@@ -155,7 +170,7 @@ test('when the clipboard refuses, the Short URL shows selected to copy by hand',
   await signInPage(page, user.email, user.password);
 
   await selectedPass(page).getByRole('button', { name: 'Copy' }).click();
-  await expect(page.getByText('Press and hold the Short URL')).toBeVisible();
+  await expect(page.getByText('press and hold to copy')).toBeVisible();
   const manual = selectedPass(page).getByRole('textbox', { name: 'Short URL' });
   await expect(manual).toHaveValue(`${baseURL}/${code}`);
   await expect(manual).toBeFocused();

@@ -1,5 +1,5 @@
 import { instanceAdmin } from '../playwright.config';
-import { test, expect, openUserMenu, openWorkspaceMenu, signInPage, userMenu } from './fixtures';
+import { test, expect, confirmDialog, openUserMenu, openWorkspaceMenu, signInPage, userMenu } from './fixtures';
 
 test('an Instance Admin creates an invite into a Workspace, and a new User accepts it', async ({ page, browser, user }) => {
   const email = `invited-${Date.now()}@example.com`;
@@ -49,20 +49,20 @@ test('an Instance Admin resets a password, then disables the User', async ({ pag
   await signInPage(userPage, user.email, password!);
 
   await row.getByRole('button', { name: 'Disable' }).click();
+  await expect(page.getByRole('dialog')).toContainText(`Disable ${user.email}?`);
+  await confirmDialog(page);
   await expect(row).toContainText('Disabled');
   await userPage.reload();
   await expect(userPage.getByRole('button', { name: 'Sign in' })).toBeVisible();
 });
 
-test('the last Instance Admin is told they can’t revoke themselves', async ({ page }) => {
+test('an Instance Admin is never offered to disable or revoke themselves', async ({ page }) => {
   await signInPage(page, instanceAdmin.email, instanceAdmin.password);
   await openUserMenu(page);
   await page.getByRole('link', { name: 'Instance Admin' }).click();
   const row = page.getByRole('row').filter({ hasText: instanceAdmin.email });
-  await row.getByRole('button', { name: 'Revoke Instance Admin' }).click();
-
-  await expect(page.getByRole('alert')).toHaveText(
-    'The instance needs an Instance Admin: make someone else Instance Admin first.',
-  );
-  await expect(row.getByRole('button', { name: 'Revoke Instance Admin' })).toBeVisible();
+  await expect(row).toContainText('you');
+  await expect(row.getByRole('button', { name: 'Reset password' })).toBeVisible();
+  await expect(row.getByRole('button', { name: 'Revoke Instance Admin' })).toHaveCount(0);
+  await expect(row.getByRole('button', { name: 'Disable' })).toHaveCount(0);
 });

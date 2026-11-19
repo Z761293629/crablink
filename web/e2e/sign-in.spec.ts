@@ -23,7 +23,8 @@ test('a User signs in, sees their Links and signs out', async ({ page, user }) =
     `${baseURL}/${code}`,
     /^https:\/\/example\.com\/expiring\s*Expiry Jan 2, 2030$/,
     '0',
-    /Copy/,
+    // Beside the pass at this width, a row's Copy and QR are in its More menu.
+    /More/,
   ]);
   const forever = links.getByRole('row').filter({ hasText: 'https://example.com/forever' });
   await forever.getByRole('button').first().click();

@@ -32,7 +32,7 @@
     "save": "保存",
     "cancel": "取消",
     "delete": "删除",
-    "confirmDelete": "删除 {{url}}？短码 {{code}} 将永远不能在 {{domain}} 上再次使用。",
+    "confirmDelete": "删除 {{url}}？扫描已印出的二维码将打不开，短码 {{code}} 也永远不能在 {{domain}} 上再次使用。",
     "copy": "复制",
     "copied": "已复制",
     "more": "加载更多",
@@ -69,7 +69,8 @@
       "created": "已创建 {{url}}",
       "updated": "已保存 {{url}}",
       "deleted": "已删除 {{url}}",
-      "copied": "已复制 {{url}}"
+      "copied": "已复制 {{url}}",
+      "retargeted": "{{url}} 现在指向 {{target}}"
     },
     "loading": "正在加载链接",
     "viewClicks": "查看点击",
@@ -82,9 +83,15 @@
     "downloadQr": "下载 QR",
     "downloadQrAs": "下载 QR（{{format}}）",
     "downloadQrOf": "下载 {{code}} 的 QR（PNG）",
-    "copyFailed": "无法自动复制，请长按短网址（或按 Ctrl+C）复制。",
+    "copyFailed": "无法自动复制，短网址已选中：请长按复制，或按 Ctrl+C / ⌘C。",
     "moreOptions": "更多选项",
-    "confirmDeleteAction": "删除链接"
+    "confirmDeleteAction": "删除链接",
+    "edit": "编辑",
+    "confirmRetarget": "修改 {{url}} 的目标网址？",
+    "confirmRetargetAction": "改为新目标网址",
+    "retargetFrom": "原来",
+    "retargetTo": "改为",
+    "confirmRetargetNote": "所有已印出的二维码和分享出去的短网址都会跟着指向新网址。"
   },
   "nav": {
     "links": "链接",
@@ -97,7 +104,8 @@
     "label": "页面",
     "settings": "设置",
     "newWorkspace": "新建工作区",
-    "userMenu": "账户菜单"
+    "userMenu": "账户菜单",
+    "backToSettings": "设置"
   },
   "clicks": {
     "clicks": "点击",
@@ -130,7 +138,8 @@
     "from": "起",
     "to": "止",
     "topLink": "最多点击",
-    "linksClicked": "有点击的链接"
+    "linksClicked": "有点击的链接",
+    "loading": "正在加载点击"
   },
   "invite": {
     "title": "接受邀请",
@@ -160,7 +169,7 @@
       "title": "邀请用户",
       "email": "邮箱",
       "workspace": "工作区",
-      "workspaceHint": "slug，可选",
+      "workspaceHint": "工作区标识，可留空",
       "create": "创建邀请链接",
       "link": "邀请链接"
     },
@@ -169,7 +178,9 @@
       "workspace": "工作区",
       "approve": "批准",
       "reject": "拒绝",
-      "empty": "还没有自定义域名。"
+      "empty": "还没有自定义域名。",
+      "confirmReject": "拒绝 {{domain}}？它上面所有短网址（包括已印出的二维码）都将打不开。",
+      "confirmRejectAction": "拒绝域名"
     },
     "users": {
       "title": "用户",
@@ -183,7 +194,12 @@
       "revokeAdmin": "取消实例管理员",
       "resetPassword": "重置密码",
       "newPassword": "新密码：",
-      "active": "正常"
+      "active": "正常",
+      "confirmDisable": "停用 {{email}}？对方将立即被登出，且不能再登录。",
+      "confirmDisableAction": "停用用户",
+      "confirmRevoke": "取消 {{email}} 的实例管理员权限？",
+      "confirmRevokeAction": "取消实例管理员",
+      "you": "你"
     }
   },
   "members": {

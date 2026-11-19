@@ -412,6 +412,14 @@ input[readonly] {
 
 /* 36px high keeps the lockup over its 120px minimum width; the band's padding and gaps
    keep its 2X clear space (logo/GUIDELINES.md). */
+/* On the dark ground the band is barely darker: a firmer edge keeps it a band. */
+@media (prefers-color-scheme: dark) {
+  .band,
+  .tabbar {
+    border-color: #464a53;
+  }
+}
+
 .band .logo {
   grid-area: logo;
   display: flex;
@@ -738,7 +746,7 @@ button.icon svg {
     box-shadow: inset 0 3px 0 transparent;
   }
 
-  .tabbar a[aria-current='page'] {
+  .tabbar a[aria-current] {
     color: #ffffff;
     box-shadow: inset 0 3px 0 #ffffff;
   }
@@ -750,6 +758,22 @@ button.icon svg {
 
   body {
     padding-bottom: calc(3.25rem + env(safe-area-inset-bottom));
+  }
+
+  /* Whatever is scrolled or tabbed to, e.g. a pass's Create, stops above the tab bar, not under it. */
+  html {
+    scroll-padding-bottom: calc(4.25rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* A Settings page's way back to the Settings sheet; on a phone only, where the sheet is a tab. */
+.to-settings {
+  display: none;
+}
+
+@media (max-width: 47.99rem) {
+  .to-settings {
+    display: inline-block;
   }
 }
 
@@ -864,12 +888,13 @@ main.flush {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
 }
 
+/* Underlined at rest, so on a phone, with no hover, it still reads as a way back rather than a label. */
 .back:hover {
   color: var(--text);
-  text-decoration: underline;
 }
 
 /* One section of a page, straight on the ground: a heading, then board rows; a hairline between sections. */
@@ -1016,8 +1041,9 @@ td.mono {
   border-right: 1px solid var(--line);
 }
 
-/* The pass lies on the counter: the pane sticks under the band, the pass centred in it,
-   from the top and scrolling when it is taller than the pane. */
+/* The pass lies on the counter: the pane sticks under the band, the pass at its top, scrolling when it is
+   taller than the pane. Top-aligned, so opening More options or editing grows the pass downward and nothing
+   moves under the pointer. */
 .pane {
   position: sticky;
   top: 3.75rem;
@@ -1033,7 +1059,7 @@ td.mono {
 .pane-inner {
   width: 100%;
   max-width: 36rem;
-  margin: auto;
+  margin: 0 auto;
 }
 
 @media (max-width: 59.99rem) {
@@ -1111,9 +1137,10 @@ td.mono {
   font-size: 0.8125rem;
 }
 
-/* A long Tag name never stretches the filter past its row. */
+/* One width whatever the Tags, so the bar doesn't shift as they load; a long name ends in an ellipsis. */
 .filters select {
-  max-width: min(100%, 18rem);
+  width: 12rem;
+  max-width: 100%;
   text-overflow: ellipsis;
 }
 
@@ -1127,8 +1154,10 @@ td.mono {
 }
 
 @media (max-width: 47.99rem) {
-  .filters > label:first-child {
+  .filters > label:first-child,
+  .filters select {
     flex-basis: 100%;
+    width: auto;
     max-width: none;
   }
 }
@@ -1188,6 +1217,11 @@ table.board col.c-count {
 /* Copy, as wide as its Copied state, QR and More, side by side. */
 table.board col.c-acts {
   width: 12.5rem;
+}
+
+/* Beside the pass on a narrower screen, only the More menu. */
+table.board.compact col.c-acts {
+  width: 3.25rem;
 }
 
 /* The Click Count keeps clear of the row's controls. */
@@ -1330,21 +1364,22 @@ table.board col.c-acts {
   display: none;
 }
 
-/* A board row's meta stays on one line. Every Tag chip is the same width, ellipsised when its name runs longer,
-   so rows line up; only a row tight on room (an Expiry beside the Tags) shrinks its chips, still equally. */
+/* A board row's meta stays on one line. A Tag chip is as wide as its name, up to a cap, then ellipsised;
+   a row tight on room shrinks its chips, never the +N count or the Expiry. */
 .board .meta {
   flex-wrap: nowrap;
   overflow: hidden;
 }
 
 .board .meta .tag {
-  flex: 0 1 5rem;
-  min-width: 3em;
+  flex: 0 1 auto;
+  min-width: 2.25rem;
+  max-width: 9rem;
 }
 
 .board .meta > :not(.tag),
 .board .meta .tag.rest {
-  flex-shrink: 0;
+  flex: none;
   min-width: auto;
 }
 
@@ -1804,9 +1839,8 @@ table.board col.c-acts {
   gap: 0.375rem;
 }
 
-/* On the pass too, one chip width for every Tag. */
+/* On the pass every Tag shows whole when it fits, wrapping at its natural width. */
 .seg dd.tags .tag {
-  flex: 0 0 6.5rem;
   max-width: 100%;
 }
 
@@ -1992,17 +2026,6 @@ button.copy > .off {
     opacity: 0;
     transform: translateX(-0.75rem);
   }
-}
-
-.pass-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.pass-actions .danger {
-  margin-left: auto;
 }
 
 .pass [role='alert'] {
@@ -2431,6 +2454,17 @@ table.gate .dns .micro {
   }
 }
 
+/* Clicks: the count is the pass's gate number, at display size; the range's ends are the route's
+   smaller figures. */
+.clicks .route .code {
+  font-size: clamp(1.125rem, 4cqi, 1.5rem);
+}
+
+.clicks .val.total {
+  font: 650 clamp(2.25rem, 9cqi, 3.25rem) / 1.05 var(--font-mono);
+  letter-spacing: -0.02em;
+}
+
 /* ---------- Manage Workspace, Instance Admin ---------- */
 
 /* The Workspace's name is its Code, and a name may be long: it wraps rather than ending in an ellipsis. */
@@ -2447,18 +2481,21 @@ table.gate .dns .micro {
   margin-top: 1.5rem;
 }
 
-/* A narrow ticket stacks its segments, one per line. */
+/* A narrow ticket stacks its segments, one per line; so do a narrow pass's fields, so no hint is cut short. */
 @container pass (max-width: 30rem) {
-  .ticket .segs {
+  .ticket .segs,
+  .pass-card .segs:has(.field) {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .ticket .seg.l {
+  .ticket .seg.l,
+  .pass-card .seg.l.field {
     padding-right: 0;
     border-right: 0;
   }
 
-  .ticket .seg.r {
+  .ticket .seg.r,
+  .pass-card .seg.r.field {
     padding-left: 0;
   }
 }
@@ -2643,9 +2680,37 @@ table.gate .dns .micro {
   background: rgb(23 24 28 / 0.5);
 }
 
-.confirm p {
+.confirm-message {
+  display: grid;
+  gap: 0.75rem;
   padding: 1.5rem 1.5rem 1.25rem;
   overflow-wrap: anywhere;
+}
+
+/* A Target change, from the old to the new: the old struck through and muted, the new in full ink. */
+.retarget {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.375rem 0.75rem;
+  align-items: baseline;
+  margin: 0;
+  padding: 0.75rem 0.875rem;
+  font: 500 0.8125rem/1.4 var(--font-mono);
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+
+.retarget dd {
+  margin: 0;
+}
+
+.retarget .from {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.retarget .to {
+  font-weight: 650;
 }
 
 .confirm-acts {

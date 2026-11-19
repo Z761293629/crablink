@@ -71,6 +71,8 @@ function LinkClicks({ slug, code, domain }: { slug: string; code: string; domain
       </div>
       {error !== undefined ? (
         <PageError error={error} onRetry={retry} />
+      ) : !data ? (
+        <Loading />
       ) : (
         data && (
           // The back of the Link's pass: the range flown, Clicks over it, then each breakdown on the stub.
@@ -106,6 +108,8 @@ function WorkspaceClicksView({ slug }: { slug: string }) {
       </div>
       {error !== undefined ? (
         <PageError error={error} onRetry={retry} />
+      ) : !data ? (
+        <Loading />
       ) : (
         data && (
           <ClicksPass
@@ -150,6 +154,19 @@ function WorkspaceClicksView({ slug }: { slug: string }) {
         )
       )}
     </div>
+  );
+}
+
+/** The dashed flight path drawing out while the Clicks load. */
+function Loading() {
+  const { t } = useTranslation();
+  return (
+    <>
+      <div className="flightpath on" aria-hidden="true" />
+      <p className="vh" role="status">
+        {t('clicks.loading')}
+      </p>
+    </>
   );
 }
 
@@ -201,7 +218,7 @@ function ClicksPass({
     </>
   );
   return (
-    <section className="pass" aria-label={t('clicks.overTime')}>
+    <section className="pass clicks" aria-label={t('clicks.overTime')}>
       <div className="ticket wide">
         <div className="ticket-body">
           <label className="range">

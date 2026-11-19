@@ -104,7 +104,7 @@ export function App() {
         }}
       />
     );
-  else if (page === 'admin' && user.instance_admin) main = <InstanceAdmin />;
+  else if (page === 'admin' && user.instance_admin) main = <InstanceAdmin me={user.email} />;
   else if (page === 'account') main = <ChangePassword />;
   else if (page === 'settings') main = <Settings user={user} workspace={workspace} onSignOut={signOut} />;
   else if (!workspaces) main = null;
@@ -119,6 +119,8 @@ export function App() {
     main = <Links key={slug} slug={workspace.slug} pick={code ? { domain, code } : undefined} />;
   }
 
+  // The pages the phone's Settings tab leads to: there it stays lit, with a way back to the sheet.
+  const inSettings = ['admin', 'account', 'workspace', 'domains'].includes(page) && !!user;
   const tabs: [string, string, boolean][] = [
     ['/app/', 'nav.links', page === 'links'],
     ['/app/clicks', 'nav.clicks', page === 'clicks'],
@@ -147,11 +149,22 @@ export function App() {
           {user ? <UserMenu user={user} onSignOut={signOut} /> : <LanguageSwitcher />}
         </div>
       </header>
-      <main className={board ? 'flush' : undefined}>{main}</main>
+      <main className={board ? 'flush' : undefined}>
+        {inSettings && (
+          <a className="back to-settings" href="/app/settings">
+            {t('nav.backToSettings')}
+          </a>
+        )}
+        {main}
+      </main>
       {user && (
         <nav className="tabbar" aria-label={t('nav.label')}>
           {[...tabs, ['/app/settings', 'nav.settings', page === 'settings'] as const].map(([href, key, current]) => (
-            <a key={href} href={href} aria-current={current ? 'page' : undefined}>
+            <a
+              key={href}
+              href={href}
+              aria-current={current ? 'page' : href === '/app/settings' && inSettings ? 'true' : undefined}
+            >
               {t(key)}
             </a>
           ))}

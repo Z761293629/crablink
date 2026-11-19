@@ -1,4 +1,13 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, linkPath, type Domain, type ImportedRow, type Link, type LinkPage } from './api';
 import { clicksHref } from './Clicks';
@@ -21,6 +30,8 @@ import {
 type Fresh = 'created' | 'updated';
 /** The Tags a board row shows before a "+N" chip. */
 const ROW_TAGS = 2;
+/** From this width up a board row has room for Copy and QR beside its More menu; below it, down to WIDE, they join the menu. */
+const ROOMY = '(min-width: 90rem)';
 const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
 /**
@@ -30,6 +41,9 @@ const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)';
 export function Links({ slug, pick }: { slug: string; /** The Link in the URL, if any. */ pick?: { domain: string; code: string } }) {
   const { t, i18n } = useTranslation();
   const wide = useMedia(WIDE);
+  const roomy = useMedia(ROOMY);
+  // Beside the open pass and short of room: a row's Copy and QR move into its More menu, leaving the Target its column.
+  const compact = wide && !roomy;
   const [toast, showToast] = useToast();
   const [dialog, ask] = useConfirm();
   const search = useRef<HTMLInputElement>(null);
@@ -175,6 +189,15 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
     go(!wide && selected === link ? undefined : link);
   }
 
+  /** Opens `link`'s pass for editing. */
+  function edit(link: Link) {
+    setIssuing(false);
+    setManual(undefined);
+    mark(link.short_url);
+    go(link);
+    setEditing(link.short_url);
+  }
+
   function created(link: Link) {
     beforeChange(link.short_url);
     setLinks([link, ...(links ?? [])]);
@@ -190,7 +213,11 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
     setLinks(links!.map((l) => (l === old ? link : l)));
     mark(link.short_url, 'updated');
     setEditing(undefined);
-    showToast(t('links.announce.updated', { url: link.short_url }));
+    showToast(
+      old.target === link.target
+        ? t('links.announce.updated', { url: link.short_url })
+        : t('links.announce.retargeted', { url: link.short_url, target: link.target }),
+    );
     loadTags();
   }
 
@@ -229,7 +256,10 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
     const after = links![i + 1] ?? links![i - 1];
     beforeChange();
     setLinks((ls) => ls!.filter((l) => l.short_url !== link.short_url));
-    if (selected === link || wide) go(selected === link ? after : selected, true);
+    // Beside the board the next Link's pass takes its place; on a phone the board just closes up, so a
+    // second Delete never lands on a Link that slid under the thumb.
+    if (selected === link) go(wide ? after : undefined, true);
+    else if (wide) go(selected, true);
     mark(link.short_url);
     showToast(t('links.announce.deleted', { url: link.short_url }));
     loadTags();
@@ -273,6 +303,7 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
       editing={editing === link.short_url}
       manualCopy={manual === link.short_url}
       reveal={!wide}
+      confirm={ask}
       onEditing={(on) => setEditing(on ? link.short_url : undefined)}
       onChanged={changed}
       onCopied={copied}
@@ -335,7 +366,8 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
           {/* Named explicitly: a wrapping label would also take in the selected option's text. */}
           <select name="tag" value={tag} onChange={(e) => setFilter('tag', e.target.value)} aria-label={t('links.tag')}>
             <option value="">{t('links.allTags')}</option>
-            {tags.map((name) => (
+            {/* A Tag in the URL that no Link carries any more still shows as chosen, rather than "All Tags" over an empty board. */}
+            {(tag && !tags.includes(tag) ? [tag, ...tags] : tags).map((name) => (
               <option key={name}>{name}</option>
             ))}
           </select>
@@ -354,7 +386,7 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
               )}
             </div>
           ) : (
-            <table className="board" aria-labelledby="links-title">
+            <table className={compact ? 'board compact' : 'board'} aria-labelledby="links-title">
               <colgroup>
                 <col className="c-short" />
                 <col />
@@ -427,8 +459,8 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
                       </td>
                       <td className="c-acts">
                         <span className="row-acts">
-                          <CopyButton link={link} onCopied={copied} onFailed={copyFailed} />
-                          {!expired && (
+                          {!compact && <CopyButton link={link} onCopied={copied} onFailed={copyFailed} />}
+                          {!compact && !expired && (
                             <a
                               className="button small"
                               href={qrHref(slug, link, 'png')}
@@ -440,7 +472,18 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
                           )}
                           <MoreMenu
                             label={t('links.moreActions', { code: link.code })}
-                            items={[{ label: t('links.delete'), danger: true, onSelect: () => void remove(link) }]}
+                            items={[
+                              ...(compact
+                                ? [
+                                    { label: t('links.copy'), onSelect: () => void copy(link, copied, copyFailed) },
+                                    ...(expired
+                                      ? []
+                                      : [{ label: t('links.downloadQr'), onSelect: () => download(qrHref(slug, link, 'png'), `${link.code}.png`) }]),
+                                  ]
+                                : []),
+                              { label: t('links.edit'), onSelect: () => edit(link) },
+                              { label: t('links.delete'), danger: true, onSelect: () => void remove(link) },
+                            ]}
                           />
                         </span>
                       </td>
@@ -483,6 +526,26 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
   );
 }
 
+/** Copies `link`'s Short URL, then says how that went. */
+async function copy(link: Link, onCopied: (link: Link) => void, onFailed: (link: Link) => void) {
+  try {
+    await navigator.clipboard.writeText(link.short_url);
+  } catch {
+    // No clipboard here (e.g. plain http), or it refused.
+    onFailed(link);
+    return;
+  }
+  onCopied(link);
+}
+
+/** Saves the file at `href` as `name`, as a click on a download link would. */
+function download(href: string, name: string) {
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = name;
+  a.click();
+}
+
 /** Copies a Link's Short URL; for a moment it says so, with the plane. */
 function CopyButton({
   link,
@@ -507,16 +570,16 @@ function CopyButton({
     // Both labels share one cell, the idle one hidden, so the button is always as wide as the wider.
     <button
       className={`${className} copy`}
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(link.short_url);
-        } catch {
-          onFailed(link);
-          return;
-        }
-        setCopied(true);
-        onCopied(link);
-      }}
+      onClick={() =>
+        copy(
+          link,
+          (l) => {
+            setCopied(true);
+            onCopied(l);
+          },
+          onFailed,
+        )
+      }
     >
       <span className={copied ? 'off' : undefined}>{t('links.copy')}</span>
       <span className={copied ? undefined : 'off'}>
@@ -724,6 +787,7 @@ function LinkPass({
   editing,
   manualCopy,
   reveal,
+  confirm,
   onEditing,
   onChanged,
   onCopied,
@@ -736,6 +800,8 @@ function LinkPass({
   manualCopy: boolean;
   /** Scroll the stub (QR code and actions) into view when the pass opens, as under a row on a phone. */
   reveal: boolean;
+  /** Asks "Are you sure?"; resolves to whether `action` was chosen. */
+  confirm: (message: ReactNode, action: string) => Promise<boolean>;
   onEditing: (on: boolean) => void;
   /** With the Link as it was and as it is now. */
   onChanged: (old: Link, link: Link) => void;
@@ -747,6 +813,8 @@ function LinkPass({
   const [error, setError] = useState<unknown>();
   const stub = useRef<HTMLDivElement>(null);
   const manual = useRef<HTMLInputElement>(null);
+  const change = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(editing);
 
   useEffect(() => {
     if (reveal) stub.current?.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' });
@@ -754,15 +822,35 @@ function LinkPass({
   useEffect(() => {
     if (manualCopy) manual.current?.select();
   }, [manualCopy]);
+  // Saved or cancelled: focus back where editing began.
+  useEffect(() => {
+    if (wasEditing.current && !editing) change.current?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
 
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
+    const target = data.get('target') as string;
+    // A new Target repoints every printed copy of the Short URL: say from where to where before it does.
+    const retarget = (
+      <>
+        <p>{t('links.confirmRetarget', { url: short })}</p>
+        <dl className="retarget">
+          <dt className="micro">{t('links.retargetFrom')}</dt>
+          <dd className="from">{link.target}</dd>
+          <dt className="micro">{t('links.retargetTo')}</dt>
+          <dd className="to">{target}</dd>
+        </dl>
+        <p className="hint">{t('links.confirmRetargetNote')}</p>
+      </>
+    );
+    if (target !== link.target && !(await confirm(retarget, t('links.confirmRetargetAction')))) return;
     try {
       onChanged(
         link,
         await api<Link>('PATCH', linkPath(slug, link), {
-          target: data.get('target'),
+          target,
           expires_at: fromInput(data.get('expires_at') as string),
           tags: tagList(data.get('tags') as string),
         }),
@@ -811,11 +899,12 @@ function LinkPass({
                   {t('links.changeTargetHint')}
                 </p>
               </div>
-              <label className="seg l field">
+              {/* Full width each, so the Expiry's date and time both show. */}
+              <label className="seg wide field">
                 <span className="micro">{t('links.expiry')}</span>
                 <input name="expires_at" type="datetime-local" defaultValue={toInput(link.expires_at)} />
               </label>
-              <label className="seg r field">
+              <label className="seg wide field">
                 <span className="micro">{t('links.tags')}</span>
                 <input name="tags" defaultValue={link.tags.join(', ')} placeholder={t('links.tagsHint')} />
               </label>
@@ -867,7 +956,7 @@ function LinkPass({
                   </a>
                 </dd>
                 <dd className="change">
-                  <button className="small" aria-describedby={`${id}same`} onClick={() => onEditing(true)}>
+                  <button ref={change} className="small" aria-describedby={`${id}same`} onClick={() => onEditing(true)}>
                     {t('links.changeTarget')}
                   </button>
                   <span id={`${id}same`} className="hint">
@@ -901,6 +990,17 @@ function LinkPass({
           ) : (
             <ShortLine text={short} href={link.short_url} />
           )}
+          {editing ? (
+            // While editing, the stub ends the form: Save and Cancel in place of the QR's actions.
+            <div className="acts">
+              <button form={form} type="submit" className="primary">
+                {t('links.save')}
+              </button>
+              <button className="small" onClick={() => onEditing(false)}>
+                {t('links.cancel')}
+              </button>
+            </div>
+          ) : (
           <div className="acts">
             {/* The QR code for a poster is the pass's main job; PNG prints anywhere, SVG for designers. */}
             {!expired && (
@@ -927,16 +1027,9 @@ function LinkPass({
               )}
             </div>
           </div>
+          )}
         </div>
       </div>
-      {editing && (
-        <div className="pass-actions">
-          <button form={form} type="submit" className="primary">
-            {t('links.save')}
-          </button>
-          <button onClick={() => onEditing(false)}>{t('links.cancel')}</button>
-        </div>
-      )}
     </section>
   );
 }

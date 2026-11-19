@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type Domain, type Membership } from './api';
 import { errorMessage } from './i18n';
@@ -9,6 +9,9 @@ export function Domains({ workspace }: { workspace: Membership }) {
   const { t } = useTranslation();
   const [domains, setDomains] = useState<Domain[]>();
   const [error, setError] = useState<unknown>();
+  // Adding a Domain fails beside its field, not over the board.
+  const [addError, setAddError] = useState<unknown>();
+  const errorId = useId();
   const [tries, setTries] = useState(0);
   const [dialog, ask] = useConfirm();
 
@@ -24,10 +27,10 @@ export function Domains({ workspace }: { workspace: Membership }) {
     try {
       await api('POST', `/workspaces/${workspace.slug}/domains`, { domain: new FormData(form).get('domain') });
       form.reset();
-      setError(undefined);
+      setAddError(undefined);
       await load(workspace.slug);
     } catch (err) {
-      setError(err);
+      setAddError(err);
     }
   }
 
@@ -117,8 +120,20 @@ export function Domains({ workspace }: { workspace: Membership }) {
             <h2>{t('domains.addTitle')}</h2>
             <label className="field">
               <span className="micro">{t('domains.domain')}</span>
-              <input name="domain" className="mono" placeholder="go.example.com" required />
+              <input
+                name="domain"
+                className="mono"
+                placeholder="go.example.com"
+                required
+                aria-invalid={addError !== undefined || undefined}
+                aria-describedby={addError !== undefined ? errorId : undefined}
+              />
             </label>
+            {addError !== undefined && (
+              <p id={errorId} role="alert">
+                {errorMessage(t, addError)}
+              </p>
+            )}
             <p className="hint">{t('domains.dns', { host: target })}</p>
           </div>
           <div className="tear">

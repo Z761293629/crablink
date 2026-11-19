@@ -9,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { errorMessage } from './i18n';
@@ -35,7 +36,8 @@ export const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)'
  * shows or changes. The text stays one string to copy and to assistive technology.
  */
 export function Flap({ text }: { text: string }) {
-  const step = Math.min(30, 300 / Math.max(1, text.length));
+  // Every character in within 400ms: the last starts by 140ms and flips for 260ms.
+  const step = Math.min(30, 140 / Math.max(1, text.length));
   return (
     <span className="flap">
       {[...text].map((ch, i) => (
@@ -248,12 +250,12 @@ export function useConfirm() {
   const { t } = useTranslation();
   const id = useId();
   const ref = useRef<HTMLDialogElement>(null);
-  const [asking, setAsking] = useState<{ message: string; action: string; done: (yes: boolean) => void }>();
+  const [asking, setAsking] = useState<{ message: ReactNode; action: string; done: (yes: boolean) => void }>();
   useEffect(() => {
     if (asking) ref.current?.showModal();
   }, [asking]);
   const ask = useCallback(
-    (message: string, action: string) => new Promise<boolean>((done) => setAsking({ message, action, done })),
+    (message: ReactNode, action: string) => new Promise<boolean>((done) => setAsking({ message, action, done })),
     [],
   );
   const node = asking && (
@@ -267,7 +269,9 @@ export function useConfirm() {
       }}
     >
       <form method="dialog">
-        <p id={id}>{asking.message}</p>
+        <div id={id} className="confirm-message">
+          {asking.message}
+        </div>
         <div className="confirm-acts">
           <button value="no" autoFocus>
             {t('cancel')}
