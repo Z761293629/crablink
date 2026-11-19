@@ -59,15 +59,112 @@ export function InstanceAdmin() {
   }
 
   return (
-    <>
-      <div className="page-head">
-        <h1>{t('admin.title')}</h1>
-      </div>
-      {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+    // Gate boards of Users and custom Domains, with the invite as a coupon beside them.
+    <div className="desk">
+      <div className="desk-board">
+        <div className="board-head">
+          <h1>{t('admin.title')}</h1>
+        </div>
+        {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
 
-      <section className="sheet">
-        <h2>{t('admin.invite.title')}</h2>
-        <form className="row" onSubmit={createInvite}>
+        <section className="sheet">
+          <h2>{t('admin.users.title')}</h2>
+          <div className="table">
+            <table className="gate" aria-label={t('admin.users.title')}>
+              <thead>
+                <tr>
+                  <th>{t('admin.users.email')}</th>
+                  <th>{t('domains.status')}</th>
+                  <th>
+                    <span className="vh">{t('links.actions')}</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {users?.map((u) => (
+                  <tr key={u.id}>
+                    <td className="mono primary">
+                      {u.email}
+                      {reset?.id === u.id && (
+                        <label className="reset">
+                          <span className="micro">{t('admin.users.newPassword')}</span> <output>{reset.password}</output>
+                        </label>
+                      )}
+                    </td>
+                    <td>
+                      <span className="states">
+                        {u.disabled && <span className="state rejected">{t('admin.users.disabled')}</span>}
+                        {u.instance_admin && <span className="state default">{t('admin.users.instanceAdmin')}</span>}
+                        {!u.disabled && !u.instance_admin && <span className="state">{t('admin.users.active')}</span>}
+                      </span>
+                    </td>
+                    <td className="actions">
+                      <button className="small" onClick={() => updateUser(u.id, { disabled: !u.disabled })}>
+                        {u.disabled ? t('admin.users.enable') : t('admin.users.disable')}
+                      </button>
+                      <button className="small" onClick={() => updateUser(u.id, { instance_admin: !u.instance_admin })}>
+                        {u.instance_admin ? t('admin.users.revokeAdmin') : t('admin.users.makeAdmin')}
+                      </button>
+                      <button className="small" onClick={() => resetPassword(u.id)}>
+                        {t('admin.users.resetPassword')}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="sheet">
+          <h2>{t('admin.domains.title')}</h2>
+          {domains?.length === 0 ? (
+            <p className="empty">{t('admin.domains.empty')}</p>
+          ) : (
+            <div className="table">
+              <table className="gate" aria-label={t('admin.domains.title')}>
+                <thead>
+                  <tr>
+                    <th>{t('domains.domain')}</th>
+                    <th>{t('domains.status')}</th>
+                    <th>{t('admin.domains.workspace')}</th>
+                    <th>
+                      <span className="vh">{t('links.actions')}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {domains?.map((d) => (
+                    <tr key={d.domain}>
+                      <td className="mono primary">{d.domain}</td>
+                      <td>
+                        <span className={`state ${d.status}`}>{t(`domains.statuses.${d.status}`)}</span>
+                      </td>
+                      <td className="mono">{d.workspace_slug}</td>
+                      <td className="actions">
+                        {d.status !== 'approved' && (
+                          <button className="small primary" onClick={() => setStatus(d.domain, 'approved')}>
+                            {t('admin.domains.approve')}
+                          </button>
+                        )}
+                        {d.status !== 'rejected' && (
+                          <button className="small" onClick={() => setStatus(d.domain, 'rejected')}>
+                            {t('admin.domains.reject')}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+
+      <form className="pass ticket" aria-labelledby="invite-title" onSubmit={createInvite}>
+        <div className="ticket-body">
+          <h2 id="invite-title">{t('admin.invite.title')}</h2>
           <label className="field">
             <span className="micro">{t('admin.invite.email')}</span>
             <input name="email" type="email" required />
@@ -76,108 +173,19 @@ export function InstanceAdmin() {
             <span className="micro">{t('admin.invite.workspace')}</span>
             <input name="workspace" className="mono" placeholder={t('admin.invite.workspaceHint')} />
           </label>
+        </div>
+        <div className="tear">
           <button type="submit" className="primary">
             {t('admin.invite.create')}
           </button>
-        </form>
-        {invite && (
-          <div className="secret invite-link">
+          {invite && (
             <label className="field">
               <span className="micro">{t('admin.invite.link')}</span>
               <input name="invite" readOnly value={invite} onFocus={(e) => e.target.select()} />
             </label>
-          </div>
-        )}
-      </section>
-
-      <section className="sheet">
-        <h2>{t('admin.domains.title')}</h2>
-        {domains?.length === 0 ? (
-          <p className="empty">{t('admin.domains.empty')}</p>
-        ) : (
-          <div className="table">
-            <table>
-              <thead>
-                <tr>
-                  <th>{t('domains.domain')}</th>
-                  <th>{t('admin.domains.workspace')}</th>
-                  <th>{t('domains.status')}</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {domains?.map((d) => (
-                  <tr key={d.domain}>
-                    <td className="mono">{d.domain}</td>
-                    <td className="mono">{d.workspace_slug}</td>
-                    <td>
-                      <span className={`stamp ${d.status}`}>{t(`domains.statuses.${d.status}`)}</span>
-                    </td>
-                    <td className="actions">
-                      {d.status !== 'approved' && (
-                        <button className="small primary" onClick={() => setStatus(d.domain, 'approved')}>
-                          {t('admin.domains.approve')}
-                        </button>
-                      )}
-                      {d.status !== 'rejected' && (
-                        <button className="small" onClick={() => setStatus(d.domain, 'rejected')}>
-                          {t('admin.domains.reject')}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="sheet">
-        <h2>{t('admin.users.title')}</h2>
-        <div className="table">
-          <table>
-            <thead>
-              <tr>
-                <th>{t('admin.users.email')}</th>
-                <th>{t('admin.users.roles')}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {users?.map((u) => (
-                <tr key={u.id}>
-                  <td className="mono">
-                    {u.email}
-                    {reset?.id === u.id && (
-                      <label className="reset">
-                        <span className="micro">{t('admin.users.newPassword')}</span> <output>{reset.password}</output>
-                      </label>
-                    )}
-                  </td>
-                  <td>
-                    <span className="stamps">
-                      {u.instance_admin && <span className="stamp">{t('admin.users.instanceAdmin')}</span>}
-                      {u.disabled && <span className="stamp rejected">{t('admin.users.disabled')}</span>}
-                    </span>
-                  </td>
-                  <td className="actions">
-                    <button className="small" onClick={() => updateUser(u.id, { disabled: !u.disabled })}>
-                      {u.disabled ? t('admin.users.enable') : t('admin.users.disable')}
-                    </button>
-                    <button className="small" onClick={() => updateUser(u.id, { instance_admin: !u.instance_admin })}>
-                      {u.instance_admin ? t('admin.users.revokeAdmin') : t('admin.users.makeAdmin')}
-                    </button>
-                    <button className="small" onClick={() => resetPassword(u.id)}>
-                      {t('admin.users.resetPassword')}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          )}
         </div>
-      </section>
-    </>
+      </form>
+    </div>
   );
 }

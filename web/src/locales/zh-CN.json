@@ -126,11 +126,10 @@
       "tablet": "平板"
     },
     "peak": "峰值",
-    "eachBar": "统计",
-    "per": {
-      "hour": "按小时",
-      "day": "按天"
-    }
+    "from": "起",
+    "to": "止",
+    "topLink": "最多点击",
+    "linksClicked": "有点击的链接"
   },
   "invite": {
     "title": "接受邀请",
@@ -182,7 +181,8 @@
       "makeAdmin": "设为实例管理员",
       "revokeAdmin": "取消实例管理员",
       "resetPassword": "重置密码",
-      "newPassword": "新密码："
+      "newPassword": "新密码：",
+      "active": "正常"
     }
   },
   "members": {

@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, linkPath, type Domain, type ImportedRow, type Link, type LinkPage } from './api';
 import { clicksHref } from './Clicks';
@@ -291,13 +291,15 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
             <h1 id="links-title">{t('links.title')}</h1>
             {onlyDomain && <span className="board-domain">{onlyDomain}</span>}
           </div>
+          {/* While the blank pass is open, its Create is the one Crab Red action: this shows pressed. */}
           <button
-            className="accent"
+            className={editor ? undefined : 'accent'}
+            aria-pressed={!!editor}
             aria-keyshortcuts="N"
             title={t('links.shortcutNew')}
             onClick={() => {
               setEditing(undefined);
-              setIssuing(true);
+              setIssuing(!(editor && !noLinks));
             }}
           >
             {t('links.newLink')}
@@ -570,10 +572,7 @@ function IssuePass({
   }
 
   return (
-    <section className={`pass${tearing ? ' tearing' : ''}`} aria-labelledby={`${id}cap`}>
-      <p id={`${id}cap`} className="pass-cap micro">
-        {t('links.newLink')}
-      </p>
+    <section className={`pass${tearing ? ' tearing' : ''}`} aria-label={t('links.newLink')}>
       <form
         className="pass-card print"
         onSubmit={submit}
@@ -634,9 +633,7 @@ function IssuePass({
         <div className="perf" aria-hidden="true" />
         <div className="stub">
           <div className="qr blank">{t('links.qrPending')}</div>
-          <p className="short">
-            {domain}/{draft.code || t('links.generatedShort')}
-          </p>
+          <ShortLine text={`${domain}/${draft.code || t('links.generatedShort')}`} />
           <div className="acts">
             <button type="submit" className="accent">
               {t('links.issue')}
@@ -673,6 +670,18 @@ function Route({ from, code, codeIsPlaceholder, to }: { from: string; code: stri
         <span className={`host${to ? '' : ' placeholder'}`}>{to || '—'}</span>
       </p>
     </div>
+  );
+}
+
+/** The width of `text` in ems of the mono face: a CJK character is a full em, the rest 0.6. */
+const monoEms = (text: string) => [...text].reduce((n, ch) => n + (ch.codePointAt(0)! >= 0x2e80 ? 1 : 0.6), 0);
+
+/** The stub's Short URL on one line of mono, set smaller to fit the stub rather than break. */
+function ShortLine({ text, href }: { text: string; href?: string }) {
+  return (
+    <p className="short" style={{ '--ems': monoEms(text) } as CSSProperties} title={text}>
+      {href ? <a href={href}>{text}</a> : text}
+    </p>
   );
 }
 
@@ -735,7 +744,8 @@ function LinkPass({
   // A QR code of an expired Link would only mislead, so the server refuses one.
   const expired = isExpired(link);
   const form = `${id}edit`;
-  const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' });
+  // Short, so a date and time fit one line of a half-width segment.
+  const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'short', timeStyle: 'short' });
   const short = link.short_url.replace(/^https?:\/\//, '');
   return (
     <section className="pass" aria-label={t('links.selected')}>
@@ -857,12 +867,7 @@ function LinkPass({
               onFocus={(e) => e.target.select()}
             />
           ) : (
-            <p className="short">
-              <a href={link.short_url}>
-                {link.domain}/<wbr />
-                {link.code}
-              </a>
-            </p>
+            <ShortLine text={short} href={link.short_url} />
           )}
           <div className="acts">
             {/* The QR code for a poster is the pass's main job; PNG prints anywhere, SVG for designers. */}

@@ -126,11 +126,10 @@
       "tablet": "Tablet"
     },
     "peak": "Peak",
-    "eachBar": "Bars",
-    "per": {
-      "hour": "Hourly",
-      "day": "Daily"
-    }
+    "from": "From",
+    "to": "To",
+    "topLink": "Top Link",
+    "linksClicked": "Links clicked"
   },
   "invite": {
     "title": "Accept invite",
@@ -182,7 +181,8 @@
       "makeAdmin": "Make Instance Admin",
       "revokeAdmin": "Revoke Instance Admin",
       "resetPassword": "Reset password",
-      "newPassword": "New password:"
+      "newPassword": "New password:",
+      "active": "Active"
     }
   },
   "members": {

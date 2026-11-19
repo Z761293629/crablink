@@ -62,90 +62,107 @@ export function ManageWorkspace({
   const path = workspace && `/workspaces/${workspace.slug}`;
   const owner = workspace?.role === 'owner';
 
+  const leave = async () =>
+    (await ask(t('workspace.confirmLeave', { name: workspace!.name }), t('workspace.leave'))) &&
+    attempt(async () => {
+      await api('DELETE', `${path}/members/${encodeURIComponent(email)}`);
+      await onChanged();
+    });
+  const remove = async () =>
+    (await ask(t('workspace.confirmDelete', { name: workspace!.name }), t('workspace.delete'))) &&
+    attempt(async () => {
+      await api('DELETE', path!);
+      await onChanged();
+    });
+
   return (
-    <>
-      {workspace && (
-        <div className="page-head">
-          <div className="title">
-            <h1>{workspace.name}</h1>
-            <span className="stamp">{t(`roles.${workspace.role}`)}</span>
-          </div>
-        </div>
-      )}
+    <div className="counter">
       {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
-      {workspace && owner && (
-        <>
-          <form
-            className="sheet row"
-            onSubmit={onSubmit(({ name }) => attempt(async () => {
-              await api('PATCH', path!, { name });
-              await onChanged();
-            }))}
-          >
-            <label className="field">
-              <span className="micro">{t('workspace.name')}</span>
-              <input name="name" defaultValue={workspace.name} required maxLength={100} />
-            </label>
-            <button type="submit" className="primary">
-              {t('workspace.rename')}
-            </button>
-          </form>
-          <Members path={path!} email={email} run={run} attempt={attempt} ask={ask} onChanged={onChanged} />
-          <ApiKeys path={path!} run={run} attempt={attempt} ask={ask} />
-        </>
+      {workspace ? (
+        // The Workspace as a pass: its name as the Code, the role and members as segments,
+        // and on the stub its API Keys, then leaving and deleting it.
+        <section className="pass ws" aria-labelledby="ws-name">
+          <div className="ticket wide">
+            <div className="ticket-body">
+              <div className="route">
+                <div className="from">
+                  <span className="micro">{t('nav.switcher')}</span>
+                  <h1 id="ws-name" className="code">
+                    {workspace.name}
+                  </h1>
+                </div>
+              </div>
+              <div className="segs">
+                <div className={owner ? 'seg l' : 'seg wide'}>
+                  <p className="micro">{t('members.role')}</p>
+                  <p className="val">{t(`roles.${workspace.role}`)}</p>
+                </div>
+                {owner && (
+                  <form
+                    className="seg r field"
+                    onSubmit={onSubmit(({ name }) =>
+                      attempt(async () => {
+                        await api('PATCH', path!, { name });
+                        await onChanged();
+                      }),
+                    )}
+                  >
+                    <label className="micro" htmlFor="ws-rename">
+                      {t('workspace.name')}
+                    </label>
+                    <span className="inline">
+                      <input id="ws-rename" name="name" defaultValue={workspace.name} required maxLength={100} />
+                      <button type="submit">{t('workspace.rename')}</button>
+                    </span>
+                  </form>
+                )}
+                {owner && (
+                  <Members path={path!} email={email} run={run} attempt={attempt} ask={ask} onChanged={onChanged} />
+                )}
+              </div>
+            </div>
+            <div className="tear">
+              {owner && <ApiKeys path={path!} run={run} attempt={attempt} ask={ask} />}
+              <p className="leave">
+                <button onClick={leave}>{t('workspace.leave')}</button>
+                {owner && (
+                  <button className="danger" onClick={remove}>
+                    {t('workspace.delete')}
+                  </button>
+                )}
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <p className="empty">{t('workspace.none')}</p>
       )}
-      {workspace && (
-        <p className="sheet leave">
-          <button
-            onClick={async () =>
-              (await ask(t('workspace.confirmLeave', { name: workspace.name }), t('workspace.leave'))) &&
-              attempt(async () => {
-                await api('DELETE', `${path}/members/${encodeURIComponent(email)}`);
-                await onChanged();
-              })
-            }
-          >
-            {t('workspace.leave')}
-          </button>
-          {owner && (
-            <button
-              className="danger"
-              onClick={async () =>
-                (await ask(t('workspace.confirmDelete', { name: workspace.name }), t('workspace.delete'))) &&
-                attempt(async () => {
-                  await api('DELETE', path!);
-                  await onChanged();
-                })
-              }
-            >
-              {t('workspace.delete')}
-            </button>
-          )}
-        </p>
-      )}
-      {!workspace && <p className="sheet empty">{t('workspace.none')}</p>}
-      <section className="sheet" id="new">
-        <h2>{t('workspace.create')}</h2>
-        <form
-          className="row"
-          onSubmit={onSubmit(({ name }) =>
-            attempt(async () => {
-              const created = await api<Membership>('POST', '/workspaces', { name });
-              await onChanged(created.slug);
-            }),
-          )}
-        >
+      <form
+        id="new"
+        className="pass ticket"
+        aria-labelledby="new-ws"
+        onSubmit={onSubmit(({ name }) =>
+          attempt(async () => {
+            const created = await api<Membership>('POST', '/workspaces', { name });
+            await onChanged(created.slug);
+          }),
+        )}
+      >
+        <div className="ticket-body">
+          <h2 id="new-ws">{t('nav.newWorkspace')}</h2>
           <label className="field">
             <span className="micro">{t('workspace.newName')}</span>
             <input name="name" required maxLength={100} />
           </label>
+        </div>
+        <div className="tear">
           <button type="submit" className="primary">
             {t('workspace.create')}
           </button>
-        </form>
-      </section>
+        </div>
+      </form>
       {dialog}
-    </>
+    </div>
   );
 }
 
@@ -186,10 +203,12 @@ function Members({
   // A Workspace keeps an Owner: the only one isn't offered Make Member.
   const owners = members.filter((m) => m.role === 'owner').length;
   return (
-    <section className="sheet">
-      <h2>{t('members.title')}</h2>
+    <section className="seg wide">
+      <h2 className="micro">
+        {t('members.title')} · {members.length}
+      </h2>
       <div className="table">
-        <table aria-label={t('members.title')}>
+        <table className="gate" aria-label={t('members.title')}>
           <thead>
             <tr>
               <th>{t('members.email')}</th>
@@ -200,9 +219,9 @@ function Members({
           <tbody>
             {members.map((m) => (
               <tr key={m.email}>
-                <td>{m.email}</td>
+                <td className="mono">{m.email}</td>
                 <td>
-                  <span className="stamp">{t(`roles.${m.role}`)}</span>
+                  <span className="state">{t(`roles.${m.role}`)}</span>
                 </td>
                 <td className="actions">
                   {!(m.role === 'owner' && owners === 1) && (
@@ -228,7 +247,7 @@ function Members({
         </table>
       </div>
       <form
-        className="row"
+        className="row add"
         onSubmit={onSubmit(({ email }) => attempt(async () => {
           await api('POST', `${path}/members`, { email });
           await load();
@@ -238,7 +257,7 @@ function Members({
           <span className="micro">{t('members.addEmail')}</span>
           <input name="email" type="email" required />
         </label>
-        <button type="submit" className="primary">
+        <button type="submit">
           {t('members.add')}
         </button>
       </form>
@@ -263,13 +282,13 @@ function ApiKeys({ path, run, attempt, ask }: SectionProps) {
 
   const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' });
   return (
-    <section className="sheet">
-      <h2>{t('apiKeys.title')}</h2>
+    <section className="keys">
+      <h2 className="micro">{t('apiKeys.title')}</h2>
       {keys.length === 0 ? (
         <p className="empty">{t('apiKeys.empty')}</p>
       ) : (
         <div className="table">
-          <table aria-label={t('apiKeys.title')}>
+          <table className="gate entries" aria-label={t('apiKeys.title')}>
             <thead>
               <tr>
                 <th>{t('apiKeys.name')}</th>
@@ -282,7 +301,7 @@ function ApiKeys({ path, run, attempt, ask }: SectionProps) {
             <tbody>
               {keys.map((key) => (
                 <tr key={key.id}>
-                  <td>{key.name}</td>
+                  <td className="name">{key.name}</td>
                   <td>
                     <code>{key.prefix}…</code>
                   </td>
@@ -337,7 +356,7 @@ function ApiKeys({ path, run, attempt, ask }: SectionProps) {
         </div>
       )}
       <form
-        className="row"
+        className="row add"
         onSubmit={onSubmit(({ name }) => attempt(async () => {
           setCreated(await api<NewApiKey>('POST', `${path}/api-keys`, { name }));
           await load();
@@ -347,7 +366,7 @@ function ApiKeys({ path, run, attempt, ask }: SectionProps) {
           <span className="micro">{t('apiKeys.newName')}</span>
           <input name="name" required maxLength={100} />
         </label>
-        <button type="submit" className="primary">
+        <button type="submit">
           {t('apiKeys.create')}
         </button>
       </form>
