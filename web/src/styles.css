@@ -23,8 +23,14 @@ header {
   border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
 }
 
-header strong {
+/* At least the logo's 120px minimum width; the header's padding and gap keep its 2X clear space. */
+header .logo {
+  display: flex;
   margin-right: auto;
+}
+
+header .logo img {
+  height: 2.25rem;
 }
 
 main {
