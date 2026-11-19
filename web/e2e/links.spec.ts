@@ -115,6 +115,8 @@ test("a Link's QR code downloads as PNG or SVG from its pass, and its Short URL 
   user,
 }) => {
   const code = `qr-${Date.now()}`;
+  const other = `${code}-row`;
+  await user.api('POST', `/workspaces/${user.slug}/links`, { target: 'https://example.com/qr-row', code: other });
   await user.api('POST', `/workspaces/${user.slug}/links`, { target: 'https://example.com/qr', code });
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await signInPage(page, user.email, user.password);
@@ -137,10 +139,11 @@ test("a Link's QR code downloads as PNG or SVG from its pass, and its Short URL 
     expect((await file.failure()) ?? null).toBeNull();
   }
 
-  // The row's QR is a PNG too.
+  // The selected row leaves Copy and QR to its pass; another row's QR is a PNG too.
+  await expect(page.getByRole('link', { name: `Download QR of ${code} (PNG)` })).toBeHidden();
   const download = page.waitForEvent('download');
-  await page.getByRole('link', { name: `Download QR of ${code} (PNG)` }).click();
-  expect((await download).suggestedFilename()).toBe(`${code}.png`);
+  await page.getByRole('link', { name: `Download QR of ${other} (PNG)` }).click();
+  expect((await download).suggestedFilename()).toBe(`${other}.png`);
 });
 
 test('when the clipboard refuses, the Short URL shows selected to copy by hand', async ({ page, user }) => {
@@ -151,7 +154,7 @@ test('when the clipboard refuses, the Short URL shows selected to copy by hand',
   });
   await signInPage(page, user.email, user.password);
 
-  await page.getByRole('row').filter({ hasText: `${baseURL}/${code}` }).getByRole('button', { name: 'Copy' }).click();
+  await selectedPass(page).getByRole('button', { name: 'Copy' }).click();
   await expect(page.getByText('Press and hold the Short URL')).toBeVisible();
   const manual = selectedPass(page).getByRole('textbox', { name: 'Short URL' });
   await expect(manual).toHaveValue(`${baseURL}/${code}`);

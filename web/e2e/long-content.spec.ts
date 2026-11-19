@@ -71,11 +71,11 @@ test('a Link with a 64-character Code, a long Target and long Tags fits the boar
     await fits(page, page.locator('.board'));
 
     // Copy says Copied in the same box: nothing beside it moves.
-    const copy = row.getByRole('button', { name: 'Copy' });
+    const copy = pass.getByRole('button', { name: 'Copy' });
     const before = (await copy.boundingBox())!.width;
     await copy.click();
-    await expect(row.getByRole('button', { name: 'Copied' })).toBeVisible();
-    expect((await row.getByRole('button', { name: 'Copied' }).boundingBox())!.width).toBe(before);
+    await expect(pass.getByRole('button', { name: 'Copied' })).toBeVisible();
+    expect((await pass.getByRole('button', { name: 'Copied' }).boundingBox())!.width).toBe(before);
 
     // Changing the Target keeps the pass within its box.
     await pass.getByRole('button', { name: 'Change Target' }).click();
