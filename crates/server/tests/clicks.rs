@@ -70,6 +70,20 @@ async fn behind_a_trusted_proxy_the_country_comes_from_the_first_forwarded_addre
 }
 
 #[tokio::test]
+async fn behind_a_trusted_proxy_with_no_forwarded_address_the_country_comes_from_the_socket() {
+    let app = app_behind_proxy().await;
+    app.create(json!({ "code": "geo", "target": "https://example.com" }))
+        .await;
+
+    app.visit("/geo", &[("user-agent", BROWSER_UA)]).await;
+
+    assert_eq!(
+        countries(&app, "geo").await,
+        json!([{ "value": "FR", "count": 1 }])
+    );
+}
+
+#[tokio::test]
 async fn without_proxy_trust_the_country_comes_from_the_socket() {
     let app = app().await;
     app.create(json!({ "code": "geo", "target": "https://example.com" }))

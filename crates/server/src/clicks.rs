@@ -62,13 +62,13 @@ pub(crate) async fn record(
     if BOTS.is_bot(ua) {
         return;
     }
-    let ip = if s.trust_proxy {
+    let forwarded = || {
         text(header::HeaderName::from_static("x-forwarded-for"))
             .and_then(|v| v.split(',').next())
             .and_then(|first| first.trim().parse().ok())
-    } else {
-        socket
     };
+    // A request that reached us without the proxy adding the header came from the socket.
+    let ip = s.trust_proxy.then(forwarded).flatten().or(socket);
     // The IP goes no further than this lookup.
     let country = ip.and_then(|ip| (s.country)(ip));
     let referrer_host = text(header::REFERER)
