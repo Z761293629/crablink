@@ -13,7 +13,68 @@
     "clickCount": "Click Count",
     "expiry": "Expiry",
     "never": "Never",
-    "empty": "No Links yet."
+    "empty": "No Links yet.",
+    "code": "Code",
+    "codeHint": "Generated if empty",
+    "domain": "Domain",
+    "create": "Create Link"
+  },
+  "nav": {
+    "links": "Links",
+    "domains": "Domains",
+    "admin": "Admin"
+  },
+  "invite": {
+    "title": "Accept invite",
+    "password": "Choose a password",
+    "submit": "Accept invite"
+  },
+  "domains": {
+    "title": "Domains",
+    "host": "Host",
+    "status": "Status",
+    "dnsRecord": "DNS record",
+    "default": "Default Domain",
+    "dns": "Point a custom Domain at {{host}} with a CNAME record. It works once an Instance Admin approves it.",
+    "add": "Add Domain",
+    "remove": "Remove",
+    "confirmRemove": "Remove {{host}}? Its Links become Deleted Links, and their Codes stay taken.",
+    "statuses": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    }
+  },
+  "admin": {
+    "title": "Instance administration",
+    "invite": {
+      "title": "Invite a User",
+      "email": "Email",
+      "workspace": "Workspace",
+      "workspaceHint": "slug, optional",
+      "create": "Create invite link",
+      "link": "Invite link"
+    },
+    "domains": {
+      "title": "Custom Domains",
+      "workspace": "Workspace",
+      "approve": "Approve",
+      "reject": "Reject",
+      "empty": "No custom Domains yet."
+    },
+    "users": {
+      "title": "Users",
+      "email": "Email",
+      "roles": "Roles",
+      "instanceAdmin": "Instance Admin",
+      "disabled": "Disabled",
+      "disable": "Disable",
+      "enable": "Enable",
+      "makeAdmin": "Make Instance Admin",
+      "revokeAdmin": "Revoke Instance Admin",
+      "resetPassword": "Reset password",
+      "newPassword": "New password:"
+    }
   },
   "errors": {
     "network": "Can't reach the server. Check your connection and try again.",
@@ -38,6 +99,10 @@
     "user_not_found": "No such User.",
     "already_member": "Already in this Workspace.",
     "last_owner": "A Workspace needs an Owner: make someone else Owner first.",
-    "internal": "Something went wrong on the server. Try again."
+    "internal": "Something went wrong on the server. Try again.",
+    "invalid_domain": "Enter a host name such as go.example.com.",
+    "domain_taken": "That Domain is the Default Domain or another Workspace’s.",
+    "domain_not_found": "That Domain doesn’t exist.",
+    "domain_not_approved": "Use the Default Domain or one of this Workspace’s approved Domains."
   }
 }

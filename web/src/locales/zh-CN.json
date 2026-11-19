@@ -13,7 +13,68 @@
     "clickCount": "点击次数",
     "expiry": "过期时间",
     "never": "永不过期",
-    "empty": "还没有链接。"
+    "empty": "还没有链接。",
+    "code": "短码",
+    "codeHint": "留空则自动生成",
+    "domain": "域名",
+    "create": "创建链接"
+  },
+  "nav": {
+    "links": "链接",
+    "domains": "域名",
+    "admin": "管理"
+  },
+  "invite": {
+    "title": "接受邀请",
+    "password": "设置密码",
+    "submit": "接受邀请"
+  },
+  "domains": {
+    "title": "域名",
+    "host": "主机名",
+    "status": "状态",
+    "dnsRecord": "DNS 记录",
+    "default": "默认域名",
+    "dns": "用 CNAME 记录把自定义域名指向 {{host}}。实例管理员批准后即可使用。",
+    "add": "添加域名",
+    "remove": "移除",
+    "confirmRemove": "移除 {{host}}？它的链接将成为已删除链接，短码仍保持占用。",
+    "statuses": {
+      "pending": "待审批",
+      "approved": "已批准",
+      "rejected": "已拒绝"
+    }
+  },
+  "admin": {
+    "title": "实例管理",
+    "invite": {
+      "title": "邀请用户",
+      "email": "邮箱",
+      "workspace": "工作区",
+      "workspaceHint": "slug，可选",
+      "create": "创建邀请链接",
+      "link": "邀请链接"
+    },
+    "domains": {
+      "title": "自定义域名",
+      "workspace": "工作区",
+      "approve": "批准",
+      "reject": "拒绝",
+      "empty": "还没有自定义域名。"
+    },
+    "users": {
+      "title": "用户",
+      "email": "邮箱",
+      "roles": "角色",
+      "instanceAdmin": "实例管理员",
+      "disabled": "已停用",
+      "disable": "停用",
+      "enable": "启用",
+      "makeAdmin": "设为实例管理员",
+      "revokeAdmin": "取消实例管理员",
+      "resetPassword": "重置密码",
+      "newPassword": "新密码："
+    }
   },
   "errors": {
     "network": "无法连接服务器，请检查网络后重试。",
@@ -38,6 +99,10 @@
     "user_not_found": "没有该用户。",
     "already_member": "已在此工作区中。",
     "last_owner": "工作区必须有一位所有者：请先将其他人设为所有者。",
-    "internal": "服务器出错了，请重试。"
+    "internal": "服务器出错了，请重试。",
+    "invalid_domain": "请输入形如 go.example.com 的主机名。",
+    "domain_taken": "该域名是默认域名，或已属于其他工作区。",
+    "domain_not_found": "该域名不存在。",
+    "domain_not_approved": "请使用默认域名或本工作区已批准的域名。"
   }
 }

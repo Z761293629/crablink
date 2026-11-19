@@ -27,6 +27,34 @@ export interface LinkPage {
   next_cursor: string | null;
 }
 
+export type DomainStatus = 'pending' | 'approved' | 'rejected';
+
+/** A Domain a Workspace may use: the Default Domain or one of its custom Domains. */
+export interface Domain {
+  host: string;
+  status: DomainStatus;
+  default: boolean;
+}
+
+/** A custom Domain as an Instance Admin sees it, with the slug of the Workspace that has it. */
+export interface ManagedDomain {
+  host: string;
+  status: DomainStatus;
+  workspace: string;
+}
+
+export interface ManagedUser {
+  id: number;
+  email: string;
+  instance_admin: boolean;
+  disabled: boolean;
+}
+
+/** The signed-in User's first Workspace by name: their personal one until they join others. */
+export async function firstWorkspace(): Promise<Membership | undefined> {
+  return (await api<Membership[]>('GET', '/workspaces'))[0];
+}
+
 /** An error response: `kind` is stable, `message` is the server's English text. */
 export class ApiError extends Error {
   constructor(
