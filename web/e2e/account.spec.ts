@@ -14,7 +14,7 @@ test('a new User accepts an invite and lands signed in', async ({ page, request 
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
   // In their personal Workspace.
   await expect(page.getByLabel('Workspace', { exact: true }).locator('option:checked')).toHaveText(email);
-  expect(page.url()).toBe(`${baseURL}/app/`);
+  await expect(page).toHaveURL(`${baseURL}/app/`);
 
   await page.reload();
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
@@ -26,6 +26,8 @@ test('a used invite link says so', async ({ page, request }, testInfo) => {
   await page.getByLabel('Choose a password').fill('my new password');
   await page.getByRole('button', { name: 'Accept invite' }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
+  // Navigating before sign-out finishes would cancel it.
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
 
   await page.goto(url);
   await page.getByLabel('Choose a password').fill('my new password');
@@ -46,5 +48,7 @@ test('a User changes their password and signs in with the new one', async ({ pag
   await expect(page.getByRole('status')).toHaveText('Password changed.');
 
   await page.getByRole('button', { name: 'Sign out' }).click();
+  // Navigating before sign-out finishes would cancel it, leaving no sign-in form to fill.
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
   await signInPage(page, user.email, 'a brand new password');
 });
