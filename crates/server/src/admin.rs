@@ -14,20 +14,20 @@ use crablink_api::{
 
 use crate::AppState;
 use crate::error::ApiError;
-use crate::users::{self, SameOrigin, Session};
+use crate::users::{self, SameOrigin};
 use crate::workspaces::{Caller, stored_role};
 
 const INVITE_TTL: TimeDelta = TimeDelta::days(7);
 
 /// The session of an Instance Admin. Any other credential is 403.
-pub(crate) struct InstanceAdmin(Session);
+pub(crate) struct InstanceAdmin;
 
 impl FromRequestParts<AppState> for InstanceAdmin {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, s: &AppState) -> Result<Self, ApiError> {
         match Caller::from_request_parts(parts, s).await? {
-            Caller::User(session) if session.user.instance_admin => Ok(InstanceAdmin(session)),
+            Caller::User(session) if session.user.instance_admin => Ok(InstanceAdmin),
             _ => Err(ApiError::Forbidden),
         }
     }
@@ -165,20 +165,21 @@ fn managed_user((id, email, instance_admin, disabled): (i64, String, bool, bool)
 }
 
 /// `PATCH /api/admin/users/{id}`: disables or re-enables a User, or makes them an
-/// Instance Admin or not. Not oneself, so the instance always keeps the caller.
+/// Instance Admin or not, oneself included, as long as an enabled Instance Admin
+/// remains to run the instance.
 pub(crate) async fn update_user(
     State(s): State<AppState>,
-    InstanceAdmin(me): InstanceAdmin,
+    _: InstanceAdmin,
     Path(id): Path<i64>,
     body: Result<Json<UpdateUser>, JsonRejection>,
 ) -> Result<Json<ManagedUser>, ApiError> {
     let Json(req) = body?;
-    if id == me.user_id && (req.disabled == Some(true) || req.instance_admin == Some(false)) {
-        return Err(ApiError::BadRequest(
-            "you can't disable yourself or stop being an Instance Admin".into(),
-        ));
-    }
     let mut tx = s.pool.begin().await?;
+    // Locks every enabled Instance Admin, so two of them demoting each other at once
+    // can't both succeed.
+    sqlx::query("SELECT id FROM users WHERE instance_admin AND NOT disabled FOR UPDATE")
+        .execute(&mut *tx)
+        .await?;
     if let Some(disabled) = req.disabled {
         users::set_disabled(&mut tx, id, disabled).await?;
     }
@@ -194,6 +195,15 @@ pub(crate) async fn update_user(
         .fetch_optional(&mut *tx)
         .await?
         .ok_or(ApiError::UserNotFound)?;
+    let admins_left: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM users WHERE instance_admin AND NOT disabled)",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if !admins_left {
+        // Dropping `tx` rolls the change back.
+        return Err(ApiError::LastInstanceAdmin);
+    }
     tx.commit().await?;
     Ok(Json(managed_user(row)))
 }

@@ -47,3 +47,15 @@ test('an Instance Admin resets a password, then disables the User', async ({ pag
   await userPage.reload();
   await expect(userPage.getByRole('button', { name: 'Sign in' })).toBeVisible();
 });
+
+test('the last Instance Admin is told they can’t revoke themselves', async ({ page }) => {
+  await signInPage(page, admin.email, admin.password);
+  await page.getByRole('link', { name: 'Admin' }).click();
+  const row = page.getByRole('row').filter({ hasText: admin.email });
+  await row.getByRole('button', { name: 'Revoke Instance Admin' }).click();
+
+  await expect(page.getByRole('alert')).toHaveText(
+    'The instance needs an Instance Admin: make someone else Instance Admin first.',
+  );
+  await expect(row.getByRole('button', { name: 'Revoke Instance Admin' })).toBeVisible();
+});

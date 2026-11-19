@@ -432,6 +432,9 @@ pub enum ErrorKind {
     /// Removing or demoting the Workspace's last Owner, themself included: it would
     /// leave no one to manage it.
     LastOwner,
+    /// Disabling or demoting the instance's last enabled Instance Admin, themself
+    /// included: it would leave no one to run it.
+    LastInstanceAdmin,
     /// A Domain host that isn't a host name such as `go.example.com`.
     InvalidDomain,
     /// The Domain is the Default Domain or another Workspace's.

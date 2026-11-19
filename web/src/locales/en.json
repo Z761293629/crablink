@@ -204,6 +204,7 @@
     "user_not_found": "No such User.",
     "already_member": "Already in this Workspace.",
     "last_owner": "A Workspace needs an Owner: make someone else Owner first.",
+    "last_instance_admin": "The instance needs an Instance Admin: make someone else Instance Admin first.",
     "internal": "Something went wrong on the server. Try again.",
     "invalid_domain": "Enter a host name such as go.example.com.",
     "domain_taken": "That Domain is the Default Domain or another Workspace’s.",

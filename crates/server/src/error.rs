@@ -65,6 +65,8 @@ pub enum ApiError {
     AlreadyMember,
     #[error("a Workspace needs an Owner: make someone else Owner first")]
     LastOwner,
+    #[error("the instance needs an Instance Admin: make someone else Instance Admin first")]
+    LastInstanceAdmin,
     #[error("domain must be a host name such as go.example.com, without a port")]
     InvalidDomain,
     #[error("domain is the Default Domain or another Workspace's")]
@@ -106,6 +108,7 @@ impl ApiError {
             Self::UserNotFound => ErrorKind::UserNotFound,
             Self::AlreadyMember => ErrorKind::AlreadyMember,
             Self::LastOwner => ErrorKind::LastOwner,
+            Self::LastInstanceAdmin => ErrorKind::LastInstanceAdmin,
             Self::InvalidDomain => ErrorKind::InvalidDomain,
             Self::DomainTaken => ErrorKind::DomainTaken,
             Self::DomainNotFound => ErrorKind::DomainNotFound,
@@ -139,6 +142,7 @@ impl ApiError {
             | Self::EmailTaken
             | Self::AlreadyMember
             | Self::LastOwner
+            | Self::LastInstanceAdmin
             | Self::DomainTaken => StatusCode::CONFLICT,
             Self::CodesExhausted | Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }

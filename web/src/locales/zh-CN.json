@@ -204,6 +204,7 @@
     "user_not_found": "没有该用户。",
     "already_member": "已在此工作区中。",
     "last_owner": "工作区必须有一位所有者：请先将其他人设为所有者。",
+    "last_instance_admin": "实例必须有一位实例管理员：请先将其他人设为实例管理员。",
     "internal": "服务器出错了，请重试。",
     "invalid_domain": "请输入形如 go.example.com 的主机名。",
     "domain_taken": "该域名是默认域名，或已属于其他工作区。",
