@@ -402,8 +402,8 @@ input[readonly] {
   position: relative;
   z-index: 20;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
-  grid-template-areas: 'logo ws tabs tools';
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'logo tabs tools';
   align-items: center;
   column-gap: 1.5rem;
   min-height: 3.75rem;
@@ -431,10 +431,6 @@ input[readonly] {
 .band .logo img {
   display: block;
   height: 2.25rem;
-}
-
-.band .ws {
-  grid-area: ws;
 }
 
 .band select {
@@ -625,7 +621,15 @@ input[readonly] {
   border-radius: 50%;
 }
 
-/* The account menu names whose account it is, above its items. */
+/* The band's menu names whose account it is, above its items, and labels its Workspaces. */
+.popover.end {
+  max-width: min(20rem, calc(100vw - 2rem));
+}
+
+.menu-label {
+  margin: 0.375rem 0 0;
+  padding: 0 0.75rem;
+}
 .menu-who {
   margin: 0 0 0.125rem;
   padding: 0.5rem 0.625rem 0.625rem;
@@ -738,24 +742,18 @@ button.icon svg {
 
 @media (max-width: 47.99rem) {
   .band {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas: 'logo ws tools';
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'logo tools';
     column-gap: 0.75rem;
     padding: 0.625rem 1rem;
   }
 
-  .band .ws {
-    justify-self: end;
+  .band .tools {
     min-width: 0;
     max-width: 100%;
   }
 
-  .band .tools:not(:has(select)) {
-    display: none;
-  }
-
-  .band .tabs,
-  .band .menu-wrap.user {
+  .band .tabs {
     display: none;
   }
 
@@ -774,11 +772,6 @@ button.icon svg {
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
-  }
-
-  .ws .popover {
-    right: 0;
-    left: auto;
   }
 
   .tabbar {

@@ -64,7 +64,7 @@ export async function signInPage(page: Page, email: string, password: string) {
   await expect(userMenu(page)).toBeVisible();
 }
 
-/** The signed-in User's menu in the header: Account, Language, Instance Admin, Sign out. */
+/** The signed-in User's menu in the header: their Workspaces, then Account, Language, Instance Admin, Sign out. */
 export const userMenu = (page: Page) => page.getByRole('button', { name: /^(Account menu|账户菜单):/ });
 
 export async function openUserMenu(page: Page) {
@@ -76,8 +76,8 @@ export async function signOut(page: Page) {
   await page.getByRole('button', { name: 'Sign out' }).click();
 }
 
-/** The Workspace switcher in the header, showing the current Workspace. */
-export const switcher = (page: Page) => page.getByRole('button', { name: /^(Workspace|工作区):/ });
+/** The header's one menu, which also switches Workspaces and names the current one. */
+export const switcher = userMenu;
 
 /** Opens the switcher; resolves to its list of Workspaces. */
 export async function openWorkspaceMenu(page: Page) {

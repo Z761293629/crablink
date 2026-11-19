@@ -24,9 +24,9 @@ test('an Instance Admin creates an invite into a Workspace, and a new User accep
 
 test('a User who isn’t an Instance Admin sees no admin navigation', async ({ page, user }) => {
   await signInPage(page, user.email, user.password);
+  // One menu holds the Workspace's pages and the account's.
   await openWorkspaceMenu(page);
   await expect(page.getByRole('link', { name: 'Domains' })).toBeVisible();
-  await openUserMenu(page);
   await expect(page.getByRole('link', { name: 'Account' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Instance Admin' })).toHaveCount(0);
 

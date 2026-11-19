@@ -133,9 +133,6 @@ export function App() {
         <a className="logo" href="/app/">
           <img src={logoReversed} alt="crablink" width={123} height={36} />
         </a>
-        {user && workspaces && workspaces.length > 0 && (
-          <WorkspaceSwitcher workspaces={workspaces} current={workspace} onSwitch={switchTo} />
-        )}
         {user && (
           <nav className="tabs" aria-label={t('nav.label')}>
             {tabs.map(([href, key, current]) => (
@@ -146,7 +143,11 @@ export function App() {
           </nav>
         )}
         <div className="tools">
-          {user ? <UserMenu user={user} onSignOut={signOut} /> : <LanguageSwitcher />}
+          {user ? (
+            <BandMenu user={user} workspaces={workspaces} current={workspace} onSwitch={switchTo} onSignOut={signOut} />
+          ) : (
+            <LanguageSwitcher />
+          )}
         </div>
       </header>
       <main className={board ? 'flush' : undefined}>
@@ -171,52 +172,6 @@ export function App() {
         </nav>
       )}
     </>
-  );
-}
-
-/** The current Workspace and the User's role in it; opens onto the other Workspaces and its management pages. */
-function WorkspaceSwitcher({
-  workspaces,
-  current,
-  onSwitch,
-}: {
-  workspaces: Membership[];
-  current?: Membership;
-  onSwitch: (slug: string) => void;
-}) {
-  const { t } = useTranslation();
-  const { open, setOpen, toggle, ref } = usePopover<HTMLDivElement>();
-  const id = useId();
-  return (
-    <div className="menu-wrap ws" ref={ref}>
-      <button className="band-button" aria-expanded={open} aria-controls={open ? id : undefined} onClick={toggle}>
-        <span className="vh">{t('nav.switcher')}: </span>
-        <span className="ws-name">{current?.name ?? t('nav.switcher')}</span>
-        {current && <span className="stamp">{t(`roles.${current.role}`)}</span>}
-        <Chevron />
-      </button>
-      {open && (
-        <div id={id} className="popover">
-          <ul aria-label={t('nav.switcher')}>
-            {workspaces.map((w) => (
-              <li key={w.slug}>
-                <button
-                  className="item"
-                  aria-current={w.slug === current?.slug}
-                  onClick={() => {
-                    onSwitch(w.slug);
-                    setOpen(false);
-                  }}
-                >
-                  {w.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <WorkspaceLinks current={current} />
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -248,25 +203,67 @@ function WorkspaceLinks({ current }: { current?: Membership }) {
   );
 }
 
-/** The signed-in User: their Account, the language, Instance Admin for Instance Admins, signing out. */
-function UserMenu({ user, onSignOut }: { user: User; onSignOut: () => void }) {
+/**
+ * The signed-in User's one menu, at the band's end: whose account it is, their Workspaces to switch
+ * between with the current one's pages, then their Account, Instance Admin for Instance Admins, the
+ * language and signing out. The button shows the avatar, and the current Workspace's name once there
+ * is more than one to tell apart.
+ */
+function BandMenu({
+  user,
+  workspaces,
+  current,
+  onSwitch,
+  onSignOut,
+}: {
+  user: User;
+  workspaces?: Membership[];
+  current?: Membership;
+  onSwitch: (slug: string) => void;
+  onSignOut: () => void;
+}) {
   const { t } = useTranslation();
-  const { open, toggle, ref } = usePopover<HTMLDivElement>();
+  const { open, setOpen, toggle, ref } = usePopover<HTMLDivElement>();
   const id = useId();
+  const many = (workspaces?.length ?? 0) > 1;
   return (
     <div className="menu-wrap user" ref={ref}>
       <button className="band-button" aria-expanded={open} aria-controls={open ? id : undefined} onClick={toggle}>
-        <span className="vh">{t('nav.userMenu')}: </span>
+        <span className="vh">
+          {t('nav.userMenu')}: {user.email}
+          {current && `, ${t('nav.switcher')}: `}
+        </span>
         <span className="avatar" aria-hidden="true">
           {user.email[0].toUpperCase()}
         </span>
-        {/* Only the avatar shows: the switcher beside it often names a Workspace after this same email. */}
-        <span className="vh">{user.email}</span>
+        {current && <span className={many ? 'ws-name' : 'vh'}>{current.name}</span>}
         <Chevron />
       </button>
       {open && (
         <div id={id} className="popover end">
           <p className="menu-who">{user.email}</p>
+          {workspaces && workspaces.length > 0 && (
+            <>
+              <p className="menu-label micro">{t('nav.switcher')}</p>
+              <ul aria-label={t('nav.switcher')}>
+                {workspaces.map((w) => (
+                  <li key={w.slug}>
+                    <button
+                      className="item"
+                      aria-current={w.slug === current?.slug}
+                      onClick={() => {
+                        onSwitch(w.slug);
+                        setOpen(false);
+                      }}
+                    >
+                      {w.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <WorkspaceLinks current={current} />
           <AccountItems user={user} onSignOut={onSignOut} />
         </div>
       )}
