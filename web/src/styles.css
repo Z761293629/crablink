@@ -1,6 +1,9 @@
-/* Follows the system's light or dark theme through system colors. */
+/* Follows the system's light or dark theme through system colors. The status colors
+   reach 4.5:1 on Canvas in both themes (WCAG 2.2 AA); Crab Red is never small text. */
 :root {
   color-scheme: light dark;
+  --danger: light-dark(#b42318, #ff8a7a);
+  --ok: light-dark(#1a7f37, #4ac26b);
   font-family: system-ui, sans-serif;
   line-height: 1.5;
 }
@@ -94,7 +97,7 @@ button {
 }
 
 [role='alert'] {
-  color: #d33;
+  color: var(--danger);
 }
 
 .table {
@@ -230,10 +233,14 @@ td button + button {
   font-family: ui-monospace, monospace;
 }
 
+/* On Canvas rather than the system button face, so its text keeps its contrast. */
 button.danger {
-  color: #d33;
+  color: var(--danger);
+  background: Canvas;
+  border: 1px solid currentColor;
+  border-radius: 3px;
 }
 
 [role='status'] {
-  color: #2a2;
+  color: var(--ok);
 }
