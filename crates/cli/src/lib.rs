@@ -62,6 +62,9 @@ pub enum Cmd {
     /// Show one Link in detail.
     Get {
         code: String,
+        /// The Link's Domain, e.g. go.example.com (the Default Domain otherwise).
+        #[arg(long)]
+        domain: Option<String>,
         /// Print the API's JSON instead.
         #[arg(long)]
         json: bool,
@@ -69,6 +72,9 @@ pub enum Cmd {
     /// Change a Link's Target and/or Expiry.
     Edit {
         code: String,
+        /// The Link's Domain, e.g. go.example.com (the Default Domain otherwise).
+        #[arg(long)]
+        domain: Option<String>,
         #[arg(long)]
         target: Option<String>,
         /// RFC 3339 timestamp, or a duration from now like 30m, 12h, 7d.
@@ -82,10 +88,18 @@ pub enum Cmd {
         json: bool,
     },
     /// Delete a Link (its Code is never reused).
-    Rm { code: String },
+    Rm {
+        code: String,
+        /// The Link's Domain, e.g. go.example.com (the Default Domain otherwise).
+        #[arg(long)]
+        domain: Option<String>,
+    },
     /// Show a Link's QR code in the terminal, or save it to a file.
     Qr {
         code: String,
+        /// The Link's Domain, e.g. go.example.com (the Default Domain otherwise).
+        #[arg(long)]
+        domain: Option<String>,
         /// Save to this file instead: .svg or .png.
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -145,35 +159,43 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
                 );
             }
         })?,
-        Cmd::Get { code, json } => show_link(&api.get(&code, None)?, json, now)?,
+        Cmd::Get { code, domain, json } => {
+            show_link(&api.get(&code, domain.as_deref())?, json, now)?
+        }
         Cmd::Edit {
             code,
+            domain,
             target,
             expires,
             no_expires,
             json,
         } => {
             let body = edit_body(target, expires, no_expires, now)?;
-            show_link(&api.update(&code, None, &body)?, json, now)?;
+            show_link(&api.update(&code, domain.as_deref(), &body)?, json, now)?;
         }
-        Cmd::Rm { code } => {
-            api.delete(&code, None)?;
+        Cmd::Rm { code, domain } => {
+            api.delete(&code, domain.as_deref())?;
             eprintln!("Deleted {code}");
         }
         Cmd::Qr {
             code,
+            domain,
             output: Some(path),
         } => {
             let format = qr_format(&path)?;
-            std::fs::write(&path, api.qr(&code, None, format)?)
+            std::fs::write(&path, api.qr(&code, domain.as_deref(), format)?)
                 .with_context(|| format!("cannot write {}", path.display()))?;
             eprintln!("Saved {}", path.display());
         }
-        Cmd::Qr { code, output: None } => {
+        Cmd::Qr {
+            code,
+            domain,
+            output: None,
+        } => {
             if !std::io::stdout().is_terminal() {
                 bail!("stdout is not a terminal: pass -o <file.svg|file.png> to save the QR code");
             }
-            let link = api.get(&code, None)?;
+            let link = api.get(&code, domain.as_deref())?;
             // As the server refuses `-o`: its Short URL no longer redirects.
             if link.is_expired(now) {
                 bail!("Link {} has expired: no QR code", link.code);

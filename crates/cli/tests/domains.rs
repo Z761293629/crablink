@@ -109,3 +109,71 @@ fn tui_reload_keeps_the_default_domain_link_selected_not_its_code_twin() {
     let detail = screen.lines().find(|l| l.contains("Short URL")).unwrap();
     assert!(detail.contains(&format!("{}/sale", s.url)), "{screen}");
 }
+
+#[test]
+fn get_with_domain_shows_the_link_on_that_domain() {
+    let s = same_code_on_two_domains();
+
+    let on_custom = s.cli(&["get", "sale", "--domain", "go.example.com", "--json"]);
+    let on_default = s.cli(&["get", "sale", "--json"]);
+
+    assert_eq!(on_custom.json()["target"], "https://example.com/custom");
+    assert_eq!(on_default.json()["target"], "https://example.com/default");
+}
+
+#[test]
+fn edit_with_domain_changes_only_the_link_on_that_domain() {
+    let s = same_code_on_two_domains();
+
+    let out = s.cli(&[
+        "edit",
+        "sale",
+        "--domain",
+        "go.example.com",
+        "--target",
+        "https://example.com/edited",
+    ]);
+
+    assert!(out.success, "{}", out.stderr);
+    assert_eq!(
+        links(&s),
+        [
+            "http://go.example.com/sale -> https://example.com/edited".to_string(),
+            format!("{}/sale -> https://example.com/default", s.url),
+        ]
+    );
+}
+
+#[test]
+fn rm_with_domain_deletes_only_the_link_on_that_domain() {
+    let s = same_code_on_two_domains();
+
+    let out = s.cli(&["rm", "sale", "--domain", "go.example.com"]);
+
+    assert!(out.success, "{}", out.stderr);
+    assert_eq!(
+        links(&s),
+        [format!("{}/sale -> https://example.com/default", s.url)]
+    );
+}
+
+#[test]
+fn qr_with_domain_saves_the_qr_code_of_the_link_on_that_domain() {
+    let s = same_code_on_two_domains();
+    let path = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("qr-domain.svg");
+
+    let out = s.cli(&[
+        "qr",
+        "sale",
+        "--domain",
+        "go.example.com",
+        "-o",
+        path.to_str().unwrap(),
+    ]);
+
+    assert!(out.success, "{}", out.stderr);
+    let svg = crablink_api::QrFormat::Svg;
+    let custom = s.api().qr("sale", Some("go.example.com"), svg).unwrap();
+    assert_ne!(custom, s.api().qr("sale", None, svg).unwrap());
+    assert_eq!(std::fs::read(&path).unwrap(), custom);
+}
