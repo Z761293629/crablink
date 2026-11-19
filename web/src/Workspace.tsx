@@ -1,14 +1,17 @@
 // Managing a Workspace: renaming, deleting and leaving it, its members and its API
 // Keys (Owners only, as the API enforces), and creating a new one.
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type ApiKey, type Membership, type NewApiKey, type WorkspaceUser } from './api';
 import { errorMessage } from './i18n';
-import { useLocationKey } from './ui';
+import { useConfirm, useLocationKey } from './ui';
 
 /** Runs an action, showing its error in the page's one alert. */
 type Run = (action: () => Promise<unknown>) => Promise<void>;
+
+/** Asks "Are you sure?" in the page's dialog; resolves to whether `action` was chosen. */
+type Ask = (message: string, action: string) => Promise<boolean>;
 
 /** Calls `submit` with the form's fields, then clears the form if it succeeded. */
 function onSubmit(submit: (fields: Record<string, string>) => Promise<boolean | void>) {
@@ -34,6 +37,7 @@ export function ManageWorkspace({
 }) {
   const { t } = useTranslation();
   const [error, setError] = useState<unknown>();
+  const [dialog, ask] = useConfirm();
   const run: Run = useCallback(async (action) => {
     setError(undefined);
     try {
@@ -86,15 +90,15 @@ export function ManageWorkspace({
               {t('workspace.rename')}
             </button>
           </form>
-          <Members path={path!} email={email} run={run} attempt={attempt} onChanged={onChanged} />
-          <ApiKeys path={path!} run={run} attempt={attempt} />
+          <Members path={path!} email={email} run={run} attempt={attempt} ask={ask} onChanged={onChanged} />
+          <ApiKeys path={path!} run={run} attempt={attempt} ask={ask} />
         </>
       )}
       {workspace && (
         <p className="sheet leave">
           <button
-            onClick={() =>
-              confirm(t('workspace.confirmLeave', { name: workspace.name })) &&
+            onClick={async () =>
+              (await ask(t('workspace.confirmLeave', { name: workspace.name }), t('workspace.leave'))) &&
               attempt(async () => {
                 await api('DELETE', `${path}/members/${encodeURIComponent(email)}`);
                 await onChanged();
@@ -106,8 +110,8 @@ export function ManageWorkspace({
           {owner && (
             <button
               className="danger"
-              onClick={() =>
-                confirm(t('workspace.confirmDelete', { name: workspace.name })) &&
+              onClick={async () =>
+                (await ask(t('workspace.confirmDelete', { name: workspace.name }), t('workspace.delete'))) &&
                 attempt(async () => {
                   await api('DELETE', path!);
                   await onChanged();
@@ -124,20 +128,23 @@ export function ManageWorkspace({
         <h2>{t('workspace.create')}</h2>
         <form
           className="row"
-        onSubmit={onSubmit(({ name }) => attempt(async () => {
-          const created = await api<Membership>('POST', '/workspaces', { name });
-          await onChanged(created.slug);
-        }))}
-      >
-        <label className="field">
-          <span className="micro">{t('workspace.newName')}</span>
-          <input name="name" required maxLength={100} />
-        </label>
-        <button type="submit" className="primary">
-          {t('workspace.create')}
-        </button>
+          onSubmit={onSubmit(({ name }) =>
+            attempt(async () => {
+              const created = await api<Membership>('POST', '/workspaces', { name });
+              await onChanged(created.slug);
+            }),
+          )}
+        >
+          <label className="field">
+            <span className="micro">{t('workspace.newName')}</span>
+            <input name="name" required maxLength={100} />
+          </label>
+          <button type="submit" className="primary">
+            {t('workspace.create')}
+          </button>
         </form>
       </section>
+      {dialog}
     </>
   );
 }
@@ -147,6 +154,7 @@ interface SectionProps {
   path: string;
   run: Run;
   attempt: (action: () => Promise<unknown>) => Promise<boolean>;
+  ask: Ask;
 }
 
 function Members({
@@ -154,6 +162,7 @@ function Members({
   email,
   run,
   attempt,
+  ask,
   onChanged,
 }: SectionProps & { email: string; onChanged: () => Promise<void> }) {
   const { t } = useTranslation();
@@ -174,6 +183,8 @@ function Members({
       await (member === email ? onChanged() : load());
     });
 
+  // A Workspace keeps an Owner: the only one isn't offered Make Member.
+  const owners = members.filter((m) => m.role === 'owner').length;
   return (
     <section className="sheet">
       <h2>{t('members.title')}</h2>
@@ -194,13 +205,18 @@ function Members({
                   <span className="stamp">{t(`roles.${m.role}`)}</span>
                 </td>
                 <td className="actions">
-                  <button className="small" onClick={() => change(m.email, m.role === 'owner' ? 'member' : 'owner')}>
-                    {t(m.role === 'owner' ? 'members.makeMember' : 'members.makeOwner')}
-                  </button>
+                  {!(m.role === 'owner' && owners === 1) && (
+                    <button className="small" onClick={() => change(m.email, m.role === 'owner' ? 'member' : 'owner')}>
+                      {t(m.role === 'owner' ? 'members.makeMember' : 'members.makeOwner')}
+                    </button>
+                  )}
                   {m.email !== email && (
                     <button
                       className="danger small"
-                      onClick={() => confirm(t('members.confirmRemove', { email: m.email })) && change(m.email)}
+                      onClick={async () =>
+                        (await ask(t('members.confirmRemove', { email: m.email }), t('members.confirmRemoveAction'))) &&
+                        change(m.email)
+                      }
                     >
                       {t('members.remove')}
                     </button>
@@ -230,8 +246,10 @@ function Members({
   );
 }
 
-function ApiKeys({ path, run, attempt }: SectionProps) {
+function ApiKeys({ path, run, attempt, ask }: SectionProps) {
   const { t, i18n } = useTranslation();
+  const secret = useRef<HTMLInputElement>(null);
+  const [copyFailed, setCopyFailed] = useState(false);
   const [keys, setKeys] = useState<ApiKey[]>([]);
   // The key just created: its secret is shown this once.
   const [created, setCreated] = useState<NewApiKey>();
@@ -273,8 +291,8 @@ function ApiKeys({ path, run, attempt }: SectionProps) {
                   <td className="actions">
                     <button
                       className="danger small"
-                      onClick={() =>
-                        confirm(t('apiKeys.confirmRevoke', { name: key.name })) &&
+                      onClick={async () =>
+                        (await ask(t('apiKeys.confirmRevoke', { name: key.name }), t('apiKeys.confirmRevokeAction'))) &&
                         attempt(async () => {
                           await api('DELETE', `${path}/api-keys/${key.id}`);
                           if (created?.id === key.id) setCreated(undefined);
@@ -297,12 +315,25 @@ function ApiKeys({ path, run, attempt }: SectionProps) {
           <div className="row">
             <label className="field">
               <span className="micro">{t('apiKeys.secret')}</span>
-              <input readOnly value={created.secret} onFocus={(e) => e.target.select()} />
+              <input ref={secret} name="secret" readOnly value={created.secret} onFocus={(e) => e.target.select()} />
             </label>
-            <button className="primary" onClick={() => navigator.clipboard.writeText(created.secret)}>
+            <button
+              className="primary"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(created.secret);
+                  setCopyFailed(false);
+                } catch {
+                  // No clipboard here: leave the secret selected to copy by hand.
+                  secret.current?.select();
+                  setCopyFailed(true);
+                }
+              }}
+            >
               {t('apiKeys.copy')}
             </button>
           </div>
+          {copyFailed && <p role="status">{t('apiKeys.copyFailed')}</p>}
         </div>
       )}
       <form

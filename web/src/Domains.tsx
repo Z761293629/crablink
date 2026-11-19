@@ -2,18 +2,21 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type Domain, type Membership } from './api';
 import { errorMessage } from './i18n';
+import { PageError, useConfirm } from './ui';
 
 /** The Default Domain and the custom Domains of `workspace`; Owners add and remove them. */
 export function Domains({ workspace }: { workspace: Membership }) {
   const { t } = useTranslation();
   const [domains, setDomains] = useState<Domain[]>();
   const [error, setError] = useState<unknown>();
+  const [tries, setTries] = useState(0);
+  const [dialog, ask] = useConfirm();
 
   const load = async (slug: string) => setDomains(await api<Domain[]>('GET', `/workspaces/${slug}/domains`));
 
   useEffect(() => {
     api<Domain[]>('GET', `/workspaces/${workspace.slug}/domains`).then(setDomains, setError);
-  }, [workspace.slug]);
+  }, [workspace.slug, tries]);
 
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -29,7 +32,7 @@ export function Domains({ workspace }: { workspace: Membership }) {
   }
 
   async function remove(domain: string) {
-    if (!confirm(t('domains.confirmRemove', { domain }))) return;
+    if (!(await ask(t('domains.confirmRemove', { domain }), t('domains.confirmRemoveAction')))) return;
     try {
       await api('DELETE', `/workspaces/${workspace.slug}/domains/${encodeURIComponent(domain)}`);
       await load(workspace.slug);
@@ -38,7 +41,16 @@ export function Domains({ workspace }: { workspace: Membership }) {
     }
   }
 
-  if (!domains) return error === undefined ? null : <p role="alert">{errorMessage(t, error)}</p>;
+  if (!domains)
+    return error === undefined ? null : (
+      <PageError
+        error={error}
+        onRetry={() => {
+          setError(undefined);
+          setTries((n) => n + 1);
+        }}
+      />
+    );
   const owner = workspace.role === 'owner';
   // DNS points at a host name, never a port.
   const target = domains.find((d) => d.default)?.domain.replace(/:\d+$/, '');
@@ -96,6 +108,7 @@ export function Domains({ workspace }: { workspace: Membership }) {
           </table>
         </div>
       </section>
+      {dialog}
     </>
   );
 }

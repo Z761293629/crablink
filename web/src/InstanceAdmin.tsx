@@ -84,7 +84,7 @@ export function InstanceAdmin() {
           <div className="secret invite-link">
             <label className="field">
               <span className="micro">{t('admin.invite.link')}</span>
-              <input readOnly value={invite} onFocus={(e) => e.target.select()} />
+              <input name="invite" readOnly value={invite} onFocus={(e) => e.target.select()} />
             </label>
           </div>
         )}

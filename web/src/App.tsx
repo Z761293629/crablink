@@ -7,7 +7,7 @@ import { Domains } from './Domains';
 import { InstanceAdmin } from './InstanceAdmin';
 import { Links } from './Links';
 import { errorMessage, languages, setLanguage } from './i18n';
-import { Chevron, interceptLinks, navigate, useLocationKey, usePopover } from './ui';
+import { Chevron, interceptLinks, navigate, PageError, useLocationKey, usePopover } from './ui';
 import { ManageWorkspace } from './Workspace';
 import logoReversed from './assets/crablink-horizontal-reversed.svg';
 
@@ -94,7 +94,16 @@ export function App() {
   if (page === 'invite') main = <AcceptInvite />;
   else if (user === undefined) main = null;
   else if (!user) main = <SignIn onSignedIn={signedInAs} />;
-  else if (error !== undefined) main = <p role="alert">{errorMessage(t, error)}</p>;
+  else if (error !== undefined)
+    main = (
+      <PageError
+        error={error}
+        onRetry={() => {
+          setError(undefined);
+          refresh().catch(setError);
+        }}
+      />
+    );
   else if (page === 'admin' && user.instance_admin) main = <InstanceAdmin />;
   else if (page === 'account') main = <ChangePassword />;
   else if (page === 'settings') main = <Settings user={user} workspace={workspace} onSignOut={signOut} />;
@@ -307,7 +316,7 @@ function LanguageSwitcher({ visibleLabel }: { visibleLabel?: boolean }) {
   return (
     <label className={visibleLabel ? 'field' : undefined}>
       <span className={visibleLabel ? 'micro' : 'vh'}>{t('language')}</span>
-      <select value={i18n.language} onChange={(e) => setLanguage(e.target.value)}>
+      <select name="language" value={i18n.language} onChange={(e) => setLanguage(e.target.value)}>
         {Object.entries(languages).map(([lng, name]) => (
           <option key={lng} value={lng}>
             {name}

@@ -1,9 +1,13 @@
-import { test, expect, openWorkspaceMenu, openWorkspacePage, signInPage, switcher, switchWorkspace } from './fixtures';
-
-test.beforeEach(({ page }) => {
-  // Accepts the "Are you sure?" of leaving, removing, revoking and deleting.
-  page.on('dialog', (dialog) => dialog.accept());
-});
+import {
+  test,
+  expect,
+  confirmDialog,
+  openWorkspaceMenu,
+  openWorkspacePage,
+  signInPage,
+  switcher,
+  switchWorkspace,
+} from './fixtures';
 
 test('an Owner creates a Workspace, adds a Member, promotes them, then leaves', async ({ page, user, other }) => {
   await signInPage(page, user.email, user.password);
@@ -25,11 +29,13 @@ test('an Owner creates a Workspace, adds a Member, promotes them, then leaves', 
 
   // The last Owner can't leave.
   await page.getByRole('button', { name: 'Leave Workspace' }).click();
+  await confirmDialog(page);
   await expect(page.getByRole('alert')).toHaveText('A Workspace needs an Owner: make someone else Owner first.');
 
   await added.getByRole('button', { name: 'Make Owner' }).click();
   await expect(added.getByRole('cell').nth(1)).toHaveText('Owner');
   await page.getByRole('button', { name: 'Leave Workspace' }).click();
+  await confirmDialog(page);
 
   await expect(await openWorkspaceMenu(page)).toHaveText([user.email]);
   expect(await other.api('GET', '/workspaces')).toContainEqual({ slug, name: 'Marketing team', role: 'owner' });
@@ -51,10 +57,12 @@ test('an Owner renames a Workspace, demotes and removes a Member, then deletes i
   await row.getByRole('button', { name: 'Make Member' }).click();
   await expect(row.getByRole('cell').nth(1)).toHaveText('Member');
   await row.getByRole('button', { name: 'Remove' }).click();
+  await confirmDialog(page);
   await expect(row).toHaveCount(0);
   expect(await other.api('GET', '/workspaces')).toHaveLength(1);
 
   await page.getByRole('button', { name: 'Delete Workspace' }).click();
+  await confirmDialog(page);
   await expect(await openWorkspaceMenu(page)).toHaveText([user.email]);
   expect(await user.api('GET', '/workspaces')).toHaveLength(1);
 });
@@ -83,6 +91,7 @@ test('an Owner creates an API Key, a program uses it, and revoking it stops it w
   const row = page.getByRole('table', { name: 'API Keys' }).getByRole('row').filter({ hasText: 'deploy script' });
   await expect(row.getByRole('cell').nth(1)).toHaveText(`${secret.slice(0, 12)}…`);
   await row.getByRole('button', { name: 'Revoke' }).click();
+  await confirmDialog(page);
   await expect(row).toHaveCount(0);
   await expect(page.getByLabel('Secret')).toHaveCount(0);
   expect((await listLinks()).status()).toBe(401);
@@ -109,5 +118,14 @@ test('an Owner demotes themself, then as a Member sees no Owner tools and can le
   await expect(page.getByRole('button', { name: 'Delete Workspace' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Leave Workspace' }).click();
+  await confirmDialog(page);
   await expect(await openWorkspaceMenu(page)).toHaveText([user.email]);
+});
+
+test("the only Owner isn't offered Make Member on themself", async ({ page, user }) => {
+  await signInPage(page, user.email, user.password);
+  await openWorkspacePage(page, 'Members & API Keys');
+  const self = page.getByRole('table', { name: 'Members' }).getByRole('row').filter({ hasText: user.email });
+  await expect(self.getByRole('cell').nth(1)).toHaveText('Owner');
+  await expect(self.getByRole('button', { name: 'Make Member' })).toHaveCount(0);
 });

@@ -1,11 +1,10 @@
 // `/app/clicks`: the switcher's Workspace's Clicks with its top Links, or with
 // `?code=&domain=` one of its Links' Clicks with breakdowns.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, linkPath, type ClickBreakdown, type ClickBucket, type ClickStats, type WorkspaceClicks } from './api';
-import { errorMessage } from './i18n';
-import { Flap } from './ui';
+import { Flap, PageError } from './ui';
 
 /** The time ranges on offer: `n` buckets of `interval`, ending with the current one. */
 const RANGES = { '24h': ['hour', 24], '7d': ['day', 7], '30d': ['day', 30], '90d': ['day', 90] } as const;
@@ -40,11 +39,16 @@ function query(range: Range): string {
 function useClicks<T>(path: string, range: Range) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<unknown>();
+  const [tries, setTries] = useState(0);
   useEffect(() => {
     const sep = path.includes('?') ? '&' : '?';
     api<T>('GET', `${path}${sep}${query(range)}`).then(setData, setError);
-  }, [path, range]);
-  return { data, error };
+  }, [path, range, tries]);
+  const retry = () => {
+    setError(undefined);
+    setTries((n) => n + 1);
+  };
+  return { data, error, retry };
 }
 
 function RangePicker({ range, onChange }: { range: Range; onChange: (r: Range) => void }) {
@@ -52,7 +56,7 @@ function RangePicker({ range, onChange }: { range: Range; onChange: (r: Range) =
   return (
     <label className="field">
       <span className="micro">{t('clicks.range')}</span>
-      <select value={range} onChange={(e) => onChange(e.target.value as Range)}>
+      <select name="range" value={range} onChange={(e) => onChange(e.target.value as Range)}>
         {Object.keys(RANGES).map((r) => (
           <option key={r} value={r}>
             {t(`clicks.ranges.${r}`)}
@@ -66,7 +70,7 @@ function RangePicker({ range, onChange }: { range: Range; onChange: (r: Range) =
 function LinkClicks({ slug, code, domain }: { slug: string; code: string; domain: string }) {
   const { t } = useTranslation();
   const [range, setRange] = useState<Range>('30d');
-  const { data, error } = useClicks<ClickStats>(linkPath(slug, { code, domain }, '/clicks'), range);
+  const { data, error, retry } = useClicks<ClickStats>(linkPath(slug, { code, domain }, '/clicks'), range);
   const countryName = useCountryName();
   return (
     <>
@@ -80,13 +84,12 @@ function LinkClicks({ slug, code, domain }: { slug: string; code: string; domain
         <RangePicker range={range} onChange={setRange} />
       </div>
       {error !== undefined ? (
-        <p role="alert">{errorMessage(t, error)}</p>
+        <PageError error={error} onRetry={retry} />
       ) : (
         data && (
-          <>
-            <div className="sheet">
-              <SeriesChart series={data.series} hourly={RANGES[range][0] === 'hour'} />
-            </div>
+          // The back of the Link's pass: Clicks over time, then each breakdown as a segment.
+          <ClicksPass>
+            <SeriesChart series={data.series} hourly={RANGES[range][0] === 'hour'} />
             <div className="breakdowns">
               <Breakdown title={t('clicks.referrers')} rows={data.referrers} label={(v) => v ?? t('clicks.direct')} />
               <Breakdown title={t('clicks.countries')} rows={data.countries} label={countryName} />
@@ -97,7 +100,7 @@ function LinkClicks({ slug, code, domain }: { slug: string; code: string; domain
               />
               <Breakdown title={t('clicks.browsers')} rows={data.browsers} label={(v) => v ?? t('clicks.unknown')} />
             </div>
-          </>
+          </ClicksPass>
         )
       )}
     </>
@@ -108,7 +111,7 @@ function WorkspaceClicksView({ slug }: { slug: string }) {
   const { t, i18n } = useTranslation();
   const count = new Intl.NumberFormat(i18n.language);
   const [range, setRange] = useState<Range>('30d');
-  const { data, error } = useClicks<WorkspaceClicks>(`/workspaces/${encodeURIComponent(slug)}/clicks`, range);
+  const { data, error, retry } = useClicks<WorkspaceClicks>(`/workspaces/${encodeURIComponent(slug)}/clicks`, range);
   return (
     <>
       <div className="page-head">
@@ -116,20 +119,20 @@ function WorkspaceClicksView({ slug }: { slug: string }) {
         <RangePicker range={range} onChange={setRange} />
       </div>
       {error !== undefined ? (
-        <p role="alert">{errorMessage(t, error)}</p>
+        <PageError error={error} onRetry={retry} />
       ) : (
         data && (
           <>
-            <div className="sheet">
+            <ClicksPass>
               <SeriesChart series={data.series} hourly={RANGES[range][0] === 'hour'} />
-            </div>
+            </ClicksPass>
             <section className="sheet">
               <h2>{t('clicks.topLinks')}</h2>
               {data.top_links.length === 0 ? (
                 <p className="empty">{t('clicks.none')}</p>
               ) : (
                 <div className="table">
-                  <table>
+                  <table aria-label={t('clicks.topLinks')}>
                     <thead>
                       <tr>
                         <th>{t('links.shortUrl')}</th>
@@ -140,7 +143,11 @@ function WorkspaceClicksView({ slug }: { slug: string }) {
                       {data.top_links.map((l) => (
                         <tr key={l.short_url}>
                           <td className="mono">
-                            <a href={clicksHref(l)}>{l.short_url}</a>
+                            <a className="short-link" href={clicksHref(l)}>
+                              <span className="vh">{l.short_url.slice(0, l.short_url.indexOf('://') + 3)}</span>
+                              <span className="host">{l.domain}/</span>
+                              <span className="code">{l.code}</span>
+                            </a>
                           </td>
                           <td className="num">
                             <Flap text={count.format(l.count)} />
@@ -156,6 +163,15 @@ function WorkspaceClicksView({ slug }: { slug: string }) {
         )
       )}
     </>
+  );
+}
+
+/** Clicks on a light pass, the same paper as the Links page's. */
+function ClicksPass({ children }: { children: ReactNode }) {
+  return (
+    <div className="pass">
+      <div className="pass-card clicks-card">{children}</div>
+    </div>
   );
 }
 
@@ -180,16 +196,18 @@ function SeriesChart({ series, hourly }: { series: ClickBucket[]; hourly: boolea
   );
   const number = new Intl.NumberFormat(i18n.language);
   const total = series.reduce((sum, b) => sum + b.count, 0);
-  const max = Math.max(1, ...series.map((b) => b.count));
-  const slot = W / series.length;
-  const bar = Math.max(1, slot - 2);
+  const peak = Math.max(0, ...series.map((b) => b.count));
+  const max = Math.max(1, peak);
+  const slot = W / Math.max(1, series.length);
+  // Bars narrower than their slot, so a lone busy day reads as one day among the others.
+  const bar = Math.max(1, slot * 0.6);
   return (
     <figure className="chart">
       <figcaption>{t('clicks.total', { count: total })}</figcaption>
       <div className="seg-head">
         <span className="micro">{t('clicks.peak')}</span>
         <p className="value">
-          <Flap text={number.format(max)} />
+          <Flap text={number.format(peak)} />
         </p>
       </div>
       <div className="seg-head">
@@ -207,7 +225,12 @@ function SeriesChart({ series, hourly }: { series: ClickBucket[]; hourly: boolea
               <title>{`${date.format(new Date(b.time))}: ${t('clicks.total', { count: b.count })}`}</title>
               {/* A full-height hit target, so an empty bucket still has a tooltip. */}
               <rect x={i * slot} y={0} width={slot} height={H} fill="transparent" />
-              {b.count > 0 && <rect x={i * slot + 1} y={H - h} width={bar} height={h} rx={Math.min(2, bar / 2)} />}
+              {b.count > 0 ? (
+                <rect x={i * slot + (slot - bar) / 2} y={H - h} width={bar} height={h} />
+              ) : (
+                // An empty bucket still shows: a stub on the axis.
+                <rect className="none" x={i * slot + (slot - bar) / 2} y={H - 3} width={bar} height={3} />
+              )}
             </g>
           );
         })}
