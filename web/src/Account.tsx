@@ -27,22 +27,28 @@ export function ChangePassword() {
   }
 
   return (
-    <form className="narrow" onSubmit={submit}>
-      <h1>{t('account.title')}</h1>
-      <label>
-        {t('account.currentPassword')}
-        <input name="current" type="password" autoComplete="current-password" required />
-      </label>
-      <label>
-        {t('account.newPassword')}
-        <input name="new" type="password" autoComplete="new-password" required />
-      </label>
-      {result === 'changed' ? (
-        <p role="status">{t('account.changed')}</p>
-      ) : (
-        result !== undefined && <p role="alert">{errorMessage(t, result)}</p>
-      )}
-      <button type="submit">{t('account.change')}</button>
+    <form className="ticket" onSubmit={submit}>
+      <div className="ticket-body">
+        <h1>{t('account.title')}</h1>
+        <label className="field">
+          <span className="micro">{t('account.currentPassword')}</span>
+          <input name="current" type="password" autoComplete="current-password" required />
+        </label>
+        <label className="field">
+          <span className="micro">{t('account.newPassword')}</span>
+          <input name="new" type="password" autoComplete="new-password" required />
+        </label>
+        {result === 'changed' ? (
+          <p role="status">{t('account.changed')}</p>
+        ) : (
+          result !== undefined && <p role="alert">{errorMessage(t, result)}</p>
+        )}
+      </div>
+      <div className="tear">
+        <button type="submit" className="primary">
+          {t('account.change')}
+        </button>
+      </div>
     </form>
   );
 }
@@ -64,14 +70,20 @@ export function AcceptInvite() {
   }
 
   return (
-    <form className="narrow" onSubmit={submit}>
-      <h1>{t('invite.title')}</h1>
-      <label>
-        {t('invite.password')}
-        <input name="password" type="password" autoComplete="new-password" required />
-      </label>
-      {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
-      <button type="submit">{t('invite.submit')}</button>
+    <form className="ticket" onSubmit={submit}>
+      <div className="ticket-body">
+        <h1>{t('invite.title')}</h1>
+        <label className="field">
+          <span className="micro">{t('invite.password')}</span>
+          <input name="password" type="password" autoComplete="new-password" required />
+        </label>
+        {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+      </div>
+      <div className="tear">
+        <button type="submit" className="primary">
+          {t('invite.submit')}
+        </button>
+      </div>
     </form>
   );
 }

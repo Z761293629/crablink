@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures';
+import { test, expect, userMenu } from './fixtures';
 
 test('switching to Simplified Chinese translates the page, and a reload keeps it', async ({ page, user }) => {
   await page.goto('/app/');
@@ -17,5 +17,6 @@ test('switching to Simplified Chinese translates the page, and a reload keeps it
 
   await page.getByLabel('密码').fill(user.password);
   await page.getByRole('button', { name: '登录' }).click();
+  await userMenu(page).click();
   await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible();
 });

@@ -1,4 +1,4 @@
-import { test, expect, signInPage } from './fixtures';
+import { test, expect, openWorkspaceMenu, openWorkspacePage, signInPage, switcher, switchWorkspace } from './fixtures';
 
 test.beforeEach(({ page }) => {
   // Accepts the "Are you sure?" of leaving, removing, revoking and deleting.
@@ -7,12 +7,14 @@ test.beforeEach(({ page }) => {
 
 test('an Owner creates a Workspace, adds a Member, promotes them, then leaves', async ({ page, user, other }) => {
   await signInPage(page, user.email, user.password);
-  await page.getByRole('link', { name: 'Manage Workspace' }).click();
+  await openWorkspacePage(page, 'Members & API Keys');
   await page.getByLabel('New Workspace name').fill('Marketing team');
   await page.getByRole('button', { name: 'Create Workspace' }).click();
   await expect(page.getByRole('heading', { name: 'Marketing team' })).toBeVisible();
-  const switcher = page.getByLabel('Workspace', { exact: true });
-  const slug = await switcher.inputValue();
+  // The new Workspace is the current one.
+  await expect(switcher(page)).toContainText('Marketing team');
+  const created = (await user.api('GET', '/workspaces')) as { slug: string; name: string }[];
+  const slug = created.find((w) => w.name === 'Marketing team')!.slug;
   expect(slug).toMatch(/^marketing-team/);
 
   await page.getByLabel("Member's email").fill(other.email);
@@ -29,7 +31,7 @@ test('an Owner creates a Workspace, adds a Member, promotes them, then leaves', 
   await expect(added.getByRole('cell').nth(1)).toHaveText('Owner');
   await page.getByRole('button', { name: 'Leave Workspace' }).click();
 
-  await expect(switcher.getByRole('option')).toHaveText([user.email]);
+  await expect(await openWorkspaceMenu(page)).toHaveText([user.email]);
   expect(await other.api('GET', '/workspaces')).toContainEqual({ slug, name: 'Marketing team', role: 'owner' });
 });
 
@@ -39,8 +41,8 @@ test('an Owner renames a Workspace, demotes and removes a Member, then deletes i
   await user.api('PATCH', `/workspaces/${slug}/members/${other.email}`, { role: 'owner' });
 
   await signInPage(page, user.email, user.password);
-  await page.getByLabel('Workspace', { exact: true }).selectOption(slug);
-  await page.getByRole('link', { name: 'Manage Workspace' }).click();
+  await switchWorkspace(page, 'Old name');
+  await openWorkspacePage(page, 'Members & API Keys');
   await page.getByLabel('Name', { exact: true }).fill('New name');
   await page.getByRole('button', { name: 'Rename' }).click();
   await expect(page.getByRole('heading', { name: 'New name' })).toBeVisible();
@@ -53,7 +55,7 @@ test('an Owner renames a Workspace, demotes and removes a Member, then deletes i
   expect(await other.api('GET', '/workspaces')).toHaveLength(1);
 
   await page.getByRole('button', { name: 'Delete Workspace' }).click();
-  await expect(page.getByLabel('Workspace', { exact: true }).getByRole('option')).toHaveText([user.email]);
+  await expect(await openWorkspaceMenu(page)).toHaveText([user.email]);
   expect(await user.api('GET', '/workspaces')).toHaveLength(1);
 });
 
@@ -65,7 +67,7 @@ test('an Owner creates an API Key, a program uses it, and revoking it stops it w
 }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await signInPage(page, user.email, user.password);
-  await page.getByRole('link', { name: 'Manage Workspace' }).click();
+  await openWorkspacePage(page, 'Members & API Keys');
   await page.getByLabel('API Key name').fill('deploy script');
   await page.getByRole('button', { name: 'Create API Key' }).click();
 
@@ -96,8 +98,8 @@ test('an Owner demotes themself, then as a Member sees no Owner tools and can le
   await other.api('PATCH', `/workspaces/${slug}/members/${user.email}`, { role: 'owner' });
 
   await signInPage(page, user.email, user.password);
-  await page.getByLabel('Workspace', { exact: true }).selectOption(slug);
-  await page.getByRole('link', { name: 'Manage Workspace' }).click();
+  await switchWorkspace(page, 'Their team');
+  await openWorkspacePage(page, 'Members & API Keys');
   await expect(page.getByRole('heading', { name: 'Their team' })).toBeVisible();
   const self = page.getByRole('table', { name: 'Members' }).getByRole('row').filter({ hasText: user.email });
   await self.getByRole('button', { name: 'Make Member' }).click();
@@ -107,5 +109,5 @@ test('an Owner demotes themself, then as a Member sees no Owner tools and can le
   await expect(page.getByRole('button', { name: 'Delete Workspace' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Leave Workspace' }).click();
-  await expect(page.getByLabel('Workspace', { exact: true }).getByRole('option')).toHaveText([user.email]);
+  await expect(await openWorkspaceMenu(page)).toHaveText([user.email]);
 });

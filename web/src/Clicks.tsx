@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, linkPath, type ClickBreakdown, type ClickBucket, type ClickStats, type WorkspaceClicks } from './api';
 import { errorMessage } from './i18n';
+import { Flap } from './ui';
 
 /** The time ranges on offer: `n` buckets of `interval`, ending with the current one. */
 const RANGES = { '24h': ['hour', 24], '7d': ['day', 7], '30d': ['day', 30], '90d': ['day', 90] } as const;
@@ -35,7 +36,6 @@ function query(range: Range): string {
   }).toString();
 }
 
-/** Loads `path?{range}` whenever the range changes; `undefined` while loading. */
 /** GETs `path`, which may have a query already, over `range`. */
 function useClicks<T>(path: string, range: Range) {
   const [data, setData] = useState<T>();
@@ -50,8 +50,8 @@ function useClicks<T>(path: string, range: Range) {
 function RangePicker({ range, onChange }: { range: Range; onChange: (r: Range) => void }) {
   const { t } = useTranslation();
   return (
-    <label className="inline">
-      {t('clicks.range')}
+    <label className="field">
+      <span className="micro">{t('clicks.range')}</span>
       <select value={range} onChange={(e) => onChange(e.target.value as Range)}>
         {Object.keys(RANGES).map((r) => (
           <option key={r} value={r}>
@@ -70,17 +70,23 @@ function LinkClicks({ slug, code, domain }: { slug: string; code: string; domain
   const countryName = useCountryName();
   return (
     <>
-      <p>
-        <a href="/app/clicks">{t('clicks.workspaceTitle')}</a>
-      </p>
-      <h1>{t('clicks.linkTitle', { url: `${domain}/${code}` })}</h1>
-      <RangePicker range={range} onChange={setRange} />
+      <div className="page-head">
+        <div>
+          <a className="back" href="/app/clicks">
+            {t('clicks.workspaceTitle')}
+          </a>
+          <h1>{t('clicks.linkTitle', { url: `${domain}/${code}` })}</h1>
+        </div>
+        <RangePicker range={range} onChange={setRange} />
+      </div>
       {error !== undefined ? (
         <p role="alert">{errorMessage(t, error)}</p>
       ) : (
         data && (
           <>
-            <SeriesChart series={data.series} hourly={RANGES[range][0] === 'hour'} />
+            <div className="sheet">
+              <SeriesChart series={data.series} hourly={RANGES[range][0] === 'hour'} />
+            </div>
             <div className="breakdowns">
               <Breakdown title={t('clicks.referrers')} rows={data.referrers} label={(v) => v ?? t('clicks.direct')} />
               <Breakdown title={t('clicks.countries')} rows={data.countries} label={countryName} />
@@ -99,44 +105,53 @@ function LinkClicks({ slug, code, domain }: { slug: string; code: string; domain
 }
 
 function WorkspaceClicksView({ slug }: { slug: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const count = new Intl.NumberFormat(i18n.language);
   const [range, setRange] = useState<Range>('30d');
   const { data, error } = useClicks<WorkspaceClicks>(`/workspaces/${encodeURIComponent(slug)}/clicks`, range);
   return (
     <>
-      <h1>{t('clicks.workspaceTitle')}</h1>
-      <RangePicker range={range} onChange={setRange} />
+      <div className="page-head">
+        <h1>{t('clicks.workspaceTitle')}</h1>
+        <RangePicker range={range} onChange={setRange} />
+      </div>
       {error !== undefined ? (
         <p role="alert">{errorMessage(t, error)}</p>
       ) : (
         data && (
           <>
-            <SeriesChart series={data.series} hourly={RANGES[range][0] === 'hour'} />
-            <h2>{t('clicks.topLinks')}</h2>
-            {data.top_links.length === 0 ? (
-              <p>{t('clicks.none')}</p>
-            ) : (
-              <div className="table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{t('links.shortUrl')}</th>
-                      <th>{t('clicks.clicks')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.top_links.map((l) => (
-                      <tr key={l.short_url}>
-                        <td>
-                          <a href={clicksHref(l)}>{l.short_url}</a>
-                        </td>
-                        <td>{l.count}</td>
+            <div className="sheet">
+              <SeriesChart series={data.series} hourly={RANGES[range][0] === 'hour'} />
+            </div>
+            <section className="sheet">
+              <h2>{t('clicks.topLinks')}</h2>
+              {data.top_links.length === 0 ? (
+                <p className="empty">{t('clicks.none')}</p>
+              ) : (
+                <div className="table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{t('links.shortUrl')}</th>
+                        <th className="num">{t('clicks.clicks')}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody>
+                      {data.top_links.map((l) => (
+                        <tr key={l.short_url}>
+                          <td className="mono">
+                            <a href={clicksHref(l)}>{l.short_url}</a>
+                          </td>
+                          <td className="num">
+                            <Flap text={count.format(l.count)} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           </>
         )
       )}
@@ -163,6 +178,7 @@ function SeriesChart({ series, hourly }: { series: ClickBucket[]; hourly: boolea
     i18n.language,
     hourly ? { hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', timeZone: 'UTC' },
   );
+  const number = new Intl.NumberFormat(i18n.language);
   const total = series.reduce((sum, b) => sum + b.count, 0);
   const max = Math.max(1, ...series.map((b) => b.count));
   const slot = W / series.length;
@@ -170,8 +186,20 @@ function SeriesChart({ series, hourly }: { series: ClickBucket[]; hourly: boolea
   return (
     <figure className="chart">
       <figcaption>{t('clicks.total', { count: total })}</figcaption>
+      <div className="seg-head">
+        <span className="micro">{t('clicks.peak')}</span>
+        <p className="value">
+          <Flap text={number.format(max)} />
+        </p>
+      </div>
+      <div className="seg-head">
+        <span className="micro">{t('clicks.eachBar')}</span>
+        <p className="value">{t(`clicks.per.${hourly ? 'hour' : 'day'}`)}</p>
+      </div>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={t('clicks.overTime')}>
         <line x1={0} x2={W} y1={H - 0.5} y2={H - 0.5} className="axis" vectorEffect="non-scaling-stroke" />
+        {/* Hairline at the peak, so the bars read against a scale. */}
+        <line x1={0} x2={W} y1={PAD} y2={PAD} className="peak" vectorEffect="non-scaling-stroke" />
         {series.map((b, i) => {
           const h = (b.count / max) * (H - PAD);
           return (
@@ -184,9 +212,8 @@ function SeriesChart({ series, hourly }: { series: ClickBucket[]; hourly: boolea
           );
         })}
       </svg>
-      <div className="chart-axis">
+      <div className="chart-axis micro">
         <span>{series.length > 0 && date.format(new Date(series[0].time))}</span>
-        <span>{t('clicks.max', { value: max })}</span>
         <span>{series.length > 0 && date.format(new Date(series[series.length - 1].time))}</span>
       </div>
     </figure>
@@ -203,13 +230,14 @@ function Breakdown({
   rows: ClickBreakdown[];
   label: (value: string | null) => string;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const max = Math.max(1, ...rows.map((r) => r.count));
+  const number = new Intl.NumberFormat(i18n.language);
   return (
     <section>
-      <h2>{title}</h2>
+      <h2 className="micro">{title}</h2>
       {rows.length === 0 ? (
-        <p>{t('clicks.none')}</p>
+        <p className="empty">{t('clicks.none')}</p>
       ) : (
         <table aria-label={title}>
           <tbody>
@@ -219,7 +247,9 @@ function Breakdown({
                   {label(r.value)}
                   <div className="bar" style={{ width: `${(r.count / max) * 100}%` }} />
                 </td>
-                <td className="count">{r.count}</td>
+                <td className="num">
+                  <Flap text={number.format(r.count)} />
+                </td>
               </tr>
             ))}
           </tbody>

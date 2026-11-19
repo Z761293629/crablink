@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type ApiKey, type Membership, type NewApiKey, type WorkspaceUser } from './api';
 import { errorMessage } from './i18n';
+import { useLocationKey } from './ui';
 
 /** Runs an action, showing its error in the page's one alert. */
 type Run = (action: () => Promise<unknown>) => Promise<void>;
@@ -48,33 +49,49 @@ export function ManageWorkspace({
     () => false,
   );
 
+  // `#new`, from New Workspace in the switcher: straight to naming it.
+  const where = useLocationKey();
+  useEffect(() => {
+    if (where.endsWith('#new')) document.querySelector<HTMLInputElement>('#new input')?.focus();
+  }, [where]);
+
   const path = workspace && `/workspaces/${workspace.slug}`;
   const owner = workspace?.role === 'owner';
 
   return (
     <>
-      {workspace && <h1>{workspace.name}</h1>}
+      {workspace && (
+        <div className="page-head">
+          <div className="title">
+            <h1>{workspace.name}</h1>
+            <span className="stamp">{t(`roles.${workspace.role}`)}</span>
+          </div>
+        </div>
+      )}
       {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
       {workspace && owner && (
         <>
           <form
-            className="row"
+            className="sheet row"
             onSubmit={onSubmit(({ name }) => attempt(async () => {
               await api('PATCH', path!, { name });
               await onChanged();
             }))}
           >
-            <label>
-              {t('workspace.name')} <input name="name" defaultValue={workspace.name} required maxLength={100} />
+            <label className="field">
+              <span className="micro">{t('workspace.name')}</span>
+              <input name="name" defaultValue={workspace.name} required maxLength={100} />
             </label>
-            <button type="submit">{t('workspace.rename')}</button>
+            <button type="submit" className="primary">
+              {t('workspace.rename')}
+            </button>
           </form>
           <Members path={path!} email={email} run={run} attempt={attempt} onChanged={onChanged} />
           <ApiKeys path={path!} run={run} attempt={attempt} />
         </>
       )}
       {workspace && (
-        <p className="row">
+        <p className="sheet leave">
           <button
             onClick={() =>
               confirm(t('workspace.confirmLeave', { name: workspace.name })) &&
@@ -102,20 +119,25 @@ export function ManageWorkspace({
           )}
         </p>
       )}
-      {!workspace && <p>{t('workspace.none')}</p>}
-      <h2>{t('workspace.create')}</h2>
-      <form
-        className="row"
+      {!workspace && <p className="sheet empty">{t('workspace.none')}</p>}
+      <section className="sheet" id="new">
+        <h2>{t('workspace.create')}</h2>
+        <form
+          className="row"
         onSubmit={onSubmit(({ name }) => attempt(async () => {
           const created = await api<Membership>('POST', '/workspaces', { name });
           await onChanged(created.slug);
         }))}
       >
-        <label>
-          {t('workspace.newName')} <input name="name" required maxLength={100} />
+        <label className="field">
+          <span className="micro">{t('workspace.newName')}</span>
+          <input name="name" required maxLength={100} />
         </label>
-        <button type="submit">{t('workspace.create')}</button>
-      </form>
+        <button type="submit" className="primary">
+          {t('workspace.create')}
+        </button>
+        </form>
+      </section>
     </>
   );
 }
@@ -153,7 +175,7 @@ function Members({
     });
 
   return (
-    <section>
+    <section className="sheet">
       <h2>{t('members.title')}</h2>
       <div className="table">
         <table aria-label={t('members.title')}>
@@ -168,13 +190,16 @@ function Members({
             {members.map((m) => (
               <tr key={m.email}>
                 <td>{m.email}</td>
-                <td>{t(`roles.${m.role}`)}</td>
+                <td>
+                  <span className="stamp">{t(`roles.${m.role}`)}</span>
+                </td>
                 <td className="actions">
-                  <button onClick={() => change(m.email, m.role === 'owner' ? 'member' : 'owner')}>
+                  <button className="small" onClick={() => change(m.email, m.role === 'owner' ? 'member' : 'owner')}>
                     {t(m.role === 'owner' ? 'members.makeMember' : 'members.makeOwner')}
                   </button>
                   {m.email !== email && (
                     <button
+                      className="danger small"
                       onClick={() => confirm(t('members.confirmRemove', { email: m.email })) && change(m.email)}
                     >
                       {t('members.remove')}
@@ -193,10 +218,13 @@ function Members({
           await load();
         }))}
       >
-        <label>
-          {t('members.addEmail')} <input name="email" type="email" required />
+        <label className="field">
+          <span className="micro">{t('members.addEmail')}</span>
+          <input name="email" type="email" required />
         </label>
-        <button type="submit">{t('members.add')}</button>
+        <button type="submit" className="primary">
+          {t('members.add')}
+        </button>
       </form>
     </section>
   );
@@ -217,10 +245,10 @@ function ApiKeys({ path, run, attempt }: SectionProps) {
 
   const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' });
   return (
-    <section>
+    <section className="sheet">
       <h2>{t('apiKeys.title')}</h2>
       {keys.length === 0 ? (
-        <p>{t('apiKeys.empty')}</p>
+        <p className="empty">{t('apiKeys.empty')}</p>
       ) : (
         <div className="table">
           <table aria-label={t('apiKeys.title')}>
@@ -240,10 +268,11 @@ function ApiKeys({ path, run, attempt }: SectionProps) {
                   <td>
                     <code>{key.prefix}…</code>
                   </td>
-                  <td>{date.format(new Date(key.created_at))}</td>
-                  <td>{key.last_used_at ? date.format(new Date(key.last_used_at)) : t('apiKeys.never')}</td>
+                  <td className="mono">{date.format(new Date(key.created_at))}</td>
+                  <td className="mono">{key.last_used_at ? date.format(new Date(key.last_used_at)) : t('apiKeys.never')}</td>
                   <td className="actions">
                     <button
+                      className="danger small"
                       onClick={() =>
                         confirm(t('apiKeys.confirmRevoke', { name: key.name })) &&
                         attempt(async () => {
@@ -266,10 +295,13 @@ function ApiKeys({ path, run, attempt }: SectionProps) {
         <div className="secret">
           <p>{t('apiKeys.secretOnce', { name: created.name })}</p>
           <div className="row">
-            <label>
-              {t('apiKeys.secret')} <input readOnly value={created.secret} onFocus={(e) => e.target.select()} />
+            <label className="field">
+              <span className="micro">{t('apiKeys.secret')}</span>
+              <input readOnly value={created.secret} onFocus={(e) => e.target.select()} />
             </label>
-            <button onClick={() => navigator.clipboard.writeText(created.secret)}>{t('apiKeys.copy')}</button>
+            <button className="primary" onClick={() => navigator.clipboard.writeText(created.secret)}>
+              {t('apiKeys.copy')}
+            </button>
           </div>
         </div>
       )}
@@ -280,10 +312,13 @@ function ApiKeys({ path, run, attempt }: SectionProps) {
           await load();
         }))}
       >
-        <label>
-          {t('apiKeys.newName')} <input name="name" required maxLength={100} />
+        <label className="field">
+          <span className="micro">{t('apiKeys.newName')}</span>
+          <input name="name" required maxLength={100} />
         </label>
-        <button type="submit">{t('apiKeys.create')}</button>
+        <button type="submit" className="primary">
+          {t('apiKeys.create')}
+        </button>
       </form>
     </section>
   );

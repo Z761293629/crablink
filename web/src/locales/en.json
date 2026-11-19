@@ -35,7 +35,7 @@
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
-    "confirmDelete": "Delete {{url}}? Its Code can't be used again.",
+    "confirmDelete": "Delete {{url}}? Its Code {{code}} can never be used again on {{domain}}.",
     "copy": "Copy",
     "copied": "Copied",
     "qr": "QR code ({{format}})",
@@ -49,7 +49,36 @@
     "exportCsv": "Export CSV",
     "importCsv": "Import CSV",
     "line": "Line",
-    "result": "Result"
+    "result": "Result",
+    "newLink": "New Link",
+    "selected": "Selected Link",
+    "targetHint": "Paste a long URL",
+    "generatedShort": "Generated",
+    "expiryHint": "Empty means it never expires",
+    "issue": "Create",
+    "created": "Created",
+    "expired": "Expired",
+    "noTags": "No Tags",
+    "qrAlt": "QR code of {{url}}",
+    "qrPending": "The QR code is issued with the Link.",
+    "qrExpired": "An expired Link has no QR code.",
+    "clearFilters": "Clear filters",
+    "searchHint": "Search Code or Target  ( / )",
+    "fresh": {
+      "created": "New",
+      "updated": "Updated"
+    },
+    "announce": {
+      "created": "Created {{url}}",
+      "updated": "Saved {{url}}",
+      "deleted": "Deleted {{url}}",
+      "copied": "Copied {{url}}"
+    },
+    "loading": "Loading Links",
+    "viewClicks": "View Clicks",
+    "qrShort": "QR",
+    "shortcutNew": "Shortcut: N",
+    "moreActions": "More"
   },
   "nav": {
     "links": "Links",
@@ -57,8 +86,12 @@
     "domains": "Domains",
     "admin": "Instance Admin",
     "switcher": "Workspace",
-    "workspace": "Manage Workspace",
-    "account": "Account"
+    "workspace": "Members & API Keys",
+    "account": "Account",
+    "label": "Pages",
+    "settings": "Settings",
+    "newWorkspace": "New Workspace",
+    "userMenu": "Account menu"
   },
   "clicks": {
     "clicks": "Clicks",
@@ -74,7 +107,6 @@
     "overTime": "Clicks over time",
     "total_one": "{{count}} Click",
     "total_other": "{{count}} Clicks",
-    "max": "Peak {{value}}",
     "topLinks": "Top Links",
     "none": "No Clicks in this time range.",
     "referrers": "Referrers",
@@ -87,6 +119,12 @@
       "desktop": "Desktop",
       "mobile": "Mobile",
       "tablet": "Tablet"
+    },
+    "peak": "Peak",
+    "eachBar": "Each bar",
+    "per": {
+      "hour": "1 hour",
+      "day": "1 day"
     }
   },
   "invite": {

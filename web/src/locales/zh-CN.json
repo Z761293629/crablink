@@ -35,7 +35,7 @@
     "save": "保存",
     "cancel": "取消",
     "delete": "删除",
-    "confirmDelete": "删除 {{url}}？其短码将无法再次使用。",
+    "confirmDelete": "删除 {{url}}？短码 {{code}} 将永远不能在 {{domain}} 上再次使用。",
     "copy": "复制",
     "copied": "已复制",
     "qr": "二维码（{{format}}）",
@@ -49,7 +49,36 @@
     "exportCsv": "导出 CSV",
     "importCsv": "导入 CSV",
     "line": "行",
-    "result": "结果"
+    "result": "结果",
+    "newLink": "新建链接",
+    "selected": "已选链接",
+    "targetHint": "粘贴长网址",
+    "generatedShort": "自动生成",
+    "expiryHint": "留空则永不过期",
+    "issue": "签发",
+    "created": "创建时间",
+    "expired": "已过期",
+    "noTags": "无标签",
+    "qrAlt": "{{url}} 的二维码",
+    "qrPending": "签发后生成二维码。",
+    "qrExpired": "已过期的链接没有二维码。",
+    "clearFilters": "清除筛选",
+    "searchHint": "搜索短码或目标网址  ( / )",
+    "fresh": {
+      "created": "新",
+      "updated": "已更新"
+    },
+    "announce": {
+      "created": "已签发 {{url}}",
+      "updated": "已保存 {{url}}",
+      "deleted": "已删除 {{url}}",
+      "copied": "已复制 {{url}}"
+    },
+    "loading": "正在加载链接",
+    "viewClicks": "查看点击",
+    "qrShort": "二维码",
+    "shortcutNew": "快捷键：N",
+    "moreActions": "更多"
   },
   "nav": {
     "links": "链接",
@@ -57,8 +86,12 @@
     "domains": "域名",
     "admin": "实例管理",
     "switcher": "工作区",
-    "workspace": "管理工作区",
-    "account": "账户"
+    "workspace": "成员与 API 密钥",
+    "account": "账户",
+    "label": "页面",
+    "settings": "设置",
+    "newWorkspace": "新建工作区",
+    "userMenu": "账户菜单"
   },
   "clicks": {
     "clicks": "点击",
@@ -74,7 +107,6 @@
     "overTime": "点击趋势",
     "total_one": "{{count}} 次点击",
     "total_other": "{{count}} 次点击",
-    "max": "峰值 {{value}}",
     "topLinks": "热门链接",
     "none": "此时间范围内没有点击。",
     "referrers": "来源",
@@ -87,6 +119,12 @@
       "desktop": "桌面",
       "mobile": "手机",
       "tablet": "平板"
+    },
+    "peak": "峰值",
+    "eachBar": "每根柱",
+    "per": {
+      "hour": "1 小时",
+      "day": "1 天"
     }
   },
   "invite": {

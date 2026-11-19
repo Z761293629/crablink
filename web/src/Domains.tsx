@@ -44,41 +44,58 @@ export function Domains({ workspace }: { workspace: Membership }) {
   const target = domains.find((d) => d.default)?.domain.replace(/:\d+$/, '');
   return (
     <>
-      <h1>{t('domains.title')}</h1>
-      <p>{t('domains.dns', { host: target })}</p>
-      {owner && (
-        <form className="inline" onSubmit={add}>
-          <label>
-            {t('domains.domain')} <input name="domain" placeholder="go.example.com" required />
-          </label>
-          <button type="submit">{t('domains.add')}</button>
-        </form>
-      )}
-      {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
-      <div className="table">
-        <table>
-          <thead>
-            <tr>
-              <th>{t('domains.domain')}</th>
-              <th>{t('domains.status')}</th>
-              <th>{t('domains.dnsRecord')}</th>
-              {owner && <th />}
-            </tr>
-          </thead>
-          <tbody>
-            {domains.map((d) => (
-              <tr key={d.domain}>
-                <td>{d.domain}</td>
-                <td>{d.default ? t('domains.default') : t(`domains.statuses.${d.status}`)}</td>
-                <td>{d.default ? '' : `CNAME ${target}`}</td>
-                {owner && (
-                  <td>{!d.default && <button onClick={() => remove(d.domain)}>{t('domains.remove')}</button>}</td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="page-head">
+        <h1>{t('domains.title')}</h1>
+        <p className="lede">{t('domains.dns', { host: target })}</p>
       </div>
+      {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+      <section className="sheet">
+        {owner && (
+          <form className="row" onSubmit={add}>
+            <label className="field">
+              <span className="micro">{t('domains.domain')}</span>
+              <input name="domain" className="mono" placeholder="go.example.com" required />
+            </label>
+            <button type="submit" className="primary">
+              {t('domains.add')}
+            </button>
+          </form>
+        )}
+        <div className="table">
+          <table>
+            <thead>
+              <tr>
+                <th>{t('domains.domain')}</th>
+                <th>{t('domains.status')}</th>
+                <th>{t('domains.dnsRecord')}</th>
+                {owner && <th />}
+              </tr>
+            </thead>
+            <tbody>
+              {domains.map((d) => (
+                <tr key={d.domain}>
+                  <td className="mono">{d.domain}</td>
+                  <td>
+                    <span className={`stamp ${d.default ? 'default' : d.status}`}>
+                      {d.default ? t('domains.default') : t(`domains.statuses.${d.status}`)}
+                    </span>
+                  </td>
+                  <td className="mono">{d.default ? '' : `CNAME ${target}`}</td>
+                  {owner && (
+                    <td className="actions">
+                      {!d.default && (
+                        <button className="danger small" onClick={() => remove(d.domain)}>
+                          {t('domains.remove')}
+                        </button>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </>
   );
 }
