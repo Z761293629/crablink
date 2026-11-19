@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, type Link, type LinkPage, type Membership, type User } from './api';
+import { api, type Membership, type User } from './api';
+import { Links } from './Links';
 import { errorMessage, languages, setLanguage } from './i18n';
 
 export function App() {
@@ -32,7 +33,7 @@ export function App() {
           </>
         )}
       </header>
-      <main>{user === undefined ? null : user ? <Links /> : <SignIn onSignedIn={setUser} />}</main>
+      <main>{user === undefined ? null : user ? <Workspaces /> : <SignIn onSignedIn={setUser} />}</main>
     </>
   );
 }
@@ -84,56 +85,35 @@ function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
   );
 }
 
-/** The Links of the User's first Workspace, their personal one until they join others. */
-function Links() {
-  const { t, i18n } = useTranslation();
-  const [workspace, setWorkspace] = useState<Membership>();
-  const [links, setLinks] = useState<Link[]>();
+/** The User's Workspaces, one at a time: the first, their personal one until they join others, until they pick another. */
+function Workspaces() {
+  const { t } = useTranslation();
+  const [workspaces, setWorkspaces] = useState<Membership[]>();
+  const [slug, setSlug] = useState<string>();
   const [error, setError] = useState<unknown>();
 
   useEffect(() => {
-    (async () => {
-      const [first] = await api<Membership[]>('GET', '/workspaces');
-      if (!first) return setLinks([]);
-      setWorkspace(first);
-      setLinks((await api<LinkPage>('GET', `/workspaces/${first.slug}/links`)).links);
-    })().catch(setError);
+    api<Membership[]>('GET', '/workspaces').then(setWorkspaces, setError);
   }, []);
 
   if (error !== undefined) return <p role="alert">{errorMessage(t, error)}</p>;
-  if (!links) return null;
-  const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' });
+  if (!workspaces) return null;
+  const current = slug ?? workspaces[0]?.slug;
+  if (!current) return <p>{t('links.empty')}</p>;
   return (
     <>
-      <h1>{workspace?.name}</h1>
-      {links.length === 0 ? (
-        <p>{t('links.empty')}</p>
-      ) : (
-        <div className="table">
-          <table>
-            <thead>
-              <tr>
-                <th>{t('links.shortUrl')}</th>
-                <th>{t('links.target')}</th>
-                <th>{t('links.clickCount')}</th>
-                <th>{t('links.expiry')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {links.map((link) => (
-                <tr key={link.short_url}>
-                  <td>
-                    <a href={link.short_url}>{link.short_url}</a>
-                  </td>
-                  <td className="target">{link.target}</td>
-                  <td>{link.click_count}</td>
-                  <td>{link.expires_at ? date.format(new Date(link.expires_at)) : t('links.never')}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <label className="workspace">
+        {t('workspace')}{' '}
+        <select value={current} onChange={(e) => setSlug(e.target.value)}>
+          {workspaces.map((w) => (
+            <option key={w.slug} value={w.slug}>
+              {w.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <h1>{t('links.title')}</h1>
+      <Links key={current} slug={current} />
     </>
   );
 }

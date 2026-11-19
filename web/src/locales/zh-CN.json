@@ -7,13 +7,28 @@
     "submit": "登录"
   },
   "signOut": "退出登录",
+  "workspace": "工作区",
   "links": {
+    "title": "链接",
     "shortUrl": "短网址",
     "target": "目标网址",
     "clickCount": "点击次数",
     "expiry": "过期时间",
     "never": "永不过期",
-    "empty": "还没有链接。"
+    "empty": "还没有链接。",
+    "actions": "操作",
+    "customCode": "自定义短码",
+    "generated": "留空则自动生成",
+    "create": "创建",
+    "edit": "编辑",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "confirmDelete": "删除 {{url}}？其短码将无法再次使用。",
+    "copy": "复制",
+    "copied": "已复制",
+    "qr": "二维码（{{format}}）",
+    "more": "加载更多"
   },
   "errors": {
     "network": "无法连接服务器，请检查网络后重试。",
@@ -26,6 +41,8 @@
     "password_too_short": "密码至少需要 8 个字符。",
     "email_taken": "该邮箱已被占用。",
     "not_found": "未找到。",
+    "bad_request": "请求无效。",
+    "domain_not_approved": "该域名未获准用于此工作区。",
     "invite_not_found": "该邀请链接不存在。",
     "invite_expired": "该邀请链接已过期。",
     "invite_used": "该邀请链接已被使用。",

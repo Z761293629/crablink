@@ -7,13 +7,28 @@
     "submit": "Sign in"
   },
   "signOut": "Sign out",
+  "workspace": "Workspace",
   "links": {
+    "title": "Links",
     "shortUrl": "Short URL",
     "target": "Target",
     "clickCount": "Click Count",
     "expiry": "Expiry",
     "never": "Never",
-    "empty": "No Links yet."
+    "empty": "No Links yet.",
+    "actions": "Actions",
+    "customCode": "Custom Code",
+    "generated": "Generated when empty",
+    "create": "Create",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "confirmDelete": "Delete {{url}}? Its Code can't be used again.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "qr": "QR code ({{format}})",
+    "more": "Load more"
   },
   "errors": {
     "network": "Can't reach the server. Check your connection and try again.",
@@ -26,6 +41,8 @@
     "password_too_short": "The password must be at least 8 characters.",
     "email_taken": "That email is already taken.",
     "not_found": "Not found.",
+    "bad_request": "That request isn't valid.",
+    "domain_not_approved": "That Domain isn't approved for this Workspace.",
     "invite_not_found": "This invite link doesn't exist.",
     "invite_expired": "This invite link has expired.",
     "invite_used": "This invite link has already been used.",

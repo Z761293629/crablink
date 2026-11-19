@@ -1,7 +1,7 @@
 // Test fixtures: each test gets its own fresh User, set up through the API the way
 // the web UI and an Instance Admin would. Import `test` and `expect` from here.
 
-import { test as base, expect, type APIRequestContext } from '@playwright/test';
+import { test as base, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { admin, baseURL } from '../playwright.config';
 
 /** A User with their personal Workspace, and a session for seeding data through the API. */
@@ -40,6 +40,15 @@ export const test = base.extend<{ user: User }>({
 });
 
 export { expect };
+
+/** Signs `user` in through the sign-in page. */
+export async function signInPage(page: Page, user: User) {
+  await page.goto('/app/');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+}
 
 async function signIn(request: APIRequestContext, email: string, password: string) {
   const res = await request.post('/api/session', { headers: { origin: baseURL }, data: { email, password } });
