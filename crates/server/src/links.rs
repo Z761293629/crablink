@@ -190,8 +190,8 @@ async fn insert_link(
         validate_custom_code(code)?;
     }
     let tags = tag_names(&req.tags)?;
-    let host = req.domain.as_deref().unwrap_or(&s.default_domain);
-    let domain_id = crate::domains::usable(&s.pool, workspace_id, host)
+    let domain = req.domain.as_deref().unwrap_or(&s.default_domain);
+    let domain_id = crate::domains::usable(&s.pool, workspace_id, domain)
         .await?
         .ok_or(ApiError::DomainNotApproved)?;
     let now = (s.clock)();
@@ -363,8 +363,8 @@ pub(crate) async fn import_links(
     Ok(Json(results))
 }
 
-/// The host of the Domain `?domain=` names, the Default Domain when absent.
-fn host<'a>(s: &'a AppState, domain: &'a Option<String>) -> &'a str {
+/// The Domain `?domain=` names, the Default Domain when absent.
+fn domain_or_default<'a>(s: &'a AppState, domain: &'a Option<String>) -> &'a str {
     domain.as_deref().unwrap_or(&s.default_domain)
 }
 
@@ -377,17 +377,17 @@ pub(crate) async fn get_link(
 ) -> Result<Json<crablink_api::Link>, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
-    fetch_link(&s, workspace_id, host(&s, &q.domain), &code)
+    fetch_link(&s, workspace_id, domain_or_default(&s, &q.domain), &code)
         .await
         .map(Json)
 }
 
-/// The Workspace's live or expired Link with this Code on Domain `host`; 404 if
+/// The Workspace's live or expired Link with this Code on `domain`; 404 if
 /// missing or deleted.
 async fn fetch_link(
     s: &AppState,
     workspace_id: i64,
-    host: &str,
+    domain: &str,
     code: &str,
 ) -> Result<crablink_api::Link, ApiError> {
     sqlx::query_as::<_, LinkRow>(concat!(
@@ -398,7 +398,7 @@ async fn fetch_link(
          AND l.deleted_at IS NULL"
     ))
     .bind(workspace_id)
-    .bind(host)
+    .bind(domain)
     .bind(code)
     .fetch_optional(&s.pool)
     .await?
@@ -416,7 +416,7 @@ pub(crate) async fn link_qr(
 ) -> Result<Response, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
-    let link = fetch_link(&s, workspace_id, host(&s, &q.domain), &code).await?;
+    let link = fetch_link(&s, workspace_id, domain_or_default(&s, &q.domain), &code).await?;
     // Its Short URL no longer redirects, so a QR code of it would only mislead.
     if link.is_expired((s.clock)()) {
         return Err(ApiError::LinkExpired);
@@ -470,7 +470,7 @@ pub(crate) async fn update_link(
     .bind(req.expires_at.flatten())
     .bind((s.clock)())
     .bind(workspace_id)
-    .bind(host(&s, &q.domain))
+    .bind(domain_or_default(&s, &q.domain))
     .bind(&code)
     .fetch_optional(&mut *tx)
     .await?
@@ -591,7 +591,7 @@ pub(crate) async fn delete_link(
     )
     .bind((s.clock)())
     .bind(workspace_id)
-    .bind(host(&s, &q.domain))
+    .bind(domain_or_default(&s, &q.domain))
     .bind(&code)
     .execute(&s.pool)
     .await?;

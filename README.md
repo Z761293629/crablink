@@ -78,7 +78,7 @@ docker compose exec crablink crablink-server admin create --email you@example.co
 
 Workspace 可以用自己的 Domain，比如 `go.example.com`。Owner 添加后它处于 pending，Instance Admin 批准后才会跳转、才能在上面建 Link、Caddy 才会为它申请证书；被拒绝或未批准的 Domain 一律 404。
 
-1. Owner 把 `go.example.com` 的 CNAME 指向 Default Domain（或 A / AAAA 指向这台主机），然后添加：`POST /api/workspaces/{ws}/domains`，`{ "host": "go.example.com" }`。
+1. Owner 把 `go.example.com` 的 CNAME 指向 Default Domain（或 A / AAAA 指向这台主机），然后添加：`POST /api/workspaces/{ws}/domains`，`{ "domain": "go.example.com" }`。
 2. Instance Admin 在 `GET /api/admin/domains` 里看到它，`PATCH /api/admin/domains/go.example.com` 设 `{ "status": "approved" }`（或 `rejected`）。
 3. 在上面建 Link：`crablink create https://example.com/sale --code sale --domain go.example.com`。同一个 Code 可以同时存在于不同 Domain。
 
@@ -202,9 +202,9 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `GET` | `/api/workspaces/{ws}/links/{code}/clicks?from=&to=&interval=hour\|day&domain=` | `[from, to)` 内的 Click：`series` 按 UTC 小时 / 天分桶（默认天，空桶也列出，最多 1000 个），`referrers` / `countries` / `devices` / `browsers` 为 `[{ value, count }]`，多的在前，未知为 `null` |
 | `GET` | `/api/workspaces/{ws}/domains` | 列出 Default Domain 和本 Workspace 的自定义 Domain：`[{ host, status, default }]`，`status` 为 `pending` / `approved` / `rejected` |
 | `POST` | `/api/workspaces/{ws}/domains` | Owner 添加自定义 Domain：`{ host }`，状态 pending；不是合法 host 400（`invalid_domain`），是 Default Domain 或别的 Workspace 的 409（`domain_taken`） |
-| `DELETE` | `/api/workspaces/{ws}/domains/{host}` | Owner 移除 Domain：其 Link 变为已删除，Code 仍被占用；不属于本 Workspace 404（`domain_not_found`） |
+| `DELETE` | `/api/workspaces/{ws}/domains/{domain}` | Owner 移除 Domain：其 Link 变为已删除，Code 仍被占用；不属于本 Workspace 404（`domain_not_found`） |
 | `GET` | `/api/admin/domains` | Instance Admin 列出各 Workspace 的自定义 Domain：`[{ host, status, workspace }]` |
-| `PATCH` | `/api/admin/domains/{host}` | Instance Admin 批准或拒绝：`{ status }` |
+| `PATCH` | `/api/admin/domains/{domain}` | Instance Admin 批准或拒绝：`{ status }` |
 | `POST` | `/api/workspaces/{ws}/api-keys` | Owner 建 API Key：`{ name }`；`secret` 只在这次返回，服务器只存哈希 |
 | `GET` | `/api/workspaces/{ws}/api-keys` | Owner 列出未吊销的 API Key：`name`、`prefix`、`created_at`、`last_used_at` |
 | `DELETE` | `/api/workspaces/{ws}/api-keys/{id}` | Owner 吊销 API Key，立即失效 |

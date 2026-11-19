@@ -55,7 +55,7 @@
     "links": "链接",
     "clicks": "点击",
     "domains": "域名",
-    "admin": "管理",
+    "admin": "实例管理",
     "switcher": "工作区",
     "workspace": "管理工作区",
     "account": "账户"
@@ -96,14 +96,14 @@
   },
   "domains": {
     "title": "域名",
-    "host": "主机名",
+    "domain": "域名",
     "status": "状态",
     "dnsRecord": "DNS 记录",
     "default": "默认域名",
     "dns": "用 CNAME 记录把自定义域名指向 {{host}}。实例管理员批准后即可使用。",
     "add": "添加域名",
     "remove": "移除",
-    "confirmRemove": "移除 {{host}}？它的链接将成为已删除链接，短码仍保持占用。",
+    "confirmRemove": "移除 {{domain}}？它的链接将成为已删除链接，短码仍保持占用。",
     "statuses": {
       "pending": "待审批",
       "approved": "已批准",

@@ -35,7 +35,7 @@ pub struct LinkDomain {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddDomain {
     /// A host name such as `go.example.com`, without a port.
-    pub host: String,
+    pub domain: String,
 }
 
 /// Whether a custom Domain may be used: only an approved one redirects, takes Links
@@ -52,8 +52,9 @@ pub enum DomainStatus {
 /// the Default Domain, then its own custom Domains.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Domain {
-    /// Addresses the Domain in `/api/workspaces/{slug}/domains/{host}`.
-    pub host: String,
+    /// A host name, with a port for a Default Domain that has one. Addresses the
+    /// Domain in `/api/workspaces/{slug}/domains/{domain}`.
+    pub domain: String,
     /// Always `approved` for the Default Domain.
     pub status: DomainStatus,
     /// Whether this is the instance's Default Domain, shared by every Workspace.
@@ -63,14 +64,14 @@ pub struct Domain {
 /// A custom Domain as an Instance Admin sees it, from `GET /api/admin/domains`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManagedDomain {
-    /// Addresses the Domain in `/api/admin/domains/{host}`.
-    pub host: String,
+    /// Addresses the Domain in `/api/admin/domains/{domain}`.
+    pub domain: String,
     pub status: DomainStatus,
-    /// The slug of the Workspace that added it.
-    pub workspace: String,
+    /// The Workspace slug of the Workspace that added it.
+    pub workspace_slug: String,
 }
 
-/// Body of `PATCH /api/admin/domains/{host}`: approves or rejects it.
+/// Body of `PATCH /api/admin/domains/{domain}`: approves or rejects it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateDomain {
     pub status: DomainStatus,

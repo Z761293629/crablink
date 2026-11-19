@@ -52,16 +52,16 @@ export type DomainStatus = 'pending' | 'approved' | 'rejected';
 
 /** A Domain a Workspace may use: the Default Domain or one of its custom Domains. */
 export interface Domain {
-  host: string;
+  domain: string;
   status: DomainStatus;
   default: boolean;
 }
 
-/** A custom Domain as an Instance Admin sees it, with the slug of the Workspace that has it. */
+/** A custom Domain as an Instance Admin sees it, with the Workspace slug of the Workspace that has it. */
 export interface ManagedDomain {
-  host: string;
+  domain: string;
   status: DomainStatus;
-  workspace: string;
+  workspace_slug: string;
 }
 
 /** The Clicks in the bucket starting at `time`. */

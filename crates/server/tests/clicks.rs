@@ -136,7 +136,7 @@ async fn clicks_are_counted_per_hour_or_day_and_broken_down() {
     let app = app_behind_proxy().await;
     app.create(json!({ "code": "stats", "target": "https://example.com" }))
         .await;
-    let visits = [
+    let clicks_made = [
         ("2026-03-01T10:15:00Z", BROWSER_UA, Some(HN), NZ_IP),
         ("2026-03-01T10:45:00Z", IPHONE_SAFARI, None, NZ_IP),
         (
@@ -154,7 +154,7 @@ async fn clicks_are_counted_per_hour_or_day_and_broken_down() {
             NZ_IP,
         ),
     ];
-    for (at, ua, referrer, ip) in visits {
+    for (at, ua, referrer, ip) in clicks_made {
         app.set_now(at);
         let mut headers = vec![("user-agent", ua), ("x-forwarded-for", ip)];
         headers.extend(referrer.map(|r| ("referer", r)));
@@ -285,7 +285,7 @@ async fn workspace_clicks_total_its_links_and_rank_the_top_links() {
         .bearer("POST", &path, Some(body), Some(&other.key))
         .await;
     assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
-    let visits = [
+    let clicks_made = [
         ("2026-03-01T10:00:00Z", "/one"),
         ("2026-03-01T11:00:00Z", "/two"),
         ("2026-03-01T12:00:00Z", "/two"),
@@ -297,7 +297,7 @@ async fn workspace_clicks_total_its_links_and_rank_the_top_links() {
         ("2026-03-03T00:00:00Z", "/one"),
         ("2026-03-03T00:00:00Z", "/one"),
     ];
-    for (at, path) in visits {
+    for (at, path) in clicks_made {
         app.set_now(at);
         let res = app.visit(path, &[("user-agent", BROWSER_UA)]).await;
         assert_eq!(res.status, StatusCode::FOUND, "{path}");

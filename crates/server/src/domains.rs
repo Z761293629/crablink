@@ -15,30 +15,30 @@ use crate::admin::InstanceAdmin;
 use crate::error::ApiError;
 use crate::workspaces::Caller;
 
-/// The id of the Domain `host` if it is served: the Default Domain, or a custom
+/// The id of `domain` if it is served: the Default Domain, or a custom
 /// Domain that a Workspace holds and an Instance Admin approved.
-pub(crate) async fn served(pool: &PgPool, host: &str) -> Result<Option<i64>, sqlx::Error> {
+pub(crate) async fn served(pool: &PgPool, domain: &str) -> Result<Option<i64>, sqlx::Error> {
     sqlx::query_scalar(
         "SELECT id FROM domains WHERE host = lower($1) \
          AND (is_default OR (status = 'approved' AND workspace_id IS NOT NULL))",
     )
-    .bind(host)
+    .bind(domain)
     .fetch_optional(pool)
     .await
 }
 
-/// The id of the Domain `host` if Workspace `workspace_id` may put Links on it: the
+/// The id of `domain` if Workspace `workspace_id` may put Links on it: the
 /// Default Domain, or one of its own approved Domains.
 pub(crate) async fn usable(
     pool: &PgPool,
     workspace_id: i64,
-    host: &str,
+    domain: &str,
 ) -> Result<Option<i64>, sqlx::Error> {
     sqlx::query_scalar(
         "SELECT id FROM domains WHERE host = lower($1) \
          AND (is_default OR (status = 'approved' AND workspace_id = $2))",
     )
-    .bind(host)
+    .bind(domain)
     .bind(workspace_id)
     .fetch_optional(pool)
     .await
@@ -62,11 +62,11 @@ pub(crate) async fn domain_allowed(
     })
 }
 
-/// A custom Domain's host, lowercased: a host name, not an IP address, with no port.
-fn valid_host(host: &str) -> Result<String, ApiError> {
-    let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
-    match url::Host::parse(&host) {
-        Ok(url::Host::Domain(d)) if d == host && host.contains('.') => Ok(host),
+/// A custom Domain, lowercased: a host name, not an IP address, with no port.
+fn valid_domain(domain: &str) -> Result<String, ApiError> {
+    let domain = domain.trim().trim_end_matches('.').to_ascii_lowercase();
+    match url::Host::parse(&domain) {
+        Ok(url::Host::Domain(d)) if d == domain && domain.contains('.') => Ok(domain),
         _ => Err(ApiError::InvalidDomain),
     }
 }
@@ -94,7 +94,7 @@ fn stored_status(status: DomainStatus) -> &'static str {
 }
 
 /// `POST /api/workspaces/{slug}/domains`, Owners only: adds a pending custom Domain.
-/// A host the Default Domain or another Workspace has is `domain_taken`; one no
+/// A Domain that is the Default Domain or another Workspace's is `domain_taken`; one no
 /// Workspace holds any more is taken over, its Deleted Links keeping their Codes.
 pub(crate) async fn add_domain(
     State(s): State<AppState>,
@@ -104,13 +104,13 @@ pub(crate) async fn add_domain(
 ) -> Result<(StatusCode, Json<Domain>), ApiError> {
     let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let Json(req) = body?;
-    let host = valid_host(&req.host)?;
+    let domain = valid_domain(&req.domain)?;
     let added = sqlx::query(
         "INSERT INTO domains (host, workspace_id, status) VALUES ($1, $2, 'pending') \
          ON CONFLICT (host) DO UPDATE SET workspace_id = $2, status = 'pending' \
          WHERE domains.workspace_id IS NULL AND NOT domains.is_default",
     )
-    .bind(&host)
+    .bind(&domain)
     .bind(workspace_id)
     .execute(&s.pool)
     .await?;
@@ -119,7 +119,7 @@ pub(crate) async fn add_domain(
     }
     let status = DomainStatus::Pending;
     let domain = Domain {
-        host,
+        domain,
         status,
         default: false,
     };
@@ -127,7 +127,7 @@ pub(crate) async fn add_domain(
 }
 
 /// `GET /api/workspaces/{slug}/domains`: the Default Domain, then the Workspace's
-/// custom Domains by host.
+/// custom Domains by name.
 pub(crate) async fn list_domains(
     State(s): State<AppState>,
     caller: Caller,
@@ -141,9 +141,9 @@ pub(crate) async fn list_domains(
     .bind(workspace_id)
     .fetch_all(&s.pool)
     .await?;
-    let domains = rows.into_iter().map(|(host, stored, default)| {
+    let domains = rows.into_iter().map(|(domain, stored, default)| {
         Ok(Domain {
-            host,
+            domain,
             status: status(&stored)?,
             default,
         })
@@ -151,12 +151,12 @@ pub(crate) async fn list_domains(
     Ok(Json(domains.collect::<Result<_, ApiError>>()?))
 }
 
-/// `DELETE /api/workspaces/{slug}/domains/{host}`, Owners only: its Links become
+/// `DELETE /api/workspaces/{slug}/domains/{domain}`, Owners only: its Links become
 /// Deleted Links, and the Domain no Workspace's, so their Codes stay taken (ADR-0002).
 pub(crate) async fn remove_domain(
     State(s): State<AppState>,
     caller: Caller,
-    Path((slug, host)): Path<(String, String)>,
+    Path((slug, domain)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let mut tx = s.pool.begin().await?;
@@ -164,7 +164,7 @@ pub(crate) async fn remove_domain(
         "UPDATE domains SET workspace_id = NULL \
          WHERE host = lower($1) AND workspace_id = $2 RETURNING id",
     )
-    .bind(&host)
+    .bind(&domain)
     .bind(workspace_id)
     .fetch_optional(&mut *tx)
     .await?
@@ -178,7 +178,7 @@ pub(crate) async fn remove_domain(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `GET /api/admin/domains`: every custom Domain a Workspace holds, by host.
+/// `GET /api/admin/domains`: every custom Domain a Workspace holds, by name.
 pub(crate) async fn list_managed_domains(
     State(s): State<AppState>,
     _: InstanceAdmin,
@@ -193,12 +193,12 @@ pub(crate) async fn list_managed_domains(
     Ok(Json(domains.collect::<Result<_, ApiError>>()?))
 }
 
-/// `PATCH /api/admin/domains/{host}`: approves or rejects a custom Domain a
+/// `PATCH /api/admin/domains/{domain}`: approves or rejects a custom Domain a
 /// Workspace holds.
 pub(crate) async fn update_managed_domain(
     State(s): State<AppState>,
     _: InstanceAdmin,
-    Path(host): Path<String>,
+    Path(domain): Path<String>,
     body: Result<Json<UpdateDomain>, JsonRejection>,
 ) -> Result<Json<ManagedDomain>, ApiError> {
     let Json(req) = body?;
@@ -207,7 +207,7 @@ pub(crate) async fn update_managed_domain(
          WHERE w.id = d.workspace_id AND d.host = lower($1) \
          RETURNING d.host, d.status, w.slug",
     )
-    .bind(&host)
+    .bind(&domain)
     .bind(stored_status(req.status))
     .fetch_optional(&s.pool)
     .await?
@@ -216,11 +216,11 @@ pub(crate) async fn update_managed_domain(
 }
 
 fn managed_domain(
-    (host, stored, workspace): (String, String, String),
+    (domain, stored, workspace_slug): (String, String, String),
 ) -> Result<ManagedDomain, ApiError> {
     Ok(ManagedDomain {
-        host,
+        domain,
         status: status(&stored)?,
-        workspace,
+        workspace_slug,
     })
 }

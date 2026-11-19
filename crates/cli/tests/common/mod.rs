@@ -21,7 +21,7 @@ use ratatui::{Terminal, backend::TestBackend};
 const EMAIL: &str = "owner@example.com";
 const PASSWORD: &str = "correct horse battery";
 /// The Instance Admin who approves Domains.
-const ADMIN: &str = "admin@example.com";
+const INSTANCE_ADMIN: &str = "admin@example.com";
 
 /// A running server and the credentials the CLI uses on it; the server lives until
 /// the test process exits.
@@ -48,7 +48,7 @@ pub fn server() -> TestServer {
             crablink_server::create_user(&pool, EMAIL, PASSWORD, false)
                 .await
                 .unwrap();
-            crablink_server::create_user(&pool, ADMIN, PASSWORD, true)
+            crablink_server::create_user(&pool, INSTANCE_ADMIN, PASSWORD, true)
                 .await
                 .unwrap();
             let app = crablink_server::app(
@@ -120,19 +120,19 @@ fn sign_in(url: &str, email: &str) -> String {
 }
 
 impl TestServer {
-    /// Adds custom Domain `host` to the Workspace as its Owner, and approves it as an
+    /// Adds custom Domain `domain` to the Workspace as its Owner, and approves it as an
     /// Instance Admin.
-    pub fn approved_domain(&self, host: &str) {
+    pub fn approved_domain(&self, domain: &str) {
         let (url, slug) = (&self.url, &self.workspace);
         browser()
             .post(format!("{url}/api/workspaces/{slug}/domains"))
             .header("Cookie", &sign_in(url, EMAIL))
             .header("Origin", url)
-            .send_json(serde_json::json!({ "host": host }))
+            .send_json(serde_json::json!({ "domain": domain }))
             .unwrap();
         browser()
-            .patch(format!("{url}/api/admin/domains/{host}"))
-            .header("Cookie", &sign_in(url, ADMIN))
+            .patch(format!("{url}/api/admin/domains/{domain}"))
+            .header("Cookie", &sign_in(url, INSTANCE_ADMIN))
             .header("Origin", url)
             .send_json(serde_json::json!({ "status": "approved" }))
             .unwrap();

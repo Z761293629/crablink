@@ -117,7 +117,7 @@ pub async fn app(
         .route("/api-keys", post(create_api_key).get(list_api_keys))
         .route("/api-keys/{id}", delete(revoke_api_key))
         .route("/domains", post(add_domain).get(list_domains))
-        .route("/domains/{host}", delete(remove_domain))
+        .route("/domains/{domain}", delete(remove_domain))
         .route("/members", post(add_member).get(list_workspace_users))
         .route(
             "/members/{email}",
@@ -126,7 +126,7 @@ pub async fn app(
     let admin = Router::new()
         .route("/invites", post(create_invite))
         .route("/domains", get(list_managed_domains))
-        .route("/domains/{host}", patch(update_managed_domain))
+        .route("/domains/{domain}", patch(update_managed_domain))
         .route("/users", get(list_users))
         .route("/users/{id}", patch(update_user))
         .route("/users/{id}/password", post(reset_password));

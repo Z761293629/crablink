@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AcceptInvite, ChangePassword } from './Account';
-import { Admin } from './Admin';
 import { api, type Membership, type User } from './api';
 import { Clicks } from './Clicks';
 import { Domains } from './Domains';
+import { InstanceAdmin } from './InstanceAdmin';
 import { Links } from './Links';
 import { errorMessage, languages, setLanguage } from './i18n';
 import { ManageWorkspace } from './Workspace';
@@ -77,7 +77,7 @@ export function App() {
   else if (user === undefined) main = null;
   else if (!user) main = <SignIn onSignedIn={signedInAs} />;
   else if (error !== undefined) main = <p role="alert">{errorMessage(t, error)}</p>;
-  else if (page === 'admin' && user.instance_admin) main = <Admin />;
+  else if (page === 'admin' && user.instance_admin) main = <InstanceAdmin />;
   else if (page === 'account') main = <ChangePassword />;
   else if (!workspaces) main = null;
   else if (page === 'workspace')

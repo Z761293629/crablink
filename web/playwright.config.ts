@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test';
 // CRABLINK_E2E_PORT lets several checkouts run their e2e servers side by side.
 const port = Number(process.env.CRABLINK_E2E_PORT ?? 8787);
 export const baseURL = `http://localhost:${port}`;
-export const admin = { email: 'admin@example.com', password: 'e2e admin password' };
+export const instanceAdmin = { email: 'admin@example.com', password: 'e2e admin password' };
 
 export default defineConfig({
   testDir: 'e2e',
@@ -31,8 +31,8 @@ export default defineConfig({
     env: {
       CRABLINK_BASE_URL: baseURL,
       CRABLINK_LISTEN: `127.0.0.1:${port}`,
-      CRABLINK_E2E_ADMIN_EMAIL: admin.email,
-      CRABLINK_E2E_ADMIN_PASSWORD: admin.password,
+      CRABLINK_E2E_ADMIN_EMAIL: instanceAdmin.email,
+      CRABLINK_E2E_ADMIN_PASSWORD: instanceAdmin.password,
     },
   },
 });

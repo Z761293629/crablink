@@ -178,7 +178,7 @@ function CreateLink({ slug, base, onCreated }: { slug: string; base: string; onC
           {domains
             .filter((d) => d.default || d.status === 'approved')
             .map((d) => (
-              <option key={d.host}>{d.host}</option>
+              <option key={d.domain}>{d.domain}</option>
             ))}
         </select>
       </label>
