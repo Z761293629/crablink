@@ -267,6 +267,8 @@ struct Form {
     focus: Field,
     /// Editing an existing Link: the Code is shown, but can't be focused or changed.
     editing: bool,
+    /// The edited Link's Domain; a new Link goes on the Default Domain.
+    domain: Option<String>,
     error: Option<String>,
 }
 
@@ -313,13 +315,14 @@ impl Form {
             prefilled_expires: expires.clone(),
             expires,
             editing: true,
+            domain: Some(l.domain.clone()),
             ..Form::default()
         }
     }
 
-    /// Creates or updates the Link as typed; returns its Code. An empty Code means a
+    /// Creates or updates the Link as typed and returns it. An empty Code means a
     /// generated one; an empty Expiry means none (clearing it when editing).
-    fn save(&self, api: &Api) -> anyhow::Result<String> {
+    fn save(&self, api: &Api) -> anyhow::Result<Link> {
         let expires_at = (!self.expires.is_empty())
             .then(|| {
                 crate::parse_expires(&self.expires, Utc::now())
@@ -329,6 +332,7 @@ impl Form {
         let link = if self.editing {
             api.update(
                 &self.code,
+                self.domain.as_deref(),
                 &UpdateLink {
                     target: Some(self.target.clone()),
                     expires_at: (self.expires != self.prefilled_expires).then_some(expires_at),
@@ -342,7 +346,7 @@ impl Form {
                 domain: None,
             })?
         };
-        Ok(link.code)
+        Ok(link)
     }
 }
 
@@ -366,20 +370,22 @@ impl App {
 
     /// (Re)loads every Link from the server, keeping the selected Link selected.
     fn load(&mut self) {
-        let selected = self.selected().map(|l| l.code.clone());
+        let selected = self.selected().cloned();
         let mut links = Vec::new();
         self.links = match self.api.list(|page| links.extend(page)) {
             Ok(()) => Ok(links),
             Err(e) => Err(format!("{e:#}")),
         };
-        if let Some(code) = selected {
-            self.select_code(&code);
+        if let Some(l) = selected {
+            self.select(&l);
         }
     }
 
-    /// Selects the visible Link with this Code; leaves the selection alone if it's not visible.
-    fn select_code(&mut self, code: &str) {
-        if let Some(i) = self.visible().iter().position(|l| l.code == code) {
+    /// Selects the visible Link with `l`'s Code and Domain; leaves the selection alone
+    /// if it's not visible.
+    fn select(&mut self, l: &Link) {
+        let same = |v: &&Link| v.code == l.code && v.domain == l.domain;
+        if let Some(i) = self.visible().iter().position(same) {
             self.table.select(Some(i));
         }
     }
@@ -476,12 +482,12 @@ impl App {
             return;
         };
         match form.save(&self.api) {
-            Ok(code) => {
+            Ok(link) => {
                 self.mode = Mode::List;
                 // The saved Link may not match the filter, and only a visible Link can be selected.
                 self.filter.clear();
                 self.load();
-                self.select_code(&code);
+                self.select(&link);
             }
             Err(e) => form.error = Some(format!("{e:#}")),
         }
@@ -490,10 +496,10 @@ impl App {
     /// Deletes the selected Link and reloads; the selection keeps its row, so it lands
     /// on a neighbour.
     fn delete_selected(&mut self) {
-        let Some(code) = self.selected().map(|l| l.code.clone()) else {
+        let Some(l) = self.selected() else {
             return;
         };
-        match self.api.delete(&code) {
+        match self.api.delete(&l.code, Some(&l.domain)) {
             Ok(()) => self.load(),
             Err(e) => self.error = Some(format!("{e:#}")),
         }

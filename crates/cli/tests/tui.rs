@@ -37,7 +37,7 @@ fn expired_links_are_marked_and_deleted_links_are_absent() {
     })
     .unwrap();
     srv.create("gone", "https://example.com/gone");
-    api.delete("gone").unwrap();
+    api.delete("gone", None).unwrap();
     srv.create("live", "https://example.com/live");
 
     let screen = srv.tui().screen();
@@ -307,7 +307,7 @@ fn r_picks_up_links_created_and_changed_on_the_server() {
         target: Some("https://example.com/after".into()),
         ..Default::default()
     };
-    srv.api().update("aaa", &patch).unwrap();
+    srv.api().update("aaa", None, &patch).unwrap();
     let screen = tui.screen();
     assert!(!screen.contains("bbb"), "{screen}");
 
@@ -532,7 +532,7 @@ fn the_form_takes_a_custom_code_and_either_expiry_format() {
         "2099-01-02T03:04:05Z",
     );
 
-    let rel = srv.api().get("rel").unwrap();
+    let rel = srv.api().get("rel", None).unwrap();
     assert_eq!(rel.target, "https://example.com/rel");
     let in_7d = rel.expires_at.unwrap() - before;
     let week = chrono::TimeDelta::days(7);
@@ -540,7 +540,7 @@ fn the_form_takes_a_custom_code_and_either_expiry_format() {
         in_7d >= week && in_7d < week + chrono::TimeDelta::minutes(1),
         "{in_7d}"
     );
-    let abs = srv.api().get("abs").unwrap();
+    let abs = srv.api().get("abs", None).unwrap();
     assert_eq!(
         abs.expires_at,
         Some("2099-01-02T03:04:05Z".parse().unwrap())
@@ -580,7 +580,7 @@ fn a_taken_code_shows_the_servers_error_and_keeps_the_input() {
     tui.key(KeyCode::BackTab);
     tui.keys("2");
     tui.key(KeyCode::Enter);
-    let link = srv.api().get("taken2").unwrap();
+    let link = srv.api().get("taken2", None).unwrap();
     assert_eq!(link.target, "https://example.com/second");
     assert!(!tui.screen().contains("Custom Code"), "{}", tui.screen());
 }
@@ -618,11 +618,11 @@ fn d_then_y_deletes_the_selected_link_after_naming_its_code() {
     let screen = tui.screen();
     assert!(line_with(&screen, "Delete").contains("doomed"), "{screen}");
     assert!(screen.contains("never be reused"), "{screen}");
-    assert!(srv.api().get("doomed").is_ok());
+    assert!(srv.api().get("doomed", None).is_ok());
 
     tui.keys("y");
     let screen = tui.screen();
-    assert!(srv.api().get("doomed").is_err());
+    assert!(srv.api().get("doomed", None).is_err());
     assert!(!screen.contains("doomed"), "{screen}");
     assert!(!screen.contains("never be reused"), "{screen}");
     assert!(screen.contains("1 Link"), "{screen}");
@@ -647,7 +647,7 @@ fn any_key_but_y_cancels_the_delete() {
         let screen = tui.screen();
         assert!(!screen.contains("never be reused"), "{key:?}:\n{screen}");
         assert!(!tui.app.quit(), "{key:?}");
-        assert!(srv.api().get("safe").is_ok(), "{key:?}");
+        assert!(srv.api().get("safe", None).is_ok(), "{key:?}");
         assert!(screen.contains("safe "), "{key:?}:\n{screen}");
     }
 }
@@ -724,7 +724,7 @@ fn e_edits_the_selected_links_target_with_the_code_read_only() {
     tui.key(KeyCode::Backspace);
     tui.key(KeyCode::Enter);
 
-    let link = srv.api().get("abc").unwrap();
+    let link = srv.api().get("abc", None).unwrap();
     assert_eq!(link.target, "https://example.com/after");
     assert_eq!(
         link.expires_at,
@@ -753,7 +753,7 @@ fn e_sets_an_expiry_and_clearing_it_removes_it() {
     to_expiry(&mut tui);
     tui.keys("12h");
     tui.key(KeyCode::Enter);
-    let in_12h = srv.api().get("abc").unwrap().expires_at.unwrap() - before;
+    let in_12h = srv.api().get("abc", None).unwrap().expires_at.unwrap() - before;
     let half_day = chrono::TimeDelta::hours(12);
     assert!(
         in_12h >= half_day && in_12h < half_day + chrono::TimeDelta::minutes(1),
@@ -766,7 +766,7 @@ fn e_sets_an_expiry_and_clearing_it_removes_it() {
         tui.key(KeyCode::Backspace);
     }
     tui.key(KeyCode::Enter);
-    assert_eq!(srv.api().get("abc").unwrap().expires_at, None);
+    assert_eq!(srv.api().get("abc", None).unwrap().expires_at, None);
     let screen = tui.screen();
     // The detail pane's row, not the list header's "Expiry".
     assert!(screen.contains("Expiry       never"), "{screen}");
@@ -795,7 +795,7 @@ fn an_invalid_target_shows_the_servers_error_and_esc_leaves_the_link_unchanged()
     tui.key(KeyCode::Esc);
     assert!(!tui.app.quit());
     assert!(!tui.screen().contains("edit Link"), "{}", tui.screen());
-    let link = srv.api().get("abc").unwrap();
+    let link = srv.api().get("abc", None).unwrap();
     assert_eq!(link.target, "https://example.com/kept");
 }
 
@@ -821,7 +821,7 @@ fn a_failed_delete_keeps_the_list_and_shows_the_servers_error() {
     srv.create("keep", "https://example.com/keep");
     srv.create("gone", "https://example.com/gone");
     let mut tui = srv.tui();
-    srv.api().delete("gone").unwrap(); // out of band, so the TUI's delete fails
+    srv.api().delete("gone", None).unwrap(); // out of band, so the TUI's delete fails
 
     tui.keys("dy");
 
@@ -862,14 +862,14 @@ fn editing_only_the_target_leaves_a_sub_second_expiry_unchanged() {
             domain: None,
         })
         .unwrap();
-    let before = srv.api().get("abc").unwrap().expires_at;
+    let before = srv.api().get("abc", None).unwrap().expires_at;
     let mut tui = srv.tui();
 
     tui.keys("e");
     tui.keys("/more");
     tui.key(KeyCode::Enter);
 
-    let link = srv.api().get("abc").unwrap();
+    let link = srv.api().get("abc", None).unwrap();
     assert_eq!(link.target, "https://example.com/before/more");
     assert_eq!(link.expires_at, before);
 }
