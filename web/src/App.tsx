@@ -241,7 +241,9 @@ function BandMenu({
       </button>
       {open && (
         <div id={id} className="popover end">
-          <p className="menu-who">{user.email}</p>
+          <p className="menu-who" title={user.email}>
+            {user.email}
+          </p>
           {workspaces && workspaces.length > 0 && (
             <>
               <p className="menu-label micro">{t('nav.switcher')}</p>
@@ -256,7 +258,7 @@ function BandMenu({
                         setOpen(false);
                       }}
                     >
-                      {w.name}
+                      <span className="ws-label">{w.name}</span>
                     </button>
                   </li>
                 ))}

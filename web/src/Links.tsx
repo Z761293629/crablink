@@ -115,9 +115,12 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
     if (!from) return;
     rows.current.forEach((el, key) => {
       if (key === enter) {
-        el.animate([{ transform: 'translateX(-1.5rem)', opacity: 0 }, { transform: 'none', opacity: 1 }], {
-          duration: 380,
+        // The rows rerank down first, then the new one slides into the slot they opened.
+        el.animate([{ transform: 'translateX(-0.75rem)', opacity: 0 }, { transform: 'none', opacity: 1 }], {
+          duration: 300,
+          delay: 120,
           easing: EASE_OUT,
+          fill: 'backwards',
         });
         return;
       }
@@ -301,6 +304,7 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
       slug={slug}
       link={link}
       editing={editing === link.short_url}
+      landed={fresh[link.short_url] === 'created'}
       manualCopy={manual === link.short_url}
       reveal={!wide}
       confirm={ask}
@@ -404,7 +408,8 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
                 </tr>
               </thead>
               <tbody>
-                {links.map((link) => {
+                {/* Flat, so each row keeps its key and its DOM when others move: nothing remounts or replays. */}
+                {links.flatMap((link) => {
                   const expired = isExpired(link);
                   // While a New Link is being issued, no pass on the board is open.
                   const isSelected = link === selected && !editor;
@@ -684,11 +689,11 @@ function IssuePass({
               <Chevron />
             </summary>
             <div className="segs">
-              <label className="seg l field">
+              <label className="seg wide field">
                 <span className="micro">{t('links.customCode')}</span>
                 <input name="code" className="mono" placeholder={t('links.codeHint')} />
               </label>
-              <label className="seg r field">
+              <label className="seg wide field">
                 <span className="micro">{t('links.tags')}</span>
                 <input name="tags" placeholder={t('links.tagsHint')} />
               </label>
@@ -791,6 +796,7 @@ function LinkPass({
   slug,
   link,
   editing,
+  landed,
   manualCopy,
   reveal,
   confirm,
@@ -802,6 +808,8 @@ function LinkPass({
   slug: string;
   link: Link;
   editing: boolean;
+  /** Just issued: the board row's landing is the moment, so the pass appears without printing in. */
+  landed: boolean;
   /** Copying failed: show the Short URL selected, to copy by hand. */
   manualCopy: boolean;
   /** Scroll the stub (QR code and actions) into view when the pass opens, as under a row on a phone. */
@@ -820,6 +828,7 @@ function LinkPass({
   const stub = useRef<HTMLDivElement>(null);
   const manual = useRef<HTMLInputElement>(null);
   const change = useRef<HTMLButtonElement>(null);
+  const targetField = useRef<HTMLInputElement>(null);
   const wasEditing = useRef(editing);
 
   useEffect(() => {
@@ -828,8 +837,9 @@ function LinkPass({
   useEffect(() => {
     if (manualCopy) manual.current?.select();
   }, [manualCopy]);
-  // Saved or cancelled: focus back where editing began.
+  // Editing: focus the Target. Saved or cancelled: focus back where editing began.
   useEffect(() => {
+    if (!wasEditing.current && editing) targetField.current?.focus();
     if (wasEditing.current && !editing) change.current?.focus();
     wasEditing.current = editing;
   }, [editing]);
@@ -874,14 +884,19 @@ function LinkPass({
   const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'short', timeStyle: 'short' });
   const short = link.short_url.replace(/^https?:\/\//, '');
   return (
-    <section className="pass" aria-label={t('links.selected')}>
+    <section className={landed ? 'pass landed' : 'pass'} aria-label={t('links.selected')}>
       <div className="pass-card print">
         <div className="pass-main">
           <Route from={link.domain} code={link.code} to={hostOf(link.target)} />
-          {editing ? (
+          {/* The pass read and the pass being edited share one cell, the other hidden, so the card keeps the
+              taller one's height and nothing on it or below it moves between them. */}
+          <div className="faces">
             <form
+              // Afresh on each switch, so a cancelled edit starts from the Link again.
+              key={editing ? 'editing' : 'idle'}
               id={form}
-              className="segs"
+              className={editing ? 'segs face' : 'segs face off'}
+              inert={!editing}
               onSubmit={save}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') onEditing(false);
@@ -892,16 +907,16 @@ function LinkPass({
                   {t('links.target')}
                 </label>
                 <input
+                  ref={targetField}
                   id={`${id}target`}
                   name="target"
                   type="url"
                   required
                   defaultValue={link.target}
                   className="mono"
-                  aria-describedby={`${id}same`}
-                  autoFocus
+                  aria-describedby={`${id}same-edit`}
                 />
-                <p id={`${id}same`} className="hint">
+                <p id={`${id}same-edit`} className="hint">
                   {t('links.changeTargetHint')}
                 </p>
               </div>
@@ -915,8 +930,7 @@ function LinkPass({
                 <input name="tags" defaultValue={link.tags.join(', ')} placeholder={t('links.tagsHint')} />
               </label>
             </form>
-          ) : (
-            <dl className="segs">
+            <dl className={editing ? 'segs face off' : 'segs face'} inert={editing}>
               <div className="seg l">
                 <dt className="micro">{t('links.clickCount')}</dt>
                 <dd className="big">
@@ -971,7 +985,7 @@ function LinkPass({
                 </dd>
               </div>
             </dl>
-          )}
+          </div>
           {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
         </div>
         <div className="perf" aria-hidden="true" />

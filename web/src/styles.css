@@ -615,10 +615,25 @@ input[readonly] {
 
 .item[aria-current='true']::after {
   content: '';
+  flex: none;
   width: 0.5rem;
   height: 0.5rem;
   background: var(--text);
   border-radius: 50%;
+}
+
+/* A long Workspace name ends in an ellipsis inside the menu's inset, its marker still in view. */
+.popover > *,
+.popover li,
+.popover .item {
+  min-width: 0;
+}
+
+.item > .ws-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The band's menu names whose account it is, above its items, and labels its Workspaces. */
@@ -633,9 +648,11 @@ input[readonly] {
 .menu-who {
   margin: 0 0 0.125rem;
   padding: 0.5rem 0.625rem 0.625rem;
+  overflow: hidden;
   font: 400 0.8125rem/1.3 var(--font-mono);
   color: var(--muted);
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   border-bottom: 1px solid var(--line);
 }
 
@@ -817,13 +834,13 @@ button.icon svg {
 }
 
 /* A Settings page's way back to the Settings sheet; on a phone only, where the sheet is a tab. */
-.to-settings {
+.back.to-settings {
   display: none;
 }
 
 @media (max-width: 47.99rem) {
-  .to-settings {
-    display: inline-block;
+  .back.to-settings {
+    display: inline-flex;
   }
 }
 
@@ -923,20 +940,29 @@ main.flush {
   color: var(--muted);
 }
 
+/* A way back: a drawn arrow and a sentence-case label, navigation rather than a label over the heading. */
 .back {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
   margin-bottom: 0.5rem;
-  font: 500 0.6875rem/1.2 var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font: 500 0.875rem/1.3 var(--font-sans);
   color: var(--muted);
-  text-decoration: underline;
-  text-underline-offset: 0.25em;
+  text-decoration: none;
 }
 
-/* Underlined at rest, so on a phone, with no hover, it still reads as a way back rather than a label. */
+.back::before {
+  content: '';
+  width: 0.75rem;
+  height: 0.75rem;
+  background: var(--chevron) center / contain no-repeat;
+  transform: rotate(90deg);
+}
+
 .back:hover {
   color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
 }
 
 /* One section of a page, straight on the ground: a heading, then board rows; a hairline between sections. */
@@ -1003,9 +1029,12 @@ td.actions > * {
   overflow-x: auto;
 }
 
+/* Separate, not collapsed: a collapsed rule is painted at the layout's place, so it would stay put while
+   a row slides (the board's rerank) and cut through it. */
 table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1231,15 +1260,13 @@ td.mono {
 
 .flightpath.on {
   opacity: 1;
-  animation: draw 1.6s var(--ease-out) backwards;
+  animation: draw 0.4s var(--ease-out) backwards;
 }
 
+/* Drawn out once, then held full width as the loading rule: no loop, and no stall that looks stuck. */
 @keyframes draw {
   from {
     transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(0.92);
   }
 }
 
@@ -1587,11 +1614,20 @@ table.board.compact col.c-acts {
   animation: print 0.34s var(--ease-out) backwards;
 }
 
+/* From half-printed, never from blank: the pane is never empty between one pass and the next. */
 @keyframes print {
   from {
-    opacity: 0;
+    opacity: 0.45;
     transform: translateY(-1.25rem);
   }
+}
+
+/* Just issued: the board row's landing owns the moment, so the pass is simply there. */
+.pass.landed .pass-card.print,
+.pass.landed .route .plane,
+.pass.landed .flap > span,
+.pass.landed + .board-7d .flap > span {
+  animation: none;
 }
 
 .pass-main {
@@ -1635,17 +1671,25 @@ table.board.compact col.c-acts {
   gap: 0.75rem;
   min-width: 0;
   padding: 1.5rem 1rem 1.25rem;
-  background: var(--surface-2);
+  /* Panel, a material apart from the pass's white, so the tear line separates two surfaces. */
+  background: #e8eaed;
   border-radius: 0 13px 13px 0;
 }
 
 .pass.tearing .stub {
-  animation: tear 0.28s var(--ease-out);
+  animation: tear 0.28s cubic-bezier(0.5, 0, 0.75, 0) forwards;
 }
 
+/* While the stub tears away the card is unmasked, so the stub is not clipped at the card's edge. */
+.pass.tearing .pass-card {
+  mask: none;
+}
+
+/* The stub tears off along the perforation and leaves; it never comes back. */
 @keyframes tear {
-  45% {
-    transform: var(--tear, translate(0.625rem, 0.1875rem) rotate(2.5deg));
+  to {
+    opacity: 0;
+    transform: var(--tear, translate(1.5rem, 0.5rem) rotate(6deg));
   }
 }
 
@@ -1688,7 +1732,7 @@ table.board.compact col.c-acts {
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     border-radius: 0 0 13px 13px;
-    --tear: translate(0.1875rem, 0.625rem) rotate(1deg);
+    --tear: translate(0.5rem, 1.5rem) rotate(2deg);
   }
 
   .stub .qr {
@@ -1723,8 +1767,9 @@ table.board.compact col.c-acts {
   flex: 0 1 auto;
 }
 
+/* At least 4.5rem of dashes before the plane, however long the host: the route still reads as a flight. */
 .route .flight {
-  flex: 1 0 2rem;
+  flex: 1 0 5.75rem;
 }
 
 .route .leg {
@@ -1781,7 +1826,7 @@ table.board.compact col.c-acts {
   background: currentColor;
 }
 
-/* A host too long even for its own line loses its start, keeping the registrable domain. */
+/* A host too long for its line loses its end; the flight before it keeps at least 3rem. */
 .route .host {
   min-width: 0;
   max-width: 100%;
@@ -1789,7 +1834,6 @@ table.board.compact col.c-acts {
   font: 500 0.9375rem/1.3 var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
-  direction: rtl;
 }
 
 .flight {
@@ -2121,8 +2165,8 @@ button.copy > .off {
 
 @keyframes flap {
   from {
-    opacity: 0.25;
-    transform: scaleY(0.08);
+    opacity: 0.4;
+    transform: scaleY(0.4);
   }
 }
 
@@ -2716,8 +2760,13 @@ table.gate .dns .micro {
 }
 
 .settings .menu-field {
-  max-width: 20rem;
   padding: 0.75rem 0.25rem;
+}
+
+/* The account's section follows the Workspace's straight on: its heading rule is the divider. */
+.sheet.settings + .sheet.settings {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .leave {
@@ -2932,4 +2981,18 @@ table.gate .dns .micro {
   -webkit-line-clamp: 3;
   line-clamp: 3;
   word-break: break-all;
+}
+
+/* The pass read and the pass being edited in one cell: the card is the taller one's height in both. */
+.faces {
+  display: grid;
+}
+
+.faces > .face {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.faces > .face.off {
+  visibility: hidden;
 }
