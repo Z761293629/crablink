@@ -23,7 +23,7 @@ mod users;
 mod web;
 mod workspaces;
 
-pub use clicks::dbip_country_lookup;
+pub use clicks::{ClickRecording, dbip_country_lookup};
 pub use db::connect;
 pub use error::ApiError;
 pub use links::random_code;

@@ -69,6 +69,33 @@ async fn behind_a_trusted_proxy_the_country_comes_from_the_first_forwarded_addre
     );
 }
 
+/// Recording a Click never holds up the redirect, even when the database is stuck.
+#[tokio::test]
+async fn the_redirect_does_not_wait_for_its_click_to_be_recorded() {
+    use tower::ServiceExt;
+    let app = app().await;
+    app.create(json!({ "code": "fast", "target": "https://example.com" }))
+        .await;
+    let mut lock = app.pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE clicks IN EXCLUSIVE MODE")
+        .execute(&mut *lock)
+        .await
+        .unwrap();
+
+    let req = visitor_request(HOST, "/fast", &[("user-agent", BROWSER_UA)]);
+    let redirect = app.router.clone().oneshot(req);
+    let res = tokio::time::timeout(std::time::Duration::from_secs(10), redirect)
+        .await
+        .expect("the redirect waited for the Click")
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::FOUND);
+    lock.commit().await.unwrap();
+    let click = res.extensions().get::<crablink_server::ClickRecording>();
+    click.expect("a Click is being recorded").done().await;
+    assert_eq!(click_count(&app, "fast").await, 1);
+}
+
 #[tokio::test]
 async fn behind_a_trusted_proxy_with_no_forwarded_address_the_country_comes_from_the_socket() {
     let app = app_behind_proxy().await;

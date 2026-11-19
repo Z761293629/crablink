@@ -51,12 +51,16 @@ async fn follow(
     .fetch_optional(&s.pool)
     .await?;
     if let Some((id, target)) = live {
-        clicks::record(s, id, headers, socket).await;
+        let click = clicks::record(s, id, headers, socket);
         let headers = [
             (header::LOCATION, target),
             (header::CACHE_CONTROL, "private, max-age=0".into()),
         ];
-        return Ok((StatusCode::FOUND, headers).into_response());
+        let mut res = (StatusCode::FOUND, headers).into_response();
+        if let Some(click) = click {
+            res.extensions_mut().insert(click);
+        }
+        return Ok(res);
     }
     let exists = sqlx::query("SELECT 1 FROM links WHERE domain_id = $1 AND code = $2")
         .bind(domain_id)

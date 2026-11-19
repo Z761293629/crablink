@@ -2,7 +2,7 @@
 //! time range with breakdowns.
 
 use std::net::IpAddr;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 
 use axum::Json;
 use axum::extract::rejection::QueryRejection;
@@ -13,6 +13,7 @@ use crablink_api::{
     ClickBreakdown, ClickBucket, ClickStats, ClicksQuery, Interval, TopLink, WorkspaceClicks,
     WorkspaceClicksQuery,
 };
+use tokio::task::JoinHandle;
 
 use crate::error::ApiError;
 use crate::workspaces::Caller;
@@ -48,19 +49,38 @@ pub fn dbip_country_lookup(path: &str) -> Result<CountryLookup, maxminddb::MaxMi
     }))
 }
 
-/// Records a Click on Link `link_id` unless the visitor is a bot or link-preview
-/// fetcher. `socket` is the peer address. Never fails: an error is logged and the
-/// redirect goes ahead.
-pub(crate) async fn record(
+/// A Click being stored after its redirect has been answered, so that a slow database
+/// never slows the redirect. It rides on the redirect's response, where only the
+/// in-process tests look for it.
+#[derive(Clone)]
+pub struct ClickRecording(Arc<Mutex<Option<JoinHandle<()>>>>);
+
+impl ClickRecording {
+    /// Waits until the Click is stored, or failing to store it has been logged.
+    pub async fn done(&self) {
+        let task = self.0.lock().unwrap_or_else(PoisonError::into_inner).take();
+        if let Some(task) = task {
+            // A panic in the task was already reported by the runtime.
+            let _ = task.await;
+        }
+    }
+}
+
+/// Starts recording a Click on Link `link_id` unless the visitor is a bot or
+/// link-preview fetcher. `socket` is the peer address. Never fails: an error is logged
+/// and the redirect goes ahead.
+// ponytail: a Click still being stored when the server shuts down is lost; track the
+// tasks and wait for them on shutdown if that ever matters.
+pub(crate) fn record(
     s: &AppState,
     link_id: i64,
     headers: &HeaderMap,
     socket: Option<IpAddr>,
-) {
+) -> Option<ClickRecording> {
     let text = |name| headers.get(name).and_then(|v| v.to_str().ok());
     let ua = text(header::USER_AGENT).unwrap_or("");
     if BOTS.is_bot(ua) {
-        return;
+        return None;
     }
     let forwarded = || {
         text(header::HeaderName::from_static("x-forwarded-for"))
@@ -78,7 +98,7 @@ pub(crate) async fn record(
         .iter()
         .find(|(token, _)| ua.contains(token))
         .map(|(_, name)| *name);
-    let done = sqlx::query(
+    let insert = sqlx::query(
         "WITH c AS (INSERT INTO clicks (link_id, at, referrer_host, country, device, browser) \
          VALUES ($1, $2, $3, $4, $5, $6)) \
          UPDATE links SET click_count = click_count + 1 WHERE id = $1",
@@ -88,12 +108,14 @@ pub(crate) async fn record(
     .bind(referrer_host)
     .bind(country)
     .bind(device(ua))
-    .bind(browser)
-    .execute(&s.pool)
-    .await;
-    if let Err(e) = done {
-        eprintln!("cannot record a Click: {e}");
-    }
+    .bind(browser);
+    let pool = s.pool.clone();
+    let task = tokio::spawn(async move {
+        if let Err(e) = insert.execute(&pool).await {
+            eprintln!("cannot record a Click: {e}");
+        }
+    });
+    Some(ClickRecording(Arc::new(Mutex::new(Some(task)))))
 }
 
 /// `tablet`, `mobile` or `desktop`. An iPad asking for the desktop site, as Safari

@@ -116,9 +116,26 @@ pub struct TestApp {
     pub owner: Account,
 }
 
+/// A visitor's request for `path` on Domain `host` from `SOCKET_IP`, sending `headers`.
+pub fn visitor_request(host: &str, path: &str, headers: &[(&str, &str)]) -> Request<Body> {
+    let mut req = Request::get(path).header(header::HOST, host);
+    for (name, value) in headers {
+        req = req.header(*name, *value);
+    }
+    let mut req = req.body(Body::empty()).unwrap();
+    let socket = SocketAddr::new(SOCKET_IP.parse().unwrap(), 50000);
+    req.extensions_mut().insert(ConnectInfo(socket));
+    req
+}
+
 impl TestApp {
+    /// Sends `req`; after a redirect, also waits for its Click to be recorded, so
+    /// tests see it at once.
     pub async fn send(&self, req: Request<Body>) -> Res {
         let resp = self.router.clone().oneshot(req).await.unwrap();
+        if let Some(click) = resp.extensions().get::<crablink_server::ClickRecording>() {
+            click.done().await;
+        }
         Res::read(resp).await
     }
 
@@ -300,14 +317,7 @@ impl TestApp {
 
     /// `visit` on Domain `host`.
     pub async fn visit_on(&self, host: &str, path: &str, headers: &[(&str, &str)]) -> Res {
-        let mut req = Request::get(path).header(header::HOST, host);
-        for (name, value) in headers {
-            req = req.header(*name, *value);
-        }
-        let mut req = req.body(Body::empty()).unwrap();
-        let socket = SocketAddr::new(SOCKET_IP.parse().unwrap(), 50000);
-        req.extensions_mut().insert(ConnectInfo(socket));
-        self.send(req).await
+        self.send(visitor_request(host, path, headers)).await
     }
 
     /// A request with `OWNER`'s API Key to `path` under `OWNER`'s Workspace, e.g.
