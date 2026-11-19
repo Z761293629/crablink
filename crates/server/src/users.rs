@@ -11,7 +11,7 @@ use axum::Json;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
-use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
+use axum::http::{Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use chrono::TimeDelta;
 use crablink_api::{ChangePassword, Me, SignIn, User, Workspace};
@@ -390,18 +390,9 @@ impl<S: Sync> FromRequestParts<S> for SameOrigin {
     }
 }
 
-/// The host a request was sent to, with its port if any: the `Host` header, or the
-/// URI's authority (HTTP/2).
-pub(crate) fn request_host<'a>(headers: &'a HeaderMap, uri: &'a Uri) -> Option<&'a str> {
-    headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
-        .or_else(|| uri.authority().map(|a| a.as_str()))
-}
-
 /// Whether the `Origin` header names the host the request was sent to.
 fn same_origin(parts: &Parts) -> bool {
-    let host = request_host(&parts.headers, &parts.uri);
+    let host = crate::request_host(&parts.headers, &parts.uri);
     let origin = parts
         .headers
         .get(header::ORIGIN)

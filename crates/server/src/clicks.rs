@@ -218,17 +218,7 @@ pub(crate) async fn link_clicks(
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Query(q) = query?;
     let unit = bucket_unit(q.from, q.to, q.interval)?;
-    let link_id: i64 = sqlx::query_scalar(
-        "SELECT l.id FROM links l JOIN domains d ON d.id = l.domain_id \
-         WHERE l.workspace_id = $1 AND d.host = lower($2) AND l.code = $3 \
-         AND l.deleted_at IS NULL",
-    )
-    .bind(workspace_id)
-    .bind(q.domain.as_deref().unwrap_or(&s.default_domain))
-    .bind(&code)
-    .fetch_optional(&s.pool)
-    .await?
-    .ok_or(ApiError::LinkNotFound)?;
+    let link_id = crate::links::link_id(&s, workspace_id, q.domain.as_deref(), &code).await?;
     let by = async |sql: &'static str| -> Result<Vec<ClickBreakdown>, ApiError> {
         let rows: Vec<(Option<String>, i64)> = sqlx::query_as(sql)
             .bind(link_id)

@@ -22,7 +22,7 @@ pub(crate) async fn redirect(
     socket: Option<Extension<ConnectInfo<SocketAddr>>>,
 ) -> Response {
     let socket = socket.map(|Extension(ConnectInfo(addr))| addr.ip());
-    let domain = crate::users::request_host(&headers, &uri).unwrap_or_default();
+    let domain = crate::request_host(&headers, &uri).unwrap_or_default();
     // Unlike the management API, redirect error bodies are plain text.
     follow(&s, domain, &code, &headers, socket)
         .await
