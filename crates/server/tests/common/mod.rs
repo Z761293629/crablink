@@ -7,10 +7,12 @@
 mod pg;
 
 use std::collections::VecDeque;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::Body;
+use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode, header};
 use axum::response::Response;
 use chrono::{DateTime, TimeDelta, Utc};
@@ -29,14 +31,38 @@ pub const PASSWORD: &str = "correct horse battery";
 pub const OWNER: &str = "owner@example.com";
 /// The Instance Admin `TestApp::instance_admin` signs in as.
 pub const ADMIN: &str = "admin@example.com";
+/// The socket address `TestApp::visit` comes from; the fake country lookup puts it in France.
+pub const SOCKET_IP: &str = "192.0.2.1";
+/// An address the fake country lookup puts in New Zealand.
+pub const NZ_IP: &str = "198.51.100.7";
+pub const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+
+/// The fake country lookup: `SOCKET_IP` is `FR`, `NZ_IP` is `NZ`, anything else unknown.
+fn fake_country(ip: IpAddr) -> Option<String> {
+    let country = match ip.to_string().as_str() {
+        SOCKET_IP => "FR",
+        NZ_IP => "NZ",
+        _ => return None,
+    };
+    Some(country.into())
+}
 
 /// App with random Generated Codes.
 pub async fn app() -> TestApp {
     app_with_codes(&[]).await
 }
 
+/// App with random Generated Codes that trusts `X-Forwarded-For` from its proxy.
+pub async fn app_behind_proxy() -> TestApp {
+    build(&[], true).await
+}
+
 /// App whose Code generator yields `codes` in order, then random Codes.
 pub async fn app_with_codes(codes: &[&str]) -> TestApp {
+    build(codes, false).await
+}
+
+async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
     let pool = crablink_server::connect(&pg::database_url().await)
         .await
         .unwrap();
@@ -51,13 +77,21 @@ pub async fn app_with_codes(codes: &[&str]) -> TestApp {
     let now = Arc::new(Mutex::new(Utc::now()));
     let clock = now.clone();
     let clock: crablink_server::Clock = Arc::new(move || *clock.lock().unwrap());
-    let router = crablink_server::app(pool.clone(), generator, clock, BASE_URL)
-        .await
-        .unwrap();
+    let router = crablink_server::app(
+        pool.clone(),
+        generator,
+        clock,
+        Arc::new(fake_country),
+        trust_proxy,
+        BASE_URL,
+    )
+    .await
+    .unwrap();
     let mut app = TestApp {
         router,
         pool,
         now,
+        trust_proxy,
         owner: Account::default(),
     };
     app.owner = app.account(OWNER).await;
@@ -77,6 +111,7 @@ pub struct TestApp {
     pub pool: PgPool,
     /// What the app's clock reads; starts at the real time.
     now: Arc<Mutex<DateTime<Utc>>>,
+    trust_proxy: bool,
     /// `OWNER`'s Account: what `api` and `create` act as.
     pub owner: Account,
 }
@@ -93,15 +128,33 @@ impl TestApp {
         let codes: crablink_server::CodeGenerator = Arc::new(crablink_server::random_code);
         let now = self.now.clone();
         let clock: crablink_server::Clock = Arc::new(move || *now.lock().unwrap());
-        let router = crablink_server::app(self.pool.clone(), codes, clock, base_url)
-            .await
-            .unwrap();
+        let router = crablink_server::app(
+            self.pool.clone(),
+            codes,
+            clock,
+            Arc::new(fake_country),
+            self.trust_proxy,
+            base_url,
+        )
+        .await
+        .unwrap();
         TestApp {
             router,
             pool: self.pool.clone(),
             now: self.now.clone(),
+            trust_proxy: self.trust_proxy,
             owner: self.owner.clone(),
         }
+    }
+
+    /// What the app's clock reads.
+    pub fn now(&self) -> DateTime<Utc> {
+        *self.now.lock().unwrap()
+    }
+
+    /// Sets the app's clock, e.g. to place Clicks at chosen times.
+    pub fn set_now(&self, to: &str) {
+        *self.now.lock().unwrap() = to.parse().unwrap();
     }
 
     /// Moves the app's clock forward.
@@ -238,6 +291,18 @@ impl TestApp {
         let res = self.add_domain(cookie, slug, host).await;
         assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
         self.set_domain_status(host, "approved").await;
+    }
+
+    /// A visitor following a Short URL from `SOCKET_IP`, sending `headers`.
+    pub async fn visit(&self, path: &str, headers: &[(&str, &str)]) -> Res {
+        let mut req = Request::get(path).header(header::HOST, HOST);
+        for (name, value) in headers {
+            req = req.header(*name, *value);
+        }
+        let mut req = req.body(Body::empty()).unwrap();
+        let socket = SocketAddr::new(SOCKET_IP.parse().unwrap(), 50000);
+        req.extensions_mut().insert(ConnectInfo(socket));
+        self.send(req).await
     }
 
     /// A request with `OWNER`'s API Key to `path` under `OWNER`'s Workspace, e.g.

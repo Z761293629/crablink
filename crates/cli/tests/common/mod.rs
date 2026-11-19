@@ -55,6 +55,8 @@ pub fn server() -> TestServer {
                 pool,
                 Arc::new(crablink_server::random_code),
                 Arc::new(chrono::Utc::now),
+                Arc::new(|_| None),
+                false,
                 &url,
             )
             .await

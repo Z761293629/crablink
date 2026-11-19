@@ -493,6 +493,56 @@ impl QrFormat {
     }
 }
 
+/// Query of `GET /api/workspaces/{slug}/links/{code}/clicks`: Clicks at or after
+/// `from` and before `to`, counted per `interval` (a day when absent, in UTC).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClicksQuery {
+    pub from: DateTime<Utc>,
+    pub to: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval: Option<Interval>,
+    /// The Domain of the Link, the Default Domain when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+}
+
+/// The width of a time bucket of Clicks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Interval {
+    Hour,
+    Day,
+}
+
+/// Response of `GET /api/workspaces/{slug}/links/{code}/clicks`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClickStats {
+    /// Every bucket from the one holding `from` up to `to`, empty ones included.
+    pub series: Vec<ClickBucket>,
+    /// By Referrer host; `None` for Clicks with no Referrer.
+    pub referrers: Vec<ClickBreakdown>,
+    /// By ISO 3166-1 alpha-2 country code; `None` where it is unknown.
+    pub countries: Vec<ClickBreakdown>,
+    /// By `desktop`, `mobile` or `tablet`.
+    pub devices: Vec<ClickBreakdown>,
+    /// By browser name, e.g. `Chrome`; `None` where it is unknown.
+    pub browsers: Vec<ClickBreakdown>,
+}
+
+/// The Clicks in the bucket starting at `time`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClickBucket {
+    pub time: DateTime<Utc>,
+    pub count: i64,
+}
+
+/// The Clicks sharing one `value`; breakdowns list the most Clicks first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClickBreakdown {
+    pub value: Option<String>,
+    pub count: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

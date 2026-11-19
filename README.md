@@ -51,6 +51,10 @@ Postgres 只在 compose 网络内可达，数据在卷 `postgres` 里，删掉�
 | `CRABLINK_BASE_URL` | 是 | — | 对外地址，如 `https://crabl.ink`；启动时用它的 host（和端口）建 Default Domain，Short URL 是 `scheme://host/{code}`，路径部分不计入；跳转按请求的 `Host` 找 Domain，用别的地址访问得到 404 |
 | `CRABLINK_DATABASE_URL` | 是 | compose 里已设好 | Postgres URL，如 `postgres://user:pass@host:5432/crablink`；启动时自动建表 |
 | `CRABLINK_LISTEN` | 否 | `0.0.0.0:8080` | 监听地址（改端口的话 `ports` 和健康检查端口要一起改） |
+| `CRABLINK_TRUST_PROXY` | 否 | `false` | `true` 时访客地址取 `X-Forwarded-For` 的第一项（只在反向代理之后这样设，`deploy/compose.yaml` 已设好），否则取 TCP 连接的对端地址 |
+| `CRABLINK_COUNTRY_DB` | 否 | 镜像里已设好 | Click 查国家用的 DB-IP Lite country 数据库（`.mmdb`）；镜像构建时自带当月版本。不设则 Click 不记国家，设了却读不了就退出 |
+
+Click 只记时间、Referrer 的 host、国家、设备类型和浏览器，从不存 IP 和完整 User-Agent（[ADR-0006](docs/adr/0006-clicks-store-no-ip.md)）；爬虫和链接预览（Slack 等）照常跳转，但不算 Click。国家数据来自 [IP Geolocation by DB-IP](https://db-ip.com)（CC BY 4.0）。
 
 ### 生产部署（HTTPS）
 
@@ -194,6 +198,7 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `PATCH` | `/api/workspaces/{ws}/links/{code}?domain=` | 修改 `target` / `expires_at` |
 | `DELETE` | `/api/workspaces/{ws}/links/{code}?domain=` | 删除（不可恢复） |
 | `GET` | `/api/workspaces/{ws}/links/{code}/qr?format=svg\|png&domain=` | Short URL 的 QR 码，默认 SVG；已过期 410（`link_expired`） |
+| `GET` | `/api/workspaces/{ws}/links/{code}/clicks?from=&to=&interval=hour\|day&domain=` | `[from, to)` 内的 Click：`series` 按 UTC 小时 / 天分桶（默认天，空桶也列出，最多 1000 个），`referrers` / `countries` / `devices` / `browsers` 为 `[{ value, count }]`，多的在前，未知为 `null` |
 | `GET` | `/api/workspaces/{ws}/domains` | 列出 Default Domain 和本 Workspace 的自定义 Domain：`[{ host, status, default }]`，`status` 为 `pending` / `approved` / `rejected` |
 | `POST` | `/api/workspaces/{ws}/domains` | Owner 添加自定义 Domain：`{ host }`，状态 pending；不是合法 host 400（`invalid_domain`），是 Default Domain 或别的 Workspace 的 409（`domain_taken`） |
 | `DELETE` | `/api/workspaces/{ws}/domains/{host}` | Owner 移除 Domain：其 Link 变为已删除，Code 仍被占用；不属于本 Workspace 404（`domain_not_found`） |

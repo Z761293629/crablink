@@ -67,11 +67,32 @@ async fn serve() {
         );
     }
 
+    let trust_proxy = match std::env::var("CRABLINK_TRUST_PROXY").as_deref() {
+        Err(_) | Ok("false") => false,
+        Ok("true") => true,
+        Ok(_) => {
+            eprintln!("crablink-server: CRABLINK_TRUST_PROXY must be true or false");
+            exit(2);
+        }
+    };
+    let country: crablink_server::CountryLookup = match std::env::var("CRABLINK_COUNTRY_DB") {
+        Ok(path) => crablink_server::dbip_country_lookup(&path).unwrap_or_else(|e| {
+            eprintln!("crablink-server: cannot read the country database {path}: {e}");
+            exit(1);
+        }),
+        Err(_) => {
+            eprintln!("crablink-server: CRABLINK_COUNTRY_DB is not set, so Clicks get no country");
+            Arc::new(|_| None)
+        }
+    };
+
     let pool = open_database(&db_url).await;
     let app = crablink_server::app(
         pool.clone(),
         Arc::new(crablink_server::random_code),
         Arc::new(chrono::Utc::now),
+        country,
+        trust_proxy,
         &base_url,
     )
     .await
@@ -86,6 +107,7 @@ async fn serve() {
             exit(1);
         });
     eprintln!("crablink-server listening on {listen}");
+    let app = app.into_make_service_with_connect_info::<std::net::SocketAddr>();
     if let Err(e) = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
