@@ -29,7 +29,13 @@
     "copy": "复制",
     "copied": "已复制",
     "qr": "二维码（{{format}}）",
-    "more": "加载更多"
+    "more": "加载更多",
+    "tags": "标签",
+    "tagsHint": "用逗号分隔",
+    "tag": "标签",
+    "allTags": "全部标签",
+    "search": "搜索",
+    "noMatch": "没有匹配的链接。"
   },
   "nav": {
     "links": "链接",
@@ -109,6 +115,7 @@
     "invalid_code": "短码须为 3-64 个字符，只能包含 A-Z、a-z、0-9、_ 或 -。",
     "code_reserved": "该短码为保留字。",
     "code_taken": "该短码已被占用。",
+    "invalid_tag": "标签须为 1-64 个字符，且不能包含逗号。",
     "user_not_found": "没有该用户。",
     "already_member": "已在此工作区中。",
     "last_owner": "工作区必须有一位所有者：请先将其他人设为所有者。",

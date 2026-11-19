@@ -93,6 +93,36 @@ test("a Link's Short URL copies in one click, and its QR code downloads as SVG o
   }
 });
 
+test('a User tags two Links, filters by one Tag and searches by part of a Target', async ({ page, user }) => {
+  const code = `autumn-${Date.now()}`;
+  await user.api('POST', `/workspaces/${user.slug}/links`, { target: 'https://example.com/autumn-sale', code });
+  await user.api('POST', `/workspaces/${user.slug}/links`, { target: 'https://example.com/untagged' });
+  await signInPage(page, user.email, user.password);
+
+  await page.getByLabel('Target').fill('https://example.com/spring-sale');
+  await page.getByLabel('Tags').fill('spring, launch');
+  await page.getByRole('button', { name: 'Create' }).click();
+  const spring = page.getByRole('row').filter({ hasText: 'https://example.com/spring-sale' });
+  await expect(spring).toContainText('launch');
+  await expect(spring).toContainText('spring');
+
+  const autumn = page.getByRole('row').filter({ hasText: `${baseURL}/${code}` });
+  await autumn.getByRole('button', { name: 'Edit' }).click();
+  await autumn.getByLabel('Tags').fill('autumn');
+  await autumn.getByRole('button', { name: 'Save' }).click();
+  await expect(autumn).toContainText('autumn');
+
+  const rows = page.getByRole('table').getByRole('row');
+  await page.getByLabel('Tag', { exact: true }).selectOption('spring');
+  await expect(rows).toHaveCount(1 + 1);
+  await expect(rows.nth(1)).toContainText('https://example.com/spring-sale');
+
+  await page.getByLabel('Tag', { exact: true }).selectOption('');
+  await page.getByLabel('Search').fill('AUTUMN-SA');
+  await expect(rows).toHaveCount(1 + 1);
+  await expect(rows.nth(1)).toContainText('https://example.com/autumn-sale');
+});
+
 test('more Links load a page at a time', async ({ page, user }) => {
   for (let i = 0; i < 51; i++) {
     await user.api('POST', `/workspaces/${user.slug}/links`, { target: `https://example.com/${i}` });

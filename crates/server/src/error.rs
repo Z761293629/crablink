@@ -57,6 +57,8 @@ pub enum ApiError {
     CodeReserved(String),
     #[error("code already taken")]
     CodeTaken,
+    #[error("tag must be 1-64 characters with no comma or control character")]
+    InvalidTag,
     #[error("no such User")]
     UserNotFound,
     #[error("already in this Workspace")]
@@ -100,6 +102,7 @@ impl ApiError {
             Self::InvalidCode => ErrorKind::InvalidCode,
             Self::CodeReserved(_) => ErrorKind::CodeReserved,
             Self::CodeTaken => ErrorKind::CodeTaken,
+            Self::InvalidTag => ErrorKind::InvalidTag,
             Self::UserNotFound => ErrorKind::UserNotFound,
             Self::AlreadyMember => ErrorKind::AlreadyMember,
             Self::LastOwner => ErrorKind::LastOwner,
@@ -127,6 +130,7 @@ impl ApiError {
             | Self::InvalidTarget(_)
             | Self::InvalidCode
             | Self::CodeReserved(_)
+            | Self::InvalidTag
             | Self::InvalidEmail
             | Self::PasswordTooShort
             | Self::InvalidDomain

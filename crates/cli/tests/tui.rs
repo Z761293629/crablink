@@ -34,6 +34,7 @@ fn expired_links_are_marked_and_deleted_links_are_absent() {
         code: Some("old".into()),
         expires_at: Some("2020-01-01T00:00:00Z".parse().unwrap()),
         domain: None,
+        tags: Vec::new(),
     })
     .unwrap();
     srv.create("gone", "https://example.com/gone");
@@ -213,6 +214,7 @@ fn the_detail_pane_shows_the_whole_link_and_the_list_truncates_long_targets() {
             code: Some("long".into()),
             expires_at: Some("2099-01-02T03:04:05Z".parse().unwrap()),
             domain: None,
+            tags: Vec::new(),
         })
         .unwrap();
 
@@ -429,6 +431,7 @@ fn v_on_an_expired_link_shows_an_error_instead_of_its_qr_code() {
             code: Some("old".into()),
             expires_at: Some("2020-01-01T00:00:00Z".parse().unwrap()),
             domain: None,
+            tags: Vec::new(),
         })
         .unwrap();
     let mut tui = srv.tui();
@@ -475,7 +478,9 @@ fn a_terminal_too_small_for_the_qr_code_shows_the_size_it_needs() {
 /// Every Link on the server, newest first.
 fn server_links(srv: &TestServer) -> Vec<crablink_api::Link> {
     let mut links = Vec::new();
-    srv.api().list(|page| links.extend(page)).unwrap();
+    srv.api()
+        .list(None, None, |page| links.extend(page))
+        .unwrap();
     links
 }
 
@@ -699,6 +704,7 @@ fn e_edits_the_selected_links_target_with_the_code_read_only() {
             code: Some("abc".into()),
             expires_at: Some("2099-01-02T03:04:05Z".parse().unwrap()),
             domain: None,
+            tags: Vec::new(),
         })
         .unwrap();
     let mut tui = srv.tui();
@@ -860,6 +866,7 @@ fn editing_only_the_target_leaves_a_sub_second_expiry_unchanged() {
             code: Some("abc".into()),
             expires_at: Some(expires_at),
             domain: None,
+            tags: Vec::new(),
         })
         .unwrap();
     let before = srv.api().get("abc", None).unwrap().expires_at;

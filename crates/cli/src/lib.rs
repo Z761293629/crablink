@@ -49,12 +49,21 @@ pub enum Cmd {
         /// The Domain the Link lives on, e.g. go.example.com (the Default Domain otherwise).
         #[arg(long)]
         domain: Option<String>,
+        /// A Tag to put on the Link; repeat for more.
+        #[arg(long = "tag", value_name = "TAG")]
+        tags: Vec<String>,
         /// Print the API's JSON for the new Link instead.
         #[arg(long)]
         json: bool,
     },
     /// List all Links, newest first: Code, Click Count, Expiry, Target.
     Ls {
+        /// Only Links with this Tag.
+        #[arg(long)]
+        tag: Option<String>,
+        /// Only Links whose Code or Target contains this, ignoring case.
+        #[arg(long)]
+        search: Option<String>,
         /// Print one JSON array of every Link instead.
         #[arg(long)]
         json: bool,
@@ -128,6 +137,7 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
             code,
             expires,
             domain,
+            tags,
             json,
         } => {
             let expires_at = expires.map(|e| expires_flag(&e, now)).transpose()?;
@@ -136,6 +146,7 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
                 code,
                 expires_at,
                 domain,
+                tags,
             })?;
             if json {
                 print_json(&link)?;
@@ -143,12 +154,20 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
                 println!("{}", link.short_url);
             }
         }
-        Cmd::Ls { json: true } => {
+        Cmd::Ls {
+            tag,
+            search,
+            json: true,
+        } => {
             let mut all = Vec::new();
-            api.list(|links| all.extend(links))?;
+            api.list(tag.as_deref(), search.as_deref(), |links| all.extend(links))?;
             print_json(&all)?;
         }
-        Cmd::Ls { json: false } => api.list(|links| {
+        Cmd::Ls {
+            tag,
+            search,
+            json: false,
+        } => api.list(tag.as_deref(), search.as_deref(), |links| {
             for l in &links {
                 println!(
                     "{:<20} {:>7}  {:<30}  {}",
@@ -232,7 +251,11 @@ fn edit_body(
         None if no_expires => Some(None),
         None => None,
     };
-    Ok(UpdateLink { target, expires_at })
+    Ok(UpdateLink {
+        target,
+        expires_at,
+        tags: None,
+    })
 }
 
 pub(crate) fn timestamp(t: DateTime<Utc>) -> String {
@@ -273,6 +296,7 @@ fn print_link(l: &Link, now: DateTime<Utc>) {
     println!("Target:      {}", l.target);
     println!("Expiry:      {}", expiry(l, now));
     println!("Click Count: {}", l.click_count);
+    println!("Tags:        {}", l.tags.join(", "));
     println!("Created:     {}", timestamp(l.created_at));
     println!("Updated:     {}", timestamp(l.updated_at));
 }

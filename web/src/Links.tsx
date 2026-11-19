@@ -1,26 +1,44 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type Domain, type Link, type LinkPage } from './api';
 import { errorMessage } from './i18n';
 
-/** A Workspace's Links: create, list a page at a time, edit, delete. */
+/** A Workspace's Links: create, filter by Tag, search, list a page at a time, edit, delete. */
 export function Links({ slug }: { slug: string }) {
   const { t } = useTranslation();
   const [links, setLinks] = useState<Link[]>();
   const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState<unknown>();
+  const [tags, setTags] = useState<string[]>([]);
+  const [tag, setTag] = useState('');
+  const [q, setQ] = useState('');
   const base = `/workspaces/${encodeURIComponent(slug)}/links`;
+  const filter = new URLSearchParams(Object.entries({ tag, q }).filter(([, v]) => v));
 
+  const loadTags = useCallback(
+    () => api<string[]>('GET', `/workspaces/${encodeURIComponent(slug)}/tags`).then(setTags, setError),
+    [slug],
+  );
+  useEffect(() => void loadTags(), [loadTags]);
+
+  const query = filter.toString();
   useEffect(() => {
-    api<LinkPage>('GET', base).then((page) => {
+    // Typing in the search box fires a request per keystroke: only the latest may land.
+    let latest = true;
+    api<LinkPage>('GET', `${base}?${query}`).then((page) => {
+      if (!latest) return;
       setLinks(page.links);
       setNext(page.next_cursor);
     }, setError);
-  }, [base]);
+    return () => {
+      latest = false;
+    };
+  }, [base, query]);
 
   async function loadMore() {
     try {
-      const page = await api<LinkPage>('GET', `${base}?cursor=${encodeURIComponent(next!)}`);
+      filter.set('cursor', next!);
+      const page = await api<LinkPage>('GET', `${base}?${filter}`);
       setLinks([...links!, ...page.links]);
       setNext(page.next_cursor);
     } catch (err) {
@@ -32,9 +50,32 @@ export function Links({ slug }: { slug: string }) {
   if (!links) return null;
   return (
     <>
-      <CreateLink slug={slug} base={base} onCreated={(link) => setLinks([link, ...links])} />
+      <CreateLink
+        slug={slug}
+        base={base}
+        onCreated={(link) => {
+          setLinks([link, ...links]);
+          void loadTags();
+        }}
+      />
+      <div className="link-filter">
+        <label>
+          {t('links.search')}
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} />
+        </label>
+        <label>
+          {t('links.tag')}
+          {/* Named explicitly: a wrapping label would also take in the selected option's text. */}
+          <select value={tag} onChange={(e) => setTag(e.target.value)} aria-label={t('links.tag')}>
+            <option value="">{t('links.allTags')}</option>
+            {tags.map((name) => (
+              <option key={name}>{name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
       {links.length === 0 ? (
-        <p>{t('links.empty')}</p>
+        <p>{t(query ? 'links.noMatch' : 'links.empty')}</p>
       ) : (
         <div className="table">
           <table>
@@ -42,6 +83,7 @@ export function Links({ slug }: { slug: string }) {
               <tr>
                 <th>{t('links.shortUrl')}</th>
                 <th>{t('links.target')}</th>
+                <th>{t('links.tags')}</th>
                 <th>{t('links.clickCount')}</th>
                 <th>{t('links.expiry')}</th>
                 <th>{t('links.actions')}</th>
@@ -53,8 +95,14 @@ export function Links({ slug }: { slug: string }) {
                   key={link.short_url}
                   base={base}
                   link={link}
-                  onChanged={(changed) => setLinks(links.map((l) => (l === link ? changed : l)))}
-                  onDeleted={() => setLinks(links.filter((l) => l !== link))}
+                  onChanged={(changed) => {
+                    setLinks(links.map((l) => (l === link ? changed : l)));
+                    void loadTags();
+                  }}
+                  onDeleted={() => {
+                    setLinks(links.filter((l) => l !== link));
+                    void loadTags();
+                  }}
                 />
               ))}
             </tbody>
@@ -87,6 +135,7 @@ function CreateLink({ slug, base, onCreated }: { slug: string; base: string; onC
           code: data.get('code') || undefined,
           domain: data.get('domain') || undefined,
           expires_at: fromInput(data.get('expires_at') as string) ?? undefined,
+          tags: tagList(data.get('tags') as string),
         }),
       );
       form.reset();
@@ -108,6 +157,10 @@ function CreateLink({ slug, base, onCreated }: { slug: string; base: string; onC
       <label>
         {t('links.expiry')}
         <input name="expires_at" type="datetime-local" />
+      </label>
+      <label>
+        {t('links.tags')}
+        <input name="tags" placeholder={t('links.tagsHint')} />
       </label>
       <label>
         {t('links.domain')}
@@ -150,6 +203,7 @@ function LinkRow({
         await api<Link>('PATCH', path, {
           target: data.get('target'),
           expires_at: fromInput(data.get('expires_at') as string),
+          tags: tagList(data.get('tags') as string),
         }),
       );
       setEditing(false);
@@ -195,6 +249,15 @@ function LinkRow({
             <form id={form} onSubmit={save} />
             <input form={form} name="target" type="url" required defaultValue={link.target} aria-label={t('links.target')} />
           </td>
+          <td>
+            <input
+              form={form}
+              name="tags"
+              defaultValue={link.tags.join(', ')}
+              placeholder={t('links.tagsHint')}
+              aria-label={t('links.tags')}
+            />
+          </td>
           <td>{link.click_count}</td>
           <td>
             <input
@@ -216,6 +279,7 @@ function LinkRow({
       ) : (
         <>
           <td className="target">{link.target}</td>
+          <td>{link.tags.join(', ')}</td>
           <td>{link.click_count}</td>
           <td>{link.expires_at ? date.format(new Date(link.expires_at)) : t('links.never')}</td>
           <td className="actions" key="viewing">
@@ -237,6 +301,14 @@ function LinkRow({
       )}
     </tr>
   );
+}
+
+/** Comma-separated Tag names as typed (a Tag never has a comma), blanks dropped. */
+function tagList(value: string): string[] {
+  return value
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean);
 }
 
 /** A `datetime-local` input's value, in this browser's time zone, as an ISO instant; null when empty. */

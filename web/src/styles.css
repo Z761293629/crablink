@@ -42,13 +42,15 @@ h1 {
 }
 
 .sign-in label,
-.create-link label {
+.create-link label,
+.link-filter label {
   display: grid;
   gap: 0.25rem;
 }
 
 /* Wraps to one field per line on a phone. */
-.create-link {
+.create-link,
+.link-filter {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
@@ -56,7 +58,8 @@ h1 {
   margin-bottom: 1rem;
 }
 
-.create-link label {
+.create-link label,
+.link-filter label {
   flex: 1 1 12rem;
 }
 
