@@ -42,8 +42,7 @@ jobs:
   # The web UI (web/): lint, typecheck, build, then Playwright against the real server with the
   # build embedded. The ci job above builds and tests Rust without it, as contributors may.
   web:
-    # Playwright 1.58 has no browser build for ubuntu-latest (26.04); unpin once Playwright is upgraded.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: web
