@@ -145,13 +145,19 @@ impl ApiError {
     }
 }
 
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let body = crablink_api::ErrorBody {
+impl ApiError {
+    /// The JSON body: `kind` and the English message.
+    pub(crate) fn body(&self) -> crablink_api::ErrorBody {
+        crablink_api::ErrorBody {
             kind: self.kind(),
             error: self.to_string(),
-        };
-        (self.status(), Json(body)).into_response()
+        }
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        (self.status(), Json(self.body())).into_response()
     }
 }
 

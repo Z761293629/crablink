@@ -45,7 +45,11 @@
     "tag": "Tag",
     "allTags": "All Tags",
     "search": "Search",
-    "noMatch": "No Links match."
+    "noMatch": "No Links match.",
+    "exportCsv": "Export CSV",
+    "importCsv": "Import CSV",
+    "line": "Line",
+    "result": "Result"
   },
   "nav": {
     "links": "Links",

@@ -107,12 +107,24 @@ export class ApiError extends Error {
   }
 }
 
-/** Calls `/api{path}`; resolves to the JSON body, or `undefined` for 204. */
+/** One row of a CSV import: the created Link's Short URL, or why the row was skipped. */
+export interface ImportedRow {
+  /** The row's line in the file, the header being line 1. */
+  line: number;
+  short_url?: string;
+  skipped?: { kind: string; error: string };
+}
+
+/**
+ * Calls `/api{path}`; resolves to the JSON body, or `undefined` for 204. A `Blob`
+ * body (a chosen file) is sent as is, anything else as JSON.
+ */
 export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const raw = body instanceof Blob;
   const res = await fetch(`/api${path}`, {
     method,
-    headers: body === undefined ? {} : { 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: body === undefined || raw ? {} : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

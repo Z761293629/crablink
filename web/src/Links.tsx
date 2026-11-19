@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, type Domain, type Link, type LinkPage } from './api';
+import { api, type Domain, type ImportedRow, type Link, type LinkPage } from './api';
 import { clicksHref } from './Clicks';
 import { errorMessage } from './i18n';
 
@@ -13,6 +13,8 @@ export function Links({ slug }: { slug: string }) {
   const [tags, setTags] = useState<string[]>([]);
   const [tag, setTag] = useState('');
   const [q, setQ] = useState('');
+  /** Bumped to fetch the list again, e.g. after an import. */
+  const [reloads, setReloads] = useState(0);
   const base = `/workspaces/${encodeURIComponent(slug)}/links`;
   const filter = new URLSearchParams(Object.entries({ tag, q }).filter(([, v]) => v));
 
@@ -34,7 +36,7 @@ export function Links({ slug }: { slug: string }) {
     return () => {
       latest = false;
     };
-  }, [base, query]);
+  }, [base, query, reloads]);
 
   async function loadMore() {
     try {
@@ -56,6 +58,13 @@ export function Links({ slug }: { slug: string }) {
         base={base}
         onCreated={(link) => {
           setLinks([link, ...links]);
+          void loadTags();
+        }}
+      />
+      <CsvTools
+        base={base}
+        onImported={() => {
+          setReloads((n) => n + 1);
           void loadTags();
         }}
       />
@@ -176,6 +185,65 @@ function CreateLink({ slug, base, onCreated }: { slug: string; base: string; onC
       <button type="submit">{t('links.create')}</button>
       {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
     </form>
+  );
+}
+
+/** Export the Workspace's Links as CSV, or import a CSV file and show each row's result. */
+function CsvTools({ base, onImported }: { base: string; onImported: () => void }) {
+  const { t } = useTranslation();
+  const [rows, setRows] = useState<ImportedRow[]>();
+  const [error, setError] = useState<unknown>();
+
+  async function upload(input: HTMLInputElement) {
+    const file = input.files?.[0];
+    if (!file) return;
+    setError(undefined);
+    try {
+      setRows(await api<ImportedRow[]>('POST', `${base}.csv`, file));
+      onImported();
+    } catch (err) {
+      setError(err);
+    }
+    input.value = '';
+  }
+
+  return (
+    <div className="csv-tools">
+      <a href={`/api${base}.csv`} download="links.csv">
+        {t('links.exportCsv')}
+      </a>
+      <label>
+        {t('links.importCsv')}
+        <input type="file" accept=".csv,text/csv" onChange={(e) => void upload(e.currentTarget)} />
+      </label>
+      {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+      {rows && (
+        <div className="table">
+          <table aria-label={t('links.importCsv')}>
+            <thead>
+              <tr>
+                <th>{t('links.line')}</th>
+                <th>{t('links.result')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.line}>
+                  <td>{row.line}</td>
+                  <td>
+                    {row.short_url ? (
+                      <a href={row.short_url}>{row.short_url}</a>
+                    ) : (
+                      t(`errors.${row.skipped!.kind}`, { defaultValue: row.skipped!.error })
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 

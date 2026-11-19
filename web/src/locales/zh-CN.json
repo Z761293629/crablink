@@ -45,7 +45,11 @@
     "tag": "标签",
     "allTags": "全部标签",
     "search": "搜索",
-    "noMatch": "没有匹配的链接。"
+    "noMatch": "没有匹配的链接。",
+    "exportCsv": "导出 CSV",
+    "importCsv": "导入 CSV",
+    "line": "行",
+    "result": "结果"
   },
   "nav": {
     "links": "链接",
