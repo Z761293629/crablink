@@ -475,6 +475,18 @@ pub struct LinkPage {
     pub next_cursor: Option<String>,
 }
 
+/// One row of the response of `POST /api/workspaces/{slug}/links.csv`: the created
+/// Link's Short URL, or why the row was skipped.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportedRow {
+    /// The row's line in the CSV file, the header being line 1.
+    pub line: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipped: Option<ErrorBody>,
+}
+
 /// Query of `GET /api/workspaces/{slug}/links/{code}/qr`: SVG when `format` is absent.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QrQuery {

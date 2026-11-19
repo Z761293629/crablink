@@ -35,7 +35,10 @@ use domains::{
     add_domain, domain_allowed, list_domains, list_managed_domains, remove_domain,
     update_managed_domain,
 };
-use links::{create_link, delete_link, get_link, link_qr, list_links, list_tags, update_link};
+use links::{
+    create_link, delete_link, export_links, get_link, import_links, link_qr, list_links, list_tags,
+    update_link,
+};
 use members::{add_member, list_workspace_users, remove_workspace_user, update_workspace_user};
 use redirect::redirect;
 use users::{change_password, me, sign_in, sign_out};
@@ -102,6 +105,7 @@ pub async fn app(
     };
     let workspace = Router::new()
         .route("/links", post(create_link).get(list_links))
+        .route("/links.csv", get(export_links).post(import_links))
         .route(
             "/links/{code}",
             get(get_link).patch(update_link).delete(delete_link),

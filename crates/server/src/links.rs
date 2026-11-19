@@ -175,6 +175,16 @@ pub(crate) async fn create_link(
 ) -> Result<(StatusCode, Json<crablink_api::Link>), ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
     let Json(req) = req?;
+    let link = insert_link(&s, workspace_id, req).await?;
+    Ok((StatusCode::CREATED, Json(link)))
+}
+
+/// Creates a Link in Workspace `workspace_id`; shared by create and CSV import.
+async fn insert_link(
+    s: &AppState,
+    workspace_id: i64,
+    req: crablink_api::CreateLink,
+) -> Result<crablink_api::Link, ApiError> {
     validate_target(&req.target, &s.default_host)?;
     if let Some(code) = &req.code {
         validate_custom_code(code)?;
@@ -220,7 +230,137 @@ pub(crate) async fn create_link(
     }
     let link = link_by_id(&mut tx, id).await?;
     tx.commit().await?;
-    Ok((StatusCode::CREATED, Json(link.into_dto(&s.scheme))))
+    Ok(link.into_dto(&s.scheme))
+}
+
+/// A row of `links.csv`. Export fills every column; on import empty cells are `None`
+/// (a Generated Code, the Default Domain, no Expiry) and Click Count is ignored.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CsvRow {
+    #[serde(rename = "Code")]
+    code: Option<String>,
+    #[serde(rename = "Domain")]
+    domain: Option<String>,
+    #[serde(rename = "Target")]
+    target: String,
+    #[serde(rename = "Expiry")]
+    expiry: Option<DateTime<Utc>>,
+    /// Tag names joined with commas, which Tags never contain.
+    #[serde(rename = "Tags", default)]
+    tags: String,
+    #[serde(rename = "Click Count", skip_deserializing)]
+    click_count: i64,
+}
+
+fn csv_error(e: impl std::fmt::Display) -> ApiError {
+    eprintln!("cannot write links.csv: {e}");
+    ApiError::Internal
+}
+
+/// `GET /api/workspaces/{slug}/links.csv`: every Link `list_links` would list, oldest
+/// first, as CSV.
+pub(crate) async fn export_links(
+    State(s): State<AppState>,
+    caller: Caller,
+    Path(slug): Path<String>,
+) -> Result<Response, ApiError> {
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    let rows = sqlx::query_as::<_, LinkRow>(concat!(
+        "SELECT ",
+        link_columns!(),
+        " FROM links l JOIN domains d ON d.id = l.domain_id \
+         WHERE l.workspace_id = $1 AND l.deleted_at IS NULL \
+         AND (d.is_default OR d.workspace_id = $1) ORDER BY l.id"
+    ))
+    .bind(workspace_id)
+    .fetch_all(&s.pool)
+    .await?;
+    let mut out = csv::Writer::from_writer(Vec::new());
+    if rows.is_empty() {
+        // `serialize` writes the header with the first row; an empty export still has one.
+        out.write_record(["Code", "Domain", "Target", "Expiry", "Tags", "Click Count"])
+            .map_err(csv_error)?;
+    }
+    for r in rows {
+        out.serialize(CsvRow {
+            code: Some(r.code),
+            domain: Some(r.domain),
+            target: r.target,
+            expiry: r.expires_at,
+            tags: r.tags.join(","),
+            click_count: r.click_count,
+        })
+        .map_err(csv_error)?;
+    }
+    let body = out.into_inner().map_err(csv_error)?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "text/csv; charset=utf-8"),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"links.csv\"",
+            ),
+        ],
+        body,
+    )
+        .into_response())
+}
+
+/// `POST /api/workspaces/{slug}/links.csv`: creates a Link from each row of a CSV in
+/// the export's format, never touching existing Links. Not atomic: a row that fails
+/// (taken Code, unusable Domain, bad cell) is skipped and reported with its `kind`.
+pub(crate) async fn import_links(
+    State(s): State<AppState>,
+    caller: Caller,
+    Path(slug): Path<String>,
+    body: String,
+) -> Result<Json<Vec<crablink_api::ImportedRow>>, ApiError> {
+    let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    let mut reader = csv::Reader::from_reader(body.as_bytes());
+    let headers = reader
+        .headers()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .clone();
+    let mut results = Vec::new();
+    for record in reader.records() {
+        let line = match &record {
+            Ok(r) => r.position(),
+            Err(e) => e.position(),
+        }
+        .map_or(0, csv::Position::line);
+        let row = record.and_then(|r| r.deserialize::<CsvRow>(Some(&headers)));
+        let created = match row {
+            Ok(row) => {
+                let req = crablink_api::CreateLink {
+                    target: row.target,
+                    code: row.code,
+                    expires_at: row.expiry,
+                    domain: row.domain,
+                    tags: row
+                        .tags
+                        .split(',')
+                        .filter(|t| !t.trim().is_empty())
+                        .map(str::to_owned)
+                        .collect(),
+                };
+                insert_link(&s, workspace_id, req).await
+            }
+            Err(e) => Err(ApiError::BadRequest(e.to_string())),
+        };
+        results.push(match created {
+            Ok(link) => crablink_api::ImportedRow {
+                line,
+                short_url: Some(link.short_url),
+                skipped: None,
+            },
+            Err(e) => crablink_api::ImportedRow {
+                line,
+                short_url: None,
+                skipped: Some(e.body()),
+            },
+        });
+    }
+    Ok(Json(results))
 }
 
 /// The host of the Domain `?domain=` names, the Default Domain when absent.

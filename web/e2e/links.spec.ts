@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { baseURL } from '../playwright.config';
 import { test, expect, signInPage } from './fixtures';
 
@@ -136,4 +137,36 @@ test('more Links load a page at a time', async ({ page, user }) => {
   await expect(rows).toHaveCount(1 + 51);
   await expect(rows.last()).toContainText('https://example.com/0');
   await expect(page.getByRole('button', { name: 'Load more' })).toBeHidden();
+});
+
+test('a User exports Links as CSV, then imports a file and sees each row’s result', async ({ page, user }) => {
+  const taken = `csv-${Date.now()}`;
+  const fresh = `${taken}-new`;
+  await user.api('POST', `/workspaces/${user.slug}/links`, {
+    target: 'https://example.com/exported',
+    code: taken,
+    tags: ['launch'],
+  });
+  await signInPage(page, user.email, user.password);
+
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Export CSV' }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe('links.csv');
+  const exported = await readFile((await download.path())!, 'utf8');
+  expect(exported).toContain(`${taken},${new URL(baseURL).host},https://example.com/exported,,launch,0`);
+
+  await page.getByLabel('Import CSV').setInputFiles({
+    name: 'links.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      'Code,Domain,Target,Expiry,Tags,Click Count\n' +
+        `${fresh},,https://example.com/imported,,,\n` +
+        `${taken},,https://example.com/again,,,\n`,
+    ),
+  });
+  const results = page.getByRole('table', { name: 'Import CSV' }).getByRole('row');
+  await expect(results.nth(1)).toContainText(`${baseURL}/${fresh}`);
+  await expect(results.nth(2)).toContainText('That Code is already taken.');
+  await expect(page.getByRole('row').filter({ hasText: 'https://example.com/imported' })).toContainText(fresh);
 });
