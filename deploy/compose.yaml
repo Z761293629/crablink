@@ -22,7 +22,7 @@ services:
 
   crablink:
     # Pin the version; upgrade by changing it, then `docker compose pull && docker compose up -d`.
-    image: ghcr.io/z761293629/crablink-server:0.6.0
+    image: ghcr.io/z761293629/crablink-server:0.6.1
     restart: unless-stopped
     depends_on:
       postgres:
