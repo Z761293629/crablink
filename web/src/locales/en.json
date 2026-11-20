@@ -28,17 +28,13 @@
     "empty": "No Links yet.",
     "actions": "Actions",
     "customCode": "Custom Code",
-    "generated": "Generated when empty",
     "domain": "Domain",
-    "create": "Create Link",
-    "edit": "Edit",
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
-    "confirmDelete": "Delete {{url}}? Its Code can't be used again.",
+    "confirmDelete": "Delete {{url}}? Printed QR codes for it will stop working, and its Code {{code}} can never be used again on {{domain}}.",
     "copy": "Copy",
     "copied": "Copied",
-    "qr": "QR code ({{format}})",
     "more": "Load more",
     "tags": "Tags",
     "tagsHint": "Comma-separated",
@@ -49,7 +45,61 @@
     "exportCsv": "Export CSV",
     "importCsv": "Import CSV",
     "line": "Line",
-    "result": "Result"
+    "result": "Result",
+    "newLink": "New Link",
+    "selected": "Selected Link",
+    "targetHint": "Paste a long URL",
+    "generatedShort": "Generated",
+    "codeHint": "Leave empty to generate",
+    "expiryHint": "Empty means it never expires",
+    "issue": "Create",
+    "created": "Created",
+    "expired": "Expired",
+    "noTags": "No Tags",
+    "qrAlt": "QR code of {{url}}",
+    "qrPending": "QR appears after create",
+    "qrExpired": "An expired Link has no QR code.",
+    "clearFilters": "Clear filters",
+    "searchHint": "Search Code or Target",
+    "fresh": {
+      "created": "New",
+      "updated": "Updated"
+    },
+    "announce": {
+      "created": "Created {{url}}",
+      "updated": "Saved {{url}}",
+      "deleted": "Deleted {{url}}",
+      "copied": "Copied {{url}}",
+      "retargeted": "{{url}} now points to {{target}}"
+    },
+    "loading": "Loading Links",
+    "viewClicks": "View Clicks",
+    "qrShort": "QR",
+    "shortcutNew": "Shortcut: N",
+    "moreActions": "More: {{code}}",
+    "boardActions": "CSV import and export",
+    "changeTarget": "Change Target",
+    "changeTargetHint": "Printed QR codes keep working.",
+    "downloadQr": "Download QR",
+    "downloadQrAs": "Download QR as {{format}}",
+    "downloadQrOf": "Download QR of {{code}} (PNG)",
+    "copyFailed": "Couldn't copy automatically. The Short URL is selected: press and hold to copy, or press Ctrl+C / ⌘C.",
+    "moreOptions": "More options",
+    "confirmDeleteAction": "Delete Link",
+    "edit": "Edit",
+    "confirmRetarget": "Change the Target of {{url}}?",
+    "confirmRetargetAction": "Change Target",
+    "retargetFrom": "From",
+    "retargetTo": "To",
+    "confirmRetargetNote": "Every printed QR code and shared copy of this Short URL will point to the new Target.",
+    "board": {
+      "all": "All Clicks",
+      "referrer": "Top referrer",
+      "country": "Top country",
+      "device": "Top device",
+      "empty": "No Clicks yet. Share the Short URL or put up its QR code, and Clicks show up here."
+    },
+    "routeTo": "To"
   },
   "nav": {
     "links": "Links",
@@ -57,8 +107,13 @@
     "domains": "Domains",
     "admin": "Instance Admin",
     "switcher": "Workspace",
-    "workspace": "Manage Workspace",
-    "account": "Account"
+    "workspace": "Members & API Keys",
+    "account": "Account",
+    "label": "Pages",
+    "settings": "Settings",
+    "newWorkspace": "New Workspace",
+    "userMenu": "Account menu",
+    "backToSettings": "Settings"
   },
   "clicks": {
     "clicks": "Clicks",
@@ -74,7 +129,6 @@
     "overTime": "Clicks over time",
     "total_one": "{{count}} Click",
     "total_other": "{{count}} Clicks",
-    "max": "Peak {{value}}",
     "topLinks": "Top Links",
     "none": "No Clicks in this time range.",
     "referrers": "Referrers",
@@ -87,7 +141,13 @@
       "desktop": "Desktop",
       "mobile": "Mobile",
       "tablet": "Tablet"
-    }
+    },
+    "peak": "Peak",
+    "from": "From",
+    "to": "To",
+    "topLink": "Top Link",
+    "linksClicked": "Links clicked",
+    "loading": "Loading Clicks"
   },
   "invite": {
     "title": "Accept invite",
@@ -98,17 +158,18 @@
     "title": "Domains",
     "domain": "Domain",
     "status": "Status",
-    "dnsRecord": "DNS record",
-    "default": "Default Domain",
+    "default": "Default",
     "dns": "Point a custom Domain at {{host}} with a CNAME record. It works once an Instance Admin approves it.",
     "add": "Add Domain",
+    "addTitle": "Add a custom Domain",
     "remove": "Remove",
     "confirmRemove": "Remove {{domain}}? Its Links become Deleted Links, and their Codes stay taken.",
     "statuses": {
       "pending": "Pending",
       "approved": "Approved",
       "rejected": "Rejected"
-    }
+    },
+    "confirmRemoveAction": "Remove Domain"
   },
   "admin": {
     "title": "Instance administration",
@@ -116,7 +177,7 @@
       "title": "Invite a User",
       "email": "Email",
       "workspace": "Workspace",
-      "workspaceHint": "slug, optional",
+      "workspaceHint": "Workspace ID, optional",
       "create": "Create invite link",
       "link": "Invite link"
     },
@@ -125,7 +186,9 @@
       "workspace": "Workspace",
       "approve": "Approve",
       "reject": "Reject",
-      "empty": "No custom Domains yet."
+      "empty": "No custom Domains yet.",
+      "confirmReject": "Reject {{domain}}? Every Short URL on it, printed QR codes included, will stop working.",
+      "confirmRejectAction": "Reject Domain"
     },
     "users": {
       "title": "Users",
@@ -138,7 +201,13 @@
       "makeAdmin": "Make Instance Admin",
       "revokeAdmin": "Revoke Instance Admin",
       "resetPassword": "Reset password",
-      "newPassword": "New password:"
+      "newPassword": "New password:",
+      "active": "Active",
+      "confirmDisable": "Disable {{email}}? They are signed out at once and can no longer sign in.",
+      "confirmDisableAction": "Disable User",
+      "confirmRevoke": "Revoke {{email}}'s Instance Admin rights?",
+      "confirmRevokeAction": "Revoke Instance Admin",
+      "you": "you"
     }
   },
   "members": {
@@ -150,7 +219,8 @@
     "makeOwner": "Make Owner",
     "makeMember": "Make Member",
     "remove": "Remove",
-    "confirmRemove": "Remove {{email}} from this Workspace?"
+    "confirmRemove": "Remove {{email}} from this Workspace?",
+    "confirmRemoveAction": "Remove member"
   },
   "roles": {
     "owner": "Owner",
@@ -170,7 +240,9 @@
     "create": "Create API Key",
     "secret": "Secret",
     "copy": "Copy",
-    "secretOnce": "The secret of {{name}}: copy it now, it won't be shown again."
+    "secretOnce": "The secret of {{name}}: copy it now, it won't be shown again.",
+    "confirmRevokeAction": "Revoke API Key",
+    "copyFailed": "Couldn't copy automatically: the secret is selected, press Ctrl+C or press and hold to copy."
   },
   "account": {
     "title": "Account",
@@ -210,5 +282,8 @@
     "domain_taken": "That Domain is the Default Domain or another Workspace’s.",
     "domain_not_found": "That Domain doesn’t exist.",
     "domain_not_approved": "Use the Default Domain or one of this Workspace’s approved Domains."
-  }
+  },
+  "cancel": "Cancel",
+  "retry": "Try again",
+  "close": "Close"
 }

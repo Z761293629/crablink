@@ -1,224 +1,1004 @@
-/* Follows the system's light or dark theme through system colors. The status colors
-   reach 4.5:1 on Canvas in both themes (WCAG 2.2 AA); Crab Red is never small text. */
+/* crablink web UI. Tokens follow the system's light or dark theme; the pass keeps its light paper in both.
+   Contrast is WCAG 2.2 AA: text ≥ 4.5:1, field borders and focus rings ≥ 3:1.
+   Crab Red fills only the primary action and marks a fresh Link; never small text. */
+
+@import '@fontsource-variable/inter/wght.css';
+@import '@fontsource-variable/jetbrains-mono/wght.css';
+
 :root {
-  color-scheme: light dark;
-  --danger: light-dark(#b42318, #ff8a7a);
-  --ok: light-dark(#1a7f37, #4ac26b);
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
+  color-scheme: light;
+  --ink: #17181c;
+  --band: #17181c;
+  --ground: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f6f7f8;
+  --text: #17181c;
+  --on-text: #ffffff;
+  --muted: #565b64;
+  --line: #d9dce0;
+  --line-strong: #c3c7cd;
+  --field-line: #868c96;
+  --tag: #e8eaed;
+  --accent: #e0412a;
+  /* Crab Red a step deeper, so white button text reaches 4.5:1. */
+  --accent-fill: #d13b24;
+  --accent-press: #b5311d;
+  --danger: #b42318;
+  --ok: #13622b;
+  --warn: #8a5300;
+  --focus: #17181c;
+  --notch: var(--ground);
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%2317181c' stroke-width='1.6'/%3E%3C/svg%3E");
+  --font-sans:
+    'Inter Variable', Inter, system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Noto Sans CJK SC', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+  --font-mono:
+    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC',
+    'Microsoft YaHei', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', monospace;
+  --radius: 6px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --pass-shadow: 0 1px 2px rgb(23 24 28 / 0.06), 0 12px 28px -10px rgb(23 24 28 / 0.18);
+  /* The same shadow for a shape with holes in it, which a box-shadow cannot follow. */
+  --pass-drop: drop-shadow(0 1px 1px rgb(23 24 28 / 0.06)) drop-shadow(0 8px 12px rgb(23 24 28 / 0.1));
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --band: #0e0f12;
+    --ground: #17181c;
+    --surface: #1e1f24;
+    --surface-2: #24262c;
+    --text: #edeef0;
+    --on-text: #17181c;
+    --muted: #a3a8b1;
+    --line: #2f3137;
+    --line-strong: #3d4048;
+    --field-line: #6f7580;
+    --tag: #2f3137;
+    --danger: #ff8a7a;
+    --ok: #5cc97c;
+    --warn: #f2b451;
+    --focus: #edeef0;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%23edeef0' stroke-width='1.6'/%3E%3C/svg%3E");
+    --pass-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 16px 36px -12px rgb(0 0 0 / 0.7);
+    --pass-drop: drop-shadow(0 1px 1px rgb(0 0 0 / 0.4)) drop-shadow(0 10px 16px rgb(0 0 0 / 0.45));
+  }
+}
+
+/* The pass is paper: light in either theme, and so is a confirming dialog. */
+.pass,
+.confirm {
+  color-scheme: light;
+  --surface: #ffffff;
+  --surface-2: #f6f7f8;
+  --text: #17181c;
+  --on-text: #ffffff;
+  --muted: #565b64;
+  --line: #e1e3e7;
+  --line-strong: #c3c7cd;
+  --field-line: #868c96;
+  --tag: #e8eaed;
+  --danger: #b42318;
+  --focus: #17181c;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%2317181c' stroke-width='1.6'/%3E%3C/svg%3E");
+  color: var(--text);
+}
+
+/* The header band is Shell Ink in either theme. */
+.band {
+  color-scheme: dark;
+  --text: #ffffff;
+  --muted: #b8bcc2;
+  --surface: transparent;
+  --field-line: #6b7079;
+  --focus: #ffffff;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%23ffffff' stroke-width='1.6'/%3E%3C/svg%3E");
+}
+
+/* ---------- Base and browser surfaces ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--ground);
+  -webkit-text-size-adjust: 100%;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* JetBrains Mono's contextual ligatures set `://` apart; the `font` shorthand resets this
+   property wherever it is used, hence the !important. */
+*,
+::before,
+::after {
+  font-variant-ligatures: none !important;
 }
 
 body {
   margin: 0;
-  background: Canvas;
-  color: CanvasText;
+  min-height: 100dvh;
+  font: 400 0.9375rem/1.5 var(--font-sans);
+  color: var(--text);
+  background: var(--ground);
+  -webkit-font-smoothing: antialiased;
+  caret-color: var(--text);
 }
 
-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+::selection {
+  background: var(--ink);
+  color: #ffffff;
 }
 
-/* At least the logo's 120px minimum width; the header's padding and gap keep its 2X clear space. */
-header .logo {
-  display: flex;
-  margin-right: auto;
+@media (prefers-color-scheme: dark) {
+  ::selection {
+    background: #e8eaed;
+    color: var(--ink);
+  }
 }
 
-header .logo img {
-  height: 2.25rem;
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
-main {
-  max-width: 64rem;
-  margin: 0 auto;
-  padding: 1rem;
+a {
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
 }
 
 h1 {
-  font-size: 1.5rem;
+  font-size: 1.375rem;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 
-.narrow {
-  display: grid;
-  gap: 1rem;
-  max-width: 22rem;
-  margin: 2rem auto;
+h2 {
+  font-size: 1rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
-.narrow label,
-.create-link label,
-.link-filter label {
-  display: grid;
-  gap: 0.25rem;
+code,
+output,
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Wraps to one field per line on a phone. */
-.create-link,
-.link-filter {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-.create-link label,
-.link-filter label {
-  flex: 1 1 12rem;
+/* The mono micro-label: field names, column heads, segment keys. */
+.micro,
+th {
+  font: 500 0.6875rem/1.2 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
-.csv-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.csv-tools .table,
-.csv-tools [role='alert'] {
-  flex-basis: 100%;
-  margin: 0;
-}
-
-.create-link [role='alert'] {
-  flex-basis: 100%;
-  margin: 0;
-}
-
-td.actions > * + * {
-  margin-left: 0.5rem;
-}
-
-input,
-select,
-button {
-  font: inherit;
-  padding: 0.4rem 0.6rem;
+/* In Chinese the label stays mono: Latin (domains, Codes, LOCALHOST:8080) keeps JetBrains Mono, and
+   only the CJK characters fall through the mono stack to PingFang or YaHei, a size up to stay legible. */
+:lang(zh) .micro,
+:lang(zh) th {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
 }
 
 [role='alert'] {
   color: var(--danger);
+  font-weight: 500;
 }
 
-.table {
-  overflow-x: auto;
+[role='status'] {
+  color: var(--ok);
+  font-weight: 500;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
+/* ---------- Controls ---------- */
 
-th,
-td {
-  padding: 0.5rem;
-  text-align: left;
-  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+button,
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.5rem;
+  padding: 0 1rem;
+  font: 600 0.875rem/1 var(--font-sans);
+  color: var(--text);
   white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.1s;
 }
 
-td.target {
-  max-width: 24rem;
+button:hover,
+.button:hover {
+  border-color: var(--text);
+}
+
+button:active,
+.button:active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button.primary,
+.button.primary {
+  color: var(--on-text);
+  background: var(--text);
+  border-color: var(--text);
+}
+
+button.primary:hover,
+.button.primary:hover {
+  background: color-mix(in srgb, var(--text) 86%, var(--on-text));
+}
+
+button.accent,
+.button.accent {
+  color: #ffffff;
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+}
+
+button.accent:hover,
+.button.accent:hover {
+  background: var(--accent-press);
+  border-color: var(--accent-press);
+}
+
+button.danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 70%, transparent);
+}
+
+button.danger:hover {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+
+button.small,
+.button.small {
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  font-size: 0.8125rem;
+}
+
+input,
+select {
+  height: 2.5rem;
+  min-width: 0;
+  padding: 0 0.75rem;
+  font: 400 0.9375rem/1 var(--font-sans);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+}
+
+input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+input:hover,
+select:hover {
+  border-color: var(--text);
+}
+
+/* The ring lies over the field's own border: one line, no change to the box, nothing past the column. */
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+}
+
+select {
+  appearance: none;
+  padding-right: 2.25rem;
+  cursor: pointer;
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 0.75rem;
+}
+
+input[type='datetime-local'],
+input.mono {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+input[readonly] {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  background: var(--surface-2);
+}
+
+/* A file input lives inside a label styled as a button. */
+.file input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.file:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.field {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* Fingers: every control at least 44px on a touch screen or a phone. */
+@media (pointer: coarse), (max-width: 47.99rem) {
+  button,
+  .button,
+  input,
+  select,
+  button.small,
+  .button.small,
+  .item,
+  .popover.menu [role='menuitem'],
+  .row-acts .button,
+  .row-acts button,
+  .filters input,
+  .filters select {
+    height: 2.75rem;
+  }
+
+  button.icon,
+  .row-acts button.icon {
+    width: 2.75rem;
+  }
+}
+
+/* ---------- Header band ---------- */
+
+.band {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'logo tabs tools';
+  align-items: center;
+  column-gap: 1.5rem;
+  min-height: 3.75rem;
+  padding: 0 2rem;
+  color: var(--text);
+  background: var(--band);
+  border-bottom: 1px solid #2a2c33;
+}
+
+/* 36px high keeps the lockup over its 120px minimum width; the band's padding and gaps
+   keep its 2X clear space (logo/GUIDELINES.md). */
+/* On the dark ground the band is barely darker: a firmer edge keeps it a band. */
+@media (prefers-color-scheme: dark) {
+  .band,
+  .tabbar {
+    border-color: #464a53;
+  }
+}
+
+.band .logo {
+  grid-area: logo;
+  display: flex;
+}
+
+.band .logo img {
+  display: block;
+  height: 2.25rem;
+}
+
+.band select {
+  height: 2.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background-color: transparent;
+}
+
+.band-button {
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  gap: 0.625rem;
+  font-weight: 500;
+  background: transparent;
+  border-color: var(--field-line);
+}
+
+.band-button[aria-expanded='true'] {
+  border-color: var(--text);
+}
+
+.band-button .stamp {
+  color: var(--muted);
+}
+
+.ws-name {
+  max-width: 14rem;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-nav {
+.chevron {
+  width: 0.75rem;
+  height: 0.5rem;
+  flex: none;
+  transition: transform 0.2s var(--ease-out);
+}
+
+[aria-expanded='true'] > .chevron {
+  transform: rotate(180deg);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  font: 600 0.75rem/1 var(--font-mono);
+  color: var(--ink);
+  background: #e8eaed;
+  border-radius: 50%;
+}
+
+.band .tabs {
+  grid-area: tabs;
   display: flex;
-  flex-wrap: wrap;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.band .tabs a {
+  display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+  padding: 0 0.875rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: inset 0 -3px 0 transparent;
+  transition:
+    color 0.15s,
+    box-shadow 0.15s;
 }
 
-h2 {
-  font-size: 1.15rem;
-  margin-top: 2rem;
+.band .tabs a:hover {
+  color: var(--text);
 }
 
-form.inline,
-label.inline {
+.band .tabs a[aria-current='page'] {
+  color: var(--text);
+  box-shadow: inset 0 -3px 0 var(--text);
+}
+
+.band .tabs a:focus-visible {
+  outline-offset: -4px;
+}
+
+.band .tools {
+  grid-area: tools;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1rem;
-  margin: 1rem 0;
+  gap: 0.75rem;
+  justify-self: end;
 }
 
-label.inline input {
-  flex: 1;
-  min-width: 16rem;
+/* Popovers: a light sheet under their button, in the page's theme. */
+.menu-wrap {
+  position: relative;
 }
 
-td button + button {
-  margin-left: 0.5rem;
+.popover {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  left: 0;
+  z-index: 30;
+  display: grid;
+  gap: 0.25rem;
+  min-width: 15rem;
+  padding: 0.375rem;
+  color-scheme: light;
+  --text: #17181c;
+  --muted: #565b64;
+  --surface: #ffffff;
+  --surface-2: #f1f2f4;
+  --line: #e1e3e7;
+  --field-line: #868c96;
+  --focus: #17181c;
+  --danger: #b42318;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%2317181c' stroke-width='1.6'/%3E%3C/svg%3E");
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid #c3c7cd;
+  border-radius: 10px;
+  box-shadow: var(--pass-shadow);
+  animation: drop 0.18s var(--ease-out) backwards;
 }
 
-/* Click charts: one hue, its own step per theme. */
-.chart,
-.breakdowns {
-  --series: light-dark(#2a78d6, #3987e5);
-  --muted: color-mix(in srgb, CanvasText 60%, transparent);
+.popover.end {
+  right: 0;
+  left: auto;
 }
 
-.chart {
-  margin: 1rem 0;
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-0.375rem);
+  }
 }
 
-.chart figcaption {
-  font-size: 1.25rem;
-  font-weight: 600;
+.popover ul,
+.settings ul {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.chart svg {
-  display: block;
-  width: 100%;
-  height: 10rem;
-  fill: var(--series);
+.popover ul + ul,
+.popover ul + .menu-field,
+.popover .menu-field + .item {
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--line);
 }
 
-.chart svg rect:hover:not([fill]) {
-  opacity: 0.8;
-}
-
-.chart .axis {
-  stroke: color-mix(in srgb, CanvasText 25%, transparent);
-}
-
-.chart-axis {
+.item {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  font-size: 0.85rem;
+  gap: 0.75rem;
+  width: 100%;
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  font: 500 0.875rem/1 var(--font-sans);
+  color: var(--text);
+  text-align: left;
+  text-decoration: none;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+}
+
+.item:hover {
+  background: var(--surface-2);
+}
+
+.item:active {
+  transform: none;
+}
+
+.item[aria-current='true']::after {
+  content: '';
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--text);
+  border-radius: 50%;
+}
+
+/* A long Workspace name ends in an ellipsis inside the menu's inset, its marker still in view. */
+.popover > *,
+.popover li,
+.popover .item {
+  min-width: 0;
+}
+
+.item > .ws-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The band's menu names whose account it is, above its items, and labels its Workspaces. */
+.popover.end {
+  max-width: min(20rem, calc(100vw - 2rem));
+}
+
+.menu-label {
+  margin: 0.375rem 0 0;
+  padding: 0 0.75rem;
+}
+.menu-who {
+  margin: 0 0 0.125rem;
+  padding: 0.5rem 0.625rem 0.625rem;
+  overflow: hidden;
+  font: 400 0.8125rem/1.3 var(--font-mono);
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+
+.menu-field {
+  padding: 0.5rem 0.75rem 0.625rem;
+}
+
+.lang-toggle {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+}
+
+.lang-toggle legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 0.375rem;
+  padding: 0;
+}
+
+/* Two segments in a field's frame; the chosen one inverts. */
+.segmented {
+  clear: both;
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+}
+
+.segmented label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 2.25rem;
+  font: 500 0.875rem/1.2 var(--font-sans);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.segmented label:hover {
+  background: var(--surface-2);
+}
+
+.segmented label:has(:checked) {
+  color: var(--surface);
+  background: var(--text);
+}
+
+.segmented label:has(:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.segmented input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.popover.menu {
+  min-width: 10rem;
+}
+
+.popover.menu [role='menuitem'] {
+  justify-content: flex-start;
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  font-weight: 500;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+}
+
+.popover.menu [role='menuitem']:hover,
+.popover.menu [role='menuitem']:focus-visible {
+  background: var(--surface-2);
+  outline-offset: -2px;
+}
+
+.popover.menu .danger {
+  color: var(--danger);
+}
+
+button.icon {
+  width: 2.25rem;
+  padding: 0;
+}
+
+button.icon svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
+/* The phone's bottom tab bar. */
+.tabbar {
+  display: none;
+}
+
+@media (max-width: 47.99rem) {
+  .band {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'logo tools';
+    column-gap: 0.75rem;
+    padding: 0.625rem 1rem;
+  }
+
+  .band .tools {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .band .tabs {
+    display: none;
+  }
+
+  .band-button {
+    max-width: 100%;
+  }
+
+  .ws-name {
+    min-width: 0;
+    max-width: 9rem;
+  }
+
+  .band-button .stamp {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .tabbar {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--band);
+    border-top: 1px solid #2a2c33;
+  }
+
+  .tabbar a {
+    display: grid;
+    place-items: center;
+    min-height: 3.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #b8bcc2;
+    text-decoration: none;
+    box-shadow: inset 0 3px 0 transparent;
+  }
+
+  .tabbar a[aria-current] {
+    color: #ffffff;
+    box-shadow: inset 0 3px 0 #ffffff;
+  }
+
+  .tabbar a:focus-visible {
+    outline-color: #ffffff;
+    outline-offset: -4px;
+  }
+
+  body {
+    padding-bottom: calc(3.25rem + env(safe-area-inset-bottom));
+  }
+
+  /* Whatever is scrolled or tabbed to, e.g. a pass's Create, stops above the tab bar, not under it. */
+  html {
+    scroll-padding-bottom: calc(4.25rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* A Settings page's way back to the Settings sheet; on a phone only, where the sheet is a tab. */
+.back.to-settings {
+  display: none;
+}
+
+@media (max-width: 47.99rem) {
+  .back.to-settings {
+    display: inline-flex;
+  }
+}
+
+@media (min-width: 60rem) {
+  .band {
+    position: sticky;
+    top: 0;
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 63.99rem) {
+  .band {
+    column-gap: 1rem;
+    padding: 0 1.25rem;
+  }
+}
+
+/* Toasts sit at the bottom, above the phone's tab bar. */
+.toasts {
+  position: fixed;
+  inset: auto 0 1.5rem;
+  z-index: 40;
+  display: grid;
+  justify-items: center;
+  padding: 0 1rem;
+  pointer-events: none;
+}
+
+.toast {
+  max-width: min(32rem, 100%);
+  padding: 0.75rem 1.125rem;
+  font: 500 0.875rem/1.4 var(--font-sans);
+  color: #ffffff;
+  overflow-wrap: anywhere;
+  background: var(--ink);
+  border: 1px solid #3a3d45;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px -10px rgb(0 0 0 / 0.45);
+  animation: toast 0.3s var(--ease-out) backwards;
+}
+
+@keyframes toast {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .toasts {
+    bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---------- Page frame ---------- */
+
+main {
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 2rem 2rem 4rem;
+}
+
+main.flush {
+  max-width: none;
+  padding: 0;
+}
+
+@media (max-width: 59.99rem) {
+  main {
+    padding: 1.25rem 1rem 3rem;
+  }
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.page-head .title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.page-head > .field {
+  min-width: 12rem;
+}
+
+.page-head .lede {
+  /* Its own line under the heading: a max-width would let it fit beside it. */
+  flex-basis: 100%;
   color: var(--muted);
 }
 
-.breakdowns {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 0 2rem;
+/* A way back: a drawn arrow and a sentence-case label, navigation rather than a label over the heading. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
+  font: 500 0.875rem/1.3 var(--font-sans);
+  color: var(--muted);
+  text-decoration: none;
 }
 
-.breakdowns td {
-  white-space: normal;
+.back::before {
+  content: '';
+  width: 0.75rem;
+  height: 0.75rem;
+  background: var(--chevron) center / contain no-repeat;
+  transform: rotate(90deg);
 }
 
-.breakdowns td.count {
-  width: 1%;
-  text-align: right;
+.back:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
 }
 
-.breakdowns .bar {
-  height: 4px;
-  margin-top: 0.25rem;
-  border-radius: 2px;
-  background: var(--series);
+/* One section of a page, straight on the ground: a heading, then board rows; a hairline between sections. */
+.sheet + .sheet {
+  margin-top: 2.25rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--line);
+}
+
+.pass + .sheet,
+.sheet + [role='alert'],
+[role='alert'] + .sheet {
+  margin-top: 2.75rem;
+}
+
+.sheet > h2 {
+  margin-bottom: 1rem;
+}
+
+.page-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.sheet > .row + .table,
+.sheet > .table + .row,
+.sheet > .table + .secret,
+.sheet > .secret + .row,
+.sheet > p + .row {
+  margin-top: 1.25rem;
+}
+
+.empty {
+  color: var(--muted);
 }
 
 /* A form or a group of buttons on one line, wrapping on a phone. */
@@ -226,27 +1006,1993 @@ td button + button {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
-.secret {
-  padding: 0.5rem 1rem;
-  border: 1px solid color-mix(in srgb, CanvasText 30%, transparent);
+.row .field {
+  flex: 1 1 14rem;
+  max-width: 24rem;
 }
 
-.secret input {
-  width: min(36rem, 80vw);
-  font-family: ui-monospace, monospace;
+/* A cell of row buttons stays a table cell, so its rule lines up with the row's. */
+td.actions {
+  text-align: right;
 }
 
-/* On Canvas rather than the system button face, so its text keeps its contrast. */
-button.danger {
-  color: var(--danger);
-  background: Canvas;
+td.actions > * {
+  margin: 0.125rem 0 0.125rem 0.5rem;
+}
+
+/* ---------- Tables: the board grammar ---------- */
+
+.table {
+  overflow-x: auto;
+}
+
+/* Separate, not collapsed: a collapsed rule is painted at the layout's place, so it would stay put while
+   a row slides (the board's rerank) and cut through it. */
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+th {
+  padding: 0 0.75rem 0.625rem;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 2px solid var(--text);
+}
+
+td {
+  padding: 0.75rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line);
+}
+
+th.num,
+td.num {
+  text-align: right;
+}
+
+td.num {
+  font: 500 0.9375rem/1.2 var(--font-mono);
+}
+
+td.mono {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+/* A state as a mono stamp: Default, Pending, Approved, Rejected, Owner. */
+.stamp {
+  display: inline-block;
+  padding: 0.1875rem 0.4375rem;
+  font: 600 0.6875rem/1.2 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
   border: 1px solid currentColor;
   border-radius: 3px;
 }
 
-[role='status'] {
+:lang(zh) .stamp {
+  letter-spacing: 0.04em;
+}
+
+.stamp.pending {
+  color: var(--warn);
+}
+
+.stamp.approved {
   color: var(--ok);
+}
+
+.stamp.rejected,
+.stamp.expired {
+  color: var(--danger);
+}
+
+.stamp.fresh {
+  border-color: var(--accent);
+}
+
+/* ---------- Links: board and pass ---------- */
+
+.links {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(28rem, 42%);
+  min-height: calc(100dvh - 3.75rem);
+}
+
+.board-col {
+  min-width: 0;
+  padding: 1.75rem 1.75rem 4rem 2rem;
+  border-right: 1px solid var(--line);
+}
+
+/* The pass lies on the counter: the pane sticks under the band, the pass at its top, scrolling when it is
+   taller than the pane. Top-aligned, so opening More options or editing grows the pass downward and nothing
+   moves under the pointer. */
+.pane {
+  position: sticky;
+  top: 3.75rem;
+  align-self: start;
+  display: flex;
+  min-width: 0;
+  height: calc(100dvh - 3.75rem);
+  padding: 1.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.pane-inner {
+  width: 100%;
+  max-width: 36rem;
+  margin: 0 auto;
+}
+
+@media (max-width: 59.99rem) {
+  .links {
+    display: block;
+    min-height: 0;
+  }
+
+  .board-col {
+    padding: 1.25rem 1rem 3rem;
+    border-right: 0;
+  }
+
+  .board-col > .pass {
+    margin-bottom: 1.5rem;
+  }
+
+  /* New Link stays in reach while the board scrolls. */
+  .board-col .board-head {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    margin: -1.25rem -1rem 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--ground);
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+.board-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.board-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.board-domain {
+  font: 500 0.8125rem/1.2 var(--font-mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* New Link while its blank pass is open: neutral and pressed in, leaving Crab Red to the stub's Create. */
+.board-head button[aria-pressed='true'] {
+  background: var(--tag);
+  border-color: var(--text);
+  box-shadow: inset 0 1px 2px rgb(23 24 28 / 0.18);
+}
+
+.board-head .popover {
+  right: 0;
+  left: auto;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.filters input,
+.filters select {
+  height: 2.25rem;
+  font-size: 0.8125rem;
+}
+
+/* One width whatever the Tags, so the bar doesn't shift as they load; a long name ends in an ellipsis. */
+.filters select {
+  width: 12rem;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+.filters > label:first-child {
+  flex: 1 1 12rem;
+  max-width: 22rem;
+}
+
+.filters > label:first-child input {
+  width: 100%;
+}
+
+@media (max-width: 47.99rem) {
+  .filters > label:first-child,
+  .filters select {
+    flex-basis: 100%;
+    width: auto;
+    max-width: none;
+  }
+}
+
+.import {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.import td {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+/* The flight path: a dashed line that draws out while the board loads. */
+.flightpath {
+  height: 2px;
+  margin-bottom: 0.25rem;
+  background: repeating-linear-gradient(90deg, var(--text) 0 6px, transparent 6px 11px);
+  transform-origin: left;
+  opacity: 0;
+}
+
+.flightpath.on {
+  opacity: 1;
+  animation: draw 0.4s var(--ease-out) backwards;
+}
+
+/* Drawn out once, then held full width as the loading rule: no loop, and no stall that looks stuck. */
+@keyframes draw {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+table.board {
+  table-layout: fixed;
+}
+
+/* Wide enough for a Domain plus a typical Code on one line at desktop width; the Target, ellipsised anyway, gives way. */
+table.board col.c-short {
+  width: 37%;
+}
+
+table.board col.c-count {
+  width: 4.75rem;
+}
+
+/* Copy, as wide as its Copied state, QR and More, side by side. */
+table.board col.c-acts {
+  width: 12.5rem;
+}
+
+/* Beside the pass on a narrower screen, only the More menu. */
+table.board.compact col.c-acts {
+  width: 3.25rem;
+}
+
+/* The Click Count keeps clear of the row's controls. */
+.board td.num {
+  padding-right: 1rem;
+}
+
+.c-acts {
+  position: relative;
+  z-index: 1;
+}
+
+/* An open menu rises over the rows below it. */
+.c-acts:has(.popover) {
+  z-index: 5;
+}
+
+/* The selected row's pass carries Copy and Download QR, so the row keeps only its More menu. */
+.board tr.is-selected .row-acts > :not(:last-child) {
+  display: none;
+}
+
+.row-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.375rem;
+}
+
+.row-acts .button,
+.row-acts button {
+  height: 2rem;
+  padding: 0 0.625rem;
+  font-size: 0.75rem;
+}
+
+.row-acts button.icon {
+  width: 2rem;
+  padding: 0;
+}
+
+.row-acts .popover {
+  right: 0;
+  left: auto;
+}
+
+.board tbody tr.is-selected .row-acts .button,
+.board tbody tr.is-selected .row-acts button {
+  color: var(--text);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--text) 45%, transparent);
+}
+
+.board tbody tr {
+  position: relative;
+  transition: background-color 0.15s;
+}
+
+.board tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.board td {
+  padding: 0.875rem 0.75rem;
+}
+
+/* The row's one control covers the whole row, so the whole row picks the Link. */
+.pick {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  font: 400 0.875rem/1.35 var(--font-mono);
+  color: inherit;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  background: none;
+  border: 0;
+}
+
+.pick::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+}
+
+.pick:hover {
+  border: 0;
+}
+
+.pick:active {
+  transform: none;
+}
+
+.pick:focus-visible {
+  outline: none;
+}
+
+.pick:focus-visible::after {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.pick .host {
+  color: var(--muted);
+}
+
+/* The line breaks after the Domain's slash, never inside a Code; a Code too long for the column ends in an
+   ellipsis, leaving room for the slash before it when the Domain is in the board's head. */
+.pick .code {
+  display: inline-block;
+  max-width: calc(100% - 1ch);
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.board .target {
+  display: block;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.625rem;
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+}
+
+.meta:empty {
+  display: none;
+}
+
+/* A board row's meta stays on one line. A Tag chip is as wide as its name, up to a cap, then ellipsised;
+   a row tight on room shrinks its chips, never the +N count or the Expiry. */
+.board .meta {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.board .meta .tag {
+  flex: 0 1 auto;
+  min-width: 2.25rem;
+  max-width: 9rem;
+}
+
+.board .meta > :not(.tag),
+.board .meta .tag.rest {
+  flex: none;
+  min-width: auto;
+}
+
+.tag {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0.0625rem 0.5rem;
+  font-weight: 500;
+  /* A length, so an emoji's taller fallback face never grows the chip. */
+  line-height: 1.125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--tag);
+  border-radius: 999px;
+}
+
+.meta .when {
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+
+/* Selected: the row inverts, Shell Ink on light, light on dark. */
+.board tbody tr.is-selected {
+  --text: #ffffff;
+  --muted: #b8bcc2;
+  --tag: #34363c;
+  --focus: #ffffff;
+  --danger: #ff8a7a;
+  color: var(--text);
+  background: var(--ink);
+}
+
+.board tr.is-selected > td {
+  border-bottom-color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  .board tbody tr.is-selected {
+    --text: #17181c;
+    --muted: #565b64;
+    --tag: #ffffff;
+    --focus: #17181c;
+    --danger: #b42318;
+    background: #e8eaed;
+  }
+
+  .board tr.is-selected > td {
+    border-bottom-color: #e8eaed;
+  }
+}
+
+/* Fresh: a Link just issued or changed carries its Crab Red status chip and a faint
+   tint until it is picked. */
+.board tbody tr.is-fresh:not(.is-selected) {
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.board-empty {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+  padding: 2rem 0.75rem;
+  color: var(--muted);
+}
+
+.more {
+  margin-top: 1.25rem;
+}
+
+.detail > td {
+  padding: 0.75rem 0 1.25rem;
+}
+
+@media (max-width: 59.99rem) {
+  table.board,
+  .board tbody,
+  .board thead {
+    display: block;
+  }
+
+  .board colgroup {
+    display: none;
+  }
+
+  .board tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .board thead tr {
+    border-bottom: 2px solid var(--text);
+  }
+
+  .board th,
+  .board td {
+    border-bottom: 0;
+  }
+
+  .board th:nth-child(2),
+  .board th:nth-child(4) {
+    display: none;
+  }
+
+  .board .c-target {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    padding-top: 0;
+    padding-bottom: 0.5rem;
+  }
+
+  .board .c-acts {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    padding-top: 0;
+  }
+
+  .row-acts {
+    justify-content: flex-start;
+  }
+
+  .row-acts .popover {
+    right: auto;
+    left: 0;
+  }
+
+  .board .detail {
+    display: block;
+    border-bottom: 0;
+  }
+
+  .board .detail > td {
+    display: block;
+  }
+}
+
+/* The pass: route, segments, perforation, stub with the QR scan block. */
+.pass {
+  container: pass / inline-size;
+}
+
+.pass-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 0 10.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  /* The notches are holes punched through the card where the perforation meets its edges (centred on the
+     dashed line, 10.5rem in from the right), so its shadow, a drop-shadow on the pass, follows them. The
+     perforation's half-circles draw their rims. */
+  mask:
+    radial-gradient(circle at calc(100% - 10.5rem) 0, transparent 11px, #000 11.5px),
+    radial-gradient(circle at calc(100% - 10.5rem) 100%, transparent 11px, #000 11.5px);
+  mask-composite: intersect;
+}
+
+.pass:has(> .pass-card) {
+  filter: var(--pass-drop);
+}
+
+.pass-card.print {
+  animation: print 0.34s var(--ease-out) backwards;
+}
+
+/* From half-printed, never from blank: the pane is never empty between one pass and the next. */
+@keyframes print {
+  from {
+    opacity: 0.45;
+    transform: translateY(-1.25rem);
+  }
+}
+
+/* Just issued: the board row's landing owns the moment, so the pass is simply there. */
+.pass.landed .pass-card.print,
+.pass.landed .route .plane,
+.pass.landed .flap > span,
+.pass.landed + .board-7d .flap > span {
+  animation: none;
+}
+
+.pass-main {
+  min-width: 0;
+  padding: 1.5rem 1.5rem 1.25rem 1.75rem;
+}
+
+.perf {
+  position: relative;
+  border-left: 2px dashed var(--line-strong);
+}
+
+.perf::before,
+.perf::after {
+  content: '';
+  position: absolute;
+  left: -0.8125rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: var(--notch);
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.perf::before {
+  top: -0.8125rem;
+  clip-path: inset(50% 0 0 0);
+}
+
+.perf::after {
+  bottom: -0.8125rem;
+  clip-path: inset(0 0 50% 0);
+}
+
+.stub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* QR, Short URL and actions stay one group, centred on the stub, so a tall pass leaves no hole between them. */
+  justify-content: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 1.5rem 1rem 1.25rem;
+  /* Panel, a material apart from the pass's white, so the tear line separates two surfaces. */
+  background: #e8eaed;
+  border-radius: 0 13px 13px 0;
+}
+
+.pass.tearing .stub {
+  animation: tear 0.28s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+}
+
+/* While the stub tears away the card is unmasked, so the stub is not clipped at the card's edge. */
+.pass.tearing .pass-card {
+  mask: none;
+}
+
+/* The stub tears off along the perforation and leaves; it never comes back. */
+@keyframes tear {
+  to {
+    opacity: 0;
+    transform: var(--tear, translate(1.5rem, 0.5rem) rotate(6deg));
+  }
+}
+
+@container pass (max-width: 30rem) {
+  /* Stacked, the notches sit at the sides, where the shadow barely shows: they are painted, not punched. */
+  .pass-card {
+    grid-template-columns: minmax(0, 1fr);
+    mask: none;
+  }
+
+  .perf {
+    height: 0;
+    border-top: 2px dashed var(--line-strong);
+    border-left: 0;
+  }
+
+  .perf::before,
+  .perf::after {
+    top: -0.8125rem;
+    bottom: auto;
+  }
+
+  .perf::before {
+    left: -0.8125rem;
+    clip-path: inset(0 0 0 50%);
+  }
+
+  /* Drawn as the half that shows, so nothing hangs past the pass's edge for it to scroll sideways. */
+  .perf::after {
+    right: 0;
+    left: auto;
+    width: 0.75rem;
+    clip-path: none;
+    border-right: 0;
+    border-radius: 0.8125rem 0 0 0.8125rem;
+  }
+
+  .stub {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    border-radius: 0 0 13px 13px;
+    --tear: translate(0.5rem, 1.5rem) rotate(2deg);
+  }
+
+  .stub .qr {
+    grid-row: span 3;
+  }
+
+  .stub .short {
+    --room: calc(100cqi - 11.5rem);
+    text-align: left;
+  }
+}
+
+/* The route: from the Short URL to the Target's host, like SFO to ORD. The Code takes its width; the leg,
+   flight and host together, the rest, or a line of its own under a Code too long to leave it room. */
+.route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+}
+
+.route .from,
+.route .to {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.route .from {
+  flex: 0 1 auto;
+}
+
+/* At least 4.5rem of dashes before the plane, however long the host: the route still reads as a flight. */
+.route .flight {
+  flex: 1 0 5.75rem;
+}
+
+.route .leg {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: flex-end;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.route .to {
+  flex: 0 1 auto;
+  justify-items: end;
+  margin-left: auto;
+  text-align: right;
+}
+
+.route .micro {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A long Code shrinks from the display size to fill the pass's main column (--ems is its width in ems), down
+   to 1.25rem; past that it breaks after a hyphen or underscore. */
+.route .code {
+  --room: calc(100cqi - 13.75rem - 4px);
+  font: 650 min(clamp(2.25rem, 9cqi, 3.25rem), max(1.25rem, calc(var(--room) / var(--ems, 1)))) / 1.05
+    var(--font-mono);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+@container pass (max-width: 30rem) {
+  .route .code {
+    --room: calc(100cqi - 3.75rem - 4px);
+  }
+}
+
+/* No Code yet: the Generated Code's slots, a display step down, waiting to be filled. */
+.route .code.placeholder {
+  display: flex;
+  gap: 0.35em;
+  /* The slots sit on the flight line: the flight's bottom margin plus half its height. */
+  padding-bottom: calc(0.4rem + 0.625rem - 1px);
+  margin-top: 0.75rem;
+  font-size: clamp(1.5rem, 6cqi, 1.875rem);
+  color: var(--muted);
+}
+
+.route .code.placeholder .slot {
+  width: 0.7em;
+  height: 2px;
+  background: currentColor;
+}
+
+/* A host too long for its line loses its end; the flight before it keeps at least 3rem. */
+.route .host {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font: 500 0.9375rem/1.3 var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flight {
+  container-type: inline-size;
+  position: relative;
+  height: 1.25rem;
+  margin-bottom: 0.4rem;
+}
+
+.flight::before {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 1.5px dashed var(--line-strong);
+}
+
+.flight .plane {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--ink);
+  background: var(--surface);
+  animation: fly 0.4s var(--ease-out) backwards;
+}
+
+@keyframes fly {
+  from {
+    transform: translateX(calc(-100cqi + 1.25rem));
+  }
+}
+
+/* Each segment carries the rule above its row, so every row's rule runs the full width. */
+.segs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin: 1.25rem 0 0;
+}
+
+.seg {
+  min-width: 0;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--line);
+}
+
+/* Segments that are all fields line up as label, control and hint rows across both columns,
+   so a hint under one control never moves its neighbour. */
+.segs:not(:has(> .seg:not(.field))) > .seg {
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: 0;
+  align-content: start;
+}
+
+.segs:not(:has(> .seg:not(.field))) > .seg > .micro {
+  margin-bottom: 0.375rem;
+}
+
+.seg.l {
+  padding-right: 1rem;
+  border-right: 1px solid var(--line);
+}
+
+.seg.r {
+  padding-left: 1rem;
+}
+
+.seg.wide {
+  grid-column: 1 / -1;
+}
+
+.seg dd,
+.seg .val {
+  margin: 0.3125rem 0 0;
+  font: 500 0.875rem/1.4 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.seg dd.big {
+  font-size: 1.125rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.to-clicks {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  text-decoration: none;
+}
+
+.to-clicks .micro {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.to-clicks:hover .micro {
+  color: var(--text);
+}
+
+.seg dd.prose {
+  font-family: var(--font-sans);
+}
+
+.seg dd.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+/* On the pass every Tag shows whole when it fits, wrapping at its natural width. */
+.seg dd.tags .tag {
+  max-width: 100%;
+}
+
+.seg dd input,
+.seg dd select,
+.seg > select {
+  width: 100%;
+}
+
+.seg .hint {
+  margin-top: 0.25rem;
+}
+
+/* Change Target sits on the Target's segment, with what it keeps. */
+.seg dd.change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 1rem;
+  font: 400 0.75rem/1.5 var(--font-sans);
+}
+
+.seg dd.change .hint {
+  flex: 1 1 10rem;
+  color: var(--muted);
+}
+
+.domain-field {
+  margin-top: 1rem;
+}
+
+/* Code, Tags and Expiry wait under More options. */
+.options {
+  margin-top: 1rem;
+}
+
+.options summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  font: 600 0.8125rem/1 var(--font-sans);
+  cursor: pointer;
+  list-style: none;
+}
+
+.options summary::-webkit-details-marker {
+  display: none;
+}
+
+.options[open] > summary .chevron {
+  transform: rotate(180deg);
+}
+
+.options .segs {
+  margin-top: 0.5rem;
+}
+
+.options .seg input {
+  width: 100%;
+}
+
+.target-field {
+  margin-top: 1.25rem;
+}
+
+.target-field input {
+  width: 100%;
+  font-family: var(--font-mono);
+}
+
+/* Every control on a pass, text, select or date, is one height, padding and size. */
+.pass-card :is(input, select) {
+  height: 2.75rem;
+  font-size: 0.9375rem;
+}
+
+.qr {
+  display: block;
+  width: 7.75rem;
+  aspect-ratio: 1;
+  padding: 0.375rem;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.qr img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.qr.blank {
+  display: grid;
+  place-items: center;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--muted);
+  text-align: center;
+  text-wrap: balance;
+  background: transparent;
+  border: 1.5px dashed var(--line-strong);
+}
+
+/* What is copied and printed is never cut: the mono shrinks to the stub's width (to 11px at least),
+   then breaks after the Domain's slash or a hyphen. */
+.stub .short {
+  --room: 8.5rem;
+  max-width: 100%;
+  font: 500 clamp(0.6875rem, calc(var(--room) / var(--ems, 20)), 0.75rem) / 1.4 var(--font-mono);
+  color: var(--muted);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* The Code moves to the next line whole when it fits there, keeping the link's underline. */
+.stub .short .code {
+  display: inline-block;
+  max-width: 100%;
+  text-decoration: inherit;
+}
+
+.stub .short a {
+  color: var(--text);
+}
+
+/* The stub's actions sit at its foot, level with the pass's last row. */
+.stub .acts {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.stub .acts > * {
+  width: 100%;
+}
+
+.stub .acts-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+}
+
+.stub .manual {
+  width: 100%;
+  height: 2.25rem;
+  font-size: 0.75rem;
+}
+
+/* On a phone the opened pass scrolls its stub into view, clear of the tab bar. */
+.stub {
+  scroll-margin: 1rem 0 calc(4.5rem + env(safe-area-inset-bottom));
+}
+
+/* Copy and Copied share one cell, the idle label hidden: the button never changes width. */
+button.copy {
+  display: inline-grid;
+  place-items: center;
+}
+
+button.copy > * {
+  display: inline-flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+button.copy > .off {
+  visibility: hidden;
+}
+
+.plane-sm {
+  width: 1rem;
+  height: 1rem;
+  animation: fly-in 0.3s var(--ease-out) backwards;
+}
+
+@keyframes fly-in {
+  from {
+    opacity: 0;
+    transform: translateX(-0.75rem);
+  }
+}
+
+.pass [role='alert'] {
+  margin-top: 0.75rem;
+}
+
+.pane-empty {
+  display: grid;
+  min-height: 12rem;
+  align-content: center;
+  justify-items: start;
+  gap: 0.75rem;
+  padding: 2rem 1.5rem;
+  color: var(--muted);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 14px;
+}
+
+/* Split-flap figures: each character flips down into place. */
+.flap {
+  display: inline-block;
+  white-space: pre;
+}
+
+.flap > span {
+  display: inline-block;
+  transform-origin: 50% 0;
+  animation: flap 0.26s var(--ease-out) backwards;
+}
+
+@keyframes flap {
+  from {
+    opacity: 0.4;
+    transform: scaleY(0.4);
+  }
+}
+
+/* ---------- Clicks ---------- */
+
+/* The chart under the segments: bars over a dashed line at the peak, its value at the line's end. */
+/* The Clicks pass's head: the time range picked above its route, apart from the segments' data. */
+.range {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.range select {
+  width: auto;
+}
+
+.chart {
+  position: relative;
+  margin: 1.75rem 0 0;
+}
+
+.chart .peak-label {
+  position: absolute;
+  top: -1.25rem;
+  right: 0;
+}
+
+.chart svg {
+  display: block;
+  width: 100%;
+  height: 11rem;
+  fill: var(--text);
+}
+
+.chart svg g:hover rect:not([fill]) {
+  fill: var(--muted);
+}
+
+.chart .none {
+  fill: var(--line-strong);
+}
+
+.chart .axis {
+  stroke: var(--text);
+}
+
+.chart .peak {
+  stroke: var(--line-strong);
+  stroke-dasharray: 4 4;
+}
+
+.chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+}
+
+/* The stub's lists: Top Links, or a Link's breakdowns, as board rows. */
+.tear h2.micro {
+  margin-bottom: 0.5rem;
+}
+
+.breakdowns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.75rem 2.25rem;
+}
+
+@media (max-width: 40rem) {
+  .breakdowns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.breakdowns section {
+  min-width: 0;
+}
+
+.short-link {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.short-link .host {
+  color: var(--muted);
+}
+
+.short-link .code {
+  font-weight: 650;
+  white-space: normal;
+}
+
+.short-link:hover .code {
+  text-decoration: underline;
+}
+
+.breakdowns td,
+table.entries td {
+  padding: 0.5rem 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.breakdowns td.num,
+table.entries td.num {
+  width: 1%;
+  padding-left: 1rem;
+  font-size: 0.875rem;
+}
+
+.breakdowns tr:last-child td,
+table.entries tr:last-child td {
+  border-bottom: 0;
+}
+
+.bar {
+  height: 3px;
+  margin-top: 0.375rem;
+  background: var(--text);
+  transform-origin: left;
+  animation: grow 0.4s var(--ease-out) backwards;
+}
+
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* ---------- Ticket pages: sign-in, invite, account ---------- */
+
+.ticket {
+  max-width: 25rem;
+  margin: clamp(1.5rem, 8vh, 5rem) auto 0;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  box-shadow: var(--pass-shadow);
+}
+
+.ticket .ticket-body {
+  display: grid;
+  gap: 1rem;
+  padding: 1.75rem 1.75rem 1.5rem;
+}
+
+.ticket h1 {
+  margin-bottom: 0.25rem;
+}
+
+.ticket input {
+  width: 100%;
+}
+
+.ticket .tear {
+  position: relative;
+  padding: 1.25rem 1.75rem 1.5rem;
+  background: var(--surface-2);
+  border-top: 2px dashed var(--line-strong);
+  border-radius: 0 0 13px 13px;
+}
+
+.ticket .tear::before,
+.ticket .tear::after {
+  content: '';
+  position: absolute;
+  top: -0.8125rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: var(--notch);
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.ticket .tear::before {
+  left: -0.8125rem;
+  clip-path: inset(0 0 0 50%);
+}
+
+/* Drawn as the half that shows, so nothing hangs past the ticket's edge for the page to scroll sideways. */
+.ticket .tear::after {
+  right: 0;
+  width: 0.75rem;
+  border-right: 0;
+  border-radius: 0.8125rem 0 0 0.8125rem;
+}
+
+.ticket .tear > button {
+  width: 100%;
+  height: 2.75rem;
+}
+
+/* A page that is one pass on the ground: Clicks, a Workspace, Domains. */
+.counter {
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+.counter > .page-head,
+.counter > .board-head {
+  margin-bottom: 1.25rem;
+}
+
+.ticket.wide {
+  max-width: none;
+  margin: 0;
+}
+
+.ticket.wide .ticket-body {
+  display: block;
+  padding: 1.75rem 1.75rem 1.5rem;
+}
+
+.ticket.wide .tear {
+  padding: 1.5rem 1.75rem 1.75rem;
+}
+
+@media (max-width: 40rem) {
+  .ticket.wide .ticket-body,
+  .ticket.wide .tear {
+    padding-inline: 1.125rem;
+  }
+}
+
+.counter > .ticket {
+  margin-top: 2.5rem;
+}
+
+.counter > [role='alert'],
+.counter > .lede {
+  margin-bottom: 1.25rem;
+}
+
+.counter > .lede {
+  max-width: 65ch;
+  color: var(--muted);
+}
+
+/* ---------- Gate boards: Domains, Users, Members, API Keys ---------- */
+
+table.gate tbody tr {
+  transition: background-color 0.15s;
+}
+
+table.gate tbody tr:hover {
+  background: var(--surface-2);
+}
+
+table.gate td {
+  padding: 0.875rem 0.75rem;
+}
+
+table.gate td.primary {
+  font: 500 0.9375rem/1.35 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+table.gate td.actions {
+  white-space: nowrap;
+}
+
+/* A status in the board's mono column, with a lamp in its colour: Default Domain, Pending, Approved,
+   Rejected; Instance Admin, Disabled; Owner, Member. */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font: 600 0.75rem/1.2 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:lang(zh) .state {
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+}
+
+.state::before {
+  content: '';
+  flex: none;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.state.pending {
+  color: var(--warn);
+}
+
+.state.approved {
+  color: var(--ok);
+}
+
+.state.rejected {
+  color: var(--danger);
+}
+
+.states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+/* A board on a pass runs to the pass's margins. */
+.pass table.gate :is(th, td):first-child {
+  padding-left: 0;
+}
+
+.pass table.gate :is(th, td):last-child {
+  padding-right: 0;
+}
+
+/* Where a custom Domain's DNS points, under its name like a Target under a Short URL. */
+table.gate .dns {
+  display: block;
+  margin-top: 0.3125rem;
+  font: 400 0.8125rem/1.3 var(--font-mono);
+  color: var(--muted);
+}
+
+table.gate .dns .micro {
+  margin-right: 0.375rem;
+}
+
+/* Boards stacked on one page: a title and its count, then the rows; space, not a rule, between them. */
+.board-sec > .board-title {
+  margin-bottom: 0.75rem;
+}
+
+.board-sec + .board-sec {
+  margin-top: 3rem;
+}
+
+/* The blank row at a board's foot. */
+.gate-add {
+  margin-top: 1rem;
+}
+
+/* On a phone a board row is a card of lines: the name and its status, then the rest. */
+@media (max-width: 47.99rem) {
+  table.gate,
+  table.gate tbody {
+    display: block;
+  }
+
+  table.gate thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  table.gate tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 0.75rem;
+    padding: 0.875rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  table.gate tbody tr:first-child {
+    border-top: 2px solid var(--text);
+  }
+
+  table.gate td {
+    padding: 0;
+    border: 0;
+  }
+
+  table.gate td:nth-child(n + 3) {
+    grid-column: 1 / -1;
+    margin-top: 0.5rem;
+  }
+
+  table.gate td:nth-child(n + 3):empty {
+    display: none;
+  }
+
+  table.gate td.actions {
+    text-align: left;
+    white-space: normal;
+  }
+
+  table.gate td.actions > * {
+    margin: 0 0.5rem 0.25rem 0;
+  }
+}
+
+/* Clicks: the count is the pass's gate number, at display size; the range's ends are the route's
+   smaller figures. */
+.clicks .route .code {
+  font-size: clamp(1.125rem, 4cqi, 1.5rem);
+}
+
+.clicks .val.total {
+  font: 650 clamp(2.25rem, 9cqi, 3.25rem) / 1.05 var(--font-mono);
+  letter-spacing: -0.02em;
+}
+
+/* ---------- Manage Workspace, Instance Admin ---------- */
+
+/* The Workspace's name is its Code, and a name may be long: it wraps rather than ending in an ellipsis. */
+.ws .route .code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ws .route .code {
+  font-size: clamp(1.75rem, 7cqi, 3.25rem);
+}
+
+.ws .segs {
+  margin-top: 1.5rem;
+}
+
+/* A narrow ticket stacks its segments, one per line; so do a narrow pass's fields, so no hint is cut short. */
+@container pass (max-width: 30rem) {
+  .ticket .segs,
+  .pass-card .segs:has(.field) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ticket .seg.l,
+  .pass-card .seg.l.field {
+    padding-right: 0;
+    border-right: 0;
+  }
+
+  .ticket .seg.r,
+  .pass-card .seg.r.field {
+    padding-left: 0;
+  }
+}
+
+.seg .inline {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.3125rem;
+}
+
+.seg .inline input {
+  flex: 1;
+  min-width: 0;
+}
+
+.seg h2.micro {
+  margin-bottom: 0.625rem;
+}
+
+.row.add {
+  margin-top: 1rem;
+}
+
+.ws .seg .row .field {
+  max-width: none;
+}
+
+/* On the stub: the API Keys as entries, then leaving and deleting below a hairline. */
+.keys table.gate td {
+  padding: 0.625rem 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.keys table.gate td.name {
+  font-weight: 600;
+}
+
+.keys .secret {
+  margin-top: 1rem;
+}
+
+.tear .leave {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.keys + .leave {
+  margin-top: 1.75rem;
+}
+
+.tear > .leave:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Instance Admin: the boards, with the invite coupon beside them. */
+.desk {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22rem;
+  align-items: start;
+  gap: 2rem 3rem;
+}
+
+.desk > .ticket {
+  position: sticky;
+  top: 5.75rem;
+  max-width: none;
+  margin: 3.75rem 0 0;
+}
+
+.desk .board-head {
+  margin-bottom: 1.5rem;
+}
+
+.desk .tear {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (max-width: 63.99rem) {
+  .desk {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .desk > .ticket {
+    position: static;
+    width: 100%;
+    max-width: 30rem;
+    margin: 0;
+  }
+}
+
+.secret {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface-2);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 8px;
+}
+
+.secret input {
+  width: min(36rem, 100%);
+}
+
+.secret .field {
+  max-width: 36rem;
+}
+
+.reset {
+  display: block;
+  margin-top: 0.375rem;
+}
+
+.reset output {
+  padding: 0.125rem 0.375rem;
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: 4px;
+}
+
+.settings h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0;
+  padding-bottom: 0.625rem;
+  border-bottom: 2px solid var(--text);
+}
+
+.settings ul {
+  gap: 0;
+}
+
+.settings .item {
+  height: 3.25rem;
+  padding: 0 0.25rem;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.settings .item:hover {
+  background: var(--surface-2);
+}
+
+.settings a.item::after {
+  content: '';
+  width: 0.75rem;
+  height: 0.75rem;
+  background: var(--chevron) center / contain no-repeat;
+  transform: rotate(-90deg);
+}
+
+.settings .menu-field {
+  padding: 0.75rem 0.25rem;
+}
+
+/* The account's section follows the Workspace's straight on: its heading rule is the divider. */
+.sheet.settings + .sheet.settings {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.leave {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* ---------- Confirming ---------- */
+
+.confirm {
+  width: min(26rem, calc(100% - 2rem));
+  padding: 0;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  box-shadow: var(--pass-shadow);
+  animation: drop 0.18s var(--ease-out) backwards;
+}
+
+.confirm::backdrop {
+  background: rgb(23 24 28 / 0.5);
+}
+
+.confirm-message {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.5rem 1.5rem 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+/* A Target change, from the old to the new: the old struck through and muted, the new in full ink. */
+.retarget {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.375rem 0.75rem;
+  align-items: baseline;
+  margin: 0;
+  padding: 0.75rem 0.875rem;
+  font: 500 0.8125rem/1.4 var(--font-mono);
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+
+.retarget dd {
+  margin: 0;
+}
+
+.retarget .from {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.retarget .to {
+  font-weight: 650;
+}
+
+.confirm-acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem 1.25rem;
+  background: var(--surface-2);
+  border-top: 2px dashed var(--line-strong);
+  border-radius: 0 0 13px 13px;
+}
+
+/* ---------- Motion off when asked ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Under the pass, the Link's departures board: Shell Ink, a split-flap tile for each of the last 7 days,
+   then where most Clicks came from. Ink in either theme, a step darker than the ground in dark. */
+.board-7d {
+  --text: #edeef0;
+  --muted: #a3a8b1;
+  --focus: #edeef0;
+  --danger: #ff8a7a;
+  margin-top: 1.5rem;
+  padding: 1.125rem 1.5rem 1.5rem;
+  color: var(--text);
+  background: var(--band);
+  border: 1px solid var(--band);
+  border-radius: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .board-7d {
+    border-color: var(--line-strong);
+  }
+}
+
+.board-7d-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.board-7d h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.board-7d h2 .plane {
+  width: 1rem;
+  height: 1rem;
+  color: var(--text);
+}
+
+.board-7d-head a {
+  color: var(--text);
+  text-underline-offset: 0.2em;
+}
+
+.board-7d .days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board-7d .days li {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+  text-align: center;
+}
+
+/* A flap: two leaves meeting at a dark seam across the middle. */
+.board-7d .tile {
+  display: block;
+  min-height: 2.75rem;
+  padding: 0.6875rem 0.25rem;
+  overflow: hidden;
+  font: 600 1.25rem/1.1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+  background:
+    linear-gradient(transparent calc(50% - 0.5px), #0b0b0d calc(50% - 0.5px), #0b0b0d calc(50% + 0.5px), transparent calc(50% + 0.5px)),
+    linear-gradient(#2c2e35, #24262c);
+  border-radius: 4px;
+}
+
+.board-7d .days .on .tile {
+  color: #ffffff;
+}
+
+.board-7d .quiet {
+  max-width: 40ch;
+  margin: 1rem 0 0;
+  color: var(--muted);
+}
+
+.board-7d .tops {
+  width: 100%;
+  margin-top: 1rem;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.board-7d .tops th,
+.board-7d .tops td {
+  padding: 0.5rem 0;
+  text-align: left;
+  border-top: 1px solid #34363c;
+  border-bottom: 0;
+}
+
+.board-7d .tops th {
+  width: 7.5rem;
+}
+
+.board-7d .tops td:not(.num) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-7d .tops .num {
+  width: 4rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.board-7d .page-error {
+  color: var(--text);
+}
+
+/* A long Target, query string and all, keeps to three even lines on the pass; the whole of it is its
+   tooltip, and in the field when changing it. */
+.seg a.target {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  word-break: break-all;
+}
+
+/* The pass read and the pass being edited in one cell: the card is the taller one's height in both. */
+.faces {
+  display: grid;
+}
+
+.faces > .face {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.faces > .face.off {
+  visibility: hidden;
 }

@@ -3,3 +3,9 @@
 
 # deploy/compose.yaml reads its secrets from here
 .env
+
+# Impeccable design runtime: only .impeccable/surfaces/ is committed
+.impeccable/mocks/
+.impeccable/reference/
+.impeccable/hook.cache.json
+.impeccable/review/

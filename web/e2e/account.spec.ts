@@ -1,5 +1,15 @@
 import { baseURL } from '../playwright.config';
-import { test, expect, inviteUrl, newEmail, signInPage } from './fixtures';
+import {
+  test,
+  expect,
+  inviteUrl,
+  newEmail,
+  openUserMenu,
+  signInPage,
+  signOut,
+  switcher,
+  userMenu,
+} from './fixtures';
 
 test('a new User accepts an invite and lands signed in', async ({ page, request }, testInfo) => {
   const email = newEmail(testInfo.workerIndex);
@@ -11,13 +21,13 @@ test('a new User accepts an invite and lands signed in', async ({ page, request 
 
   await page.getByLabel('Choose a password').fill('my new password');
   await page.getByRole('button', { name: 'Accept invite' }).click();
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  await expect(userMenu(page)).toBeVisible();
   // In their personal Workspace.
-  await expect(page.getByLabel('Workspace', { exact: true }).locator('option:checked')).toHaveText(email);
+  await expect(switcher(page)).toContainText(email);
   await expect(page).toHaveURL(`${baseURL}/app/`);
 
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  await expect(userMenu(page)).toBeVisible();
 });
 
 test('a used invite link says so', async ({ page, request }, testInfo) => {
@@ -25,7 +35,7 @@ test('a used invite link says so', async ({ page, request }, testInfo) => {
   await page.goto(url);
   await page.getByLabel('Choose a password').fill('my new password');
   await page.getByRole('button', { name: 'Accept invite' }).click();
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  await signOut(page);
   // Navigating before sign-out finishes would cancel it.
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
 
@@ -37,6 +47,7 @@ test('a used invite link says so', async ({ page, request }, testInfo) => {
 
 test('a User changes their password and signs in with the new one', async ({ page, user }) => {
   await signInPage(page, user.email, user.password);
+  await openUserMenu(page);
   await page.getByRole('link', { name: 'Account' }).click();
   await page.getByLabel('Current password').fill('not the password');
   await page.getByLabel('New password').fill('a brand new password');
@@ -47,7 +58,7 @@ test('a User changes their password and signs in with the new one', async ({ pag
   await page.getByRole('button', { name: 'Change password' }).click();
   await expect(page.getByRole('status')).toHaveText('Password changed.');
 
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  await signOut(page);
   // Navigating before sign-out finishes would cancel it, leaving no sign-in form to fill.
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
   await signInPage(page, user.email, 'a brand new password');

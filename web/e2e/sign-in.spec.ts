@@ -1,5 +1,5 @@
 import { baseURL } from '../playwright.config';
-import { test, expect } from './fixtures';
+import { test, expect, signOut } from './fixtures';
 
 test('a User signs in, sees their Links and signs out', async ({ page, user }) => {
   const code = `e2e-${Date.now()}`;
@@ -16,27 +16,25 @@ test('a User signs in, sees their Links and signs out', async ({ page, user }) =
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   const links = page.getByRole('table');
-  await expect(links.getByRole('columnheader')).toHaveText([
-    'Short URL',
-    'Target',
-    'Tags',
-    'Click Count',
-    'Expiry',
-    'Actions',
-  ]);
+  await expect(links.getByRole('columnheader')).toHaveText(['Short URL', 'Target', 'Click Count', 'Actions']);
   const expiring = links.getByRole('row').filter({ hasText: 'https://example.com/expiring' });
+  // The Target cell carries the Tags and the Expiry beneath the Target.
   await expect(expiring.getByRole('cell')).toHaveText([
     `${baseURL}/${code}`,
-    'https://example.com/expiring',
-    '',
+    /^https:\/\/example\.com\/expiring\s*Expiry Jan 2, 2030$/,
     '0',
-    'Jan 2, 2030, 3:04 AM',
-    /Edit/,
+    // Beside the pass at this width, a row's Copy and QR are in its More menu.
+    /More/,
   ]);
   const forever = links.getByRole('row').filter({ hasText: 'https://example.com/forever' });
-  await expect(forever.getByRole('cell').nth(4)).toHaveText('Never');
+  await forever.getByRole('button').first().click();
+  const expiry = page
+    .getByRole('region', { name: 'Selected Link' })
+    .locator('dl > div', { has: page.getByRole('term').filter({ hasText: /^Expiry$/ }) })
+    .getByRole('definition');
+  await expect(expiry).toHaveText('Never');
 
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  await signOut(page);
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();

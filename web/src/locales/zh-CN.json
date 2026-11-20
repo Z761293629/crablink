@@ -28,17 +28,13 @@
     "empty": "还没有链接。",
     "actions": "操作",
     "customCode": "自定义短码",
-    "generated": "留空则自动生成",
     "domain": "域名",
-    "create": "创建链接",
-    "edit": "编辑",
     "save": "保存",
     "cancel": "取消",
     "delete": "删除",
-    "confirmDelete": "删除 {{url}}？其短码将无法再次使用。",
+    "confirmDelete": "删除 {{url}}？扫描已印出的二维码将打不开，短码 {{code}} 也永远不能在 {{domain}} 上再次使用。",
     "copy": "复制",
     "copied": "已复制",
-    "qr": "二维码（{{format}}）",
     "more": "加载更多",
     "tags": "标签",
     "tagsHint": "用逗号分隔",
@@ -49,7 +45,61 @@
     "exportCsv": "导出 CSV",
     "importCsv": "导入 CSV",
     "line": "行",
-    "result": "结果"
+    "result": "结果",
+    "newLink": "新建链接",
+    "selected": "已选链接",
+    "targetHint": "粘贴长网址",
+    "generatedShort": "自动生成",
+    "codeHint": "留空则自动生成",
+    "expiryHint": "留空则永不过期",
+    "issue": "创建",
+    "created": "创建时间",
+    "expired": "已过期",
+    "noTags": "无标签",
+    "qrAlt": "{{url}} 的二维码",
+    "qrPending": "创建后显示二维码",
+    "qrExpired": "已过期的链接没有二维码。",
+    "clearFilters": "清除筛选",
+    "searchHint": "搜索短码或目标网址",
+    "fresh": {
+      "created": "新",
+      "updated": "已更新"
+    },
+    "announce": {
+      "created": "已创建 {{url}}",
+      "updated": "已保存 {{url}}",
+      "deleted": "已删除 {{url}}",
+      "copied": "已复制 {{url}}",
+      "retargeted": "{{url}} 现在指向 {{target}}"
+    },
+    "loading": "正在加载链接",
+    "viewClicks": "查看点击",
+    "qrShort": "QR",
+    "shortcutNew": "快捷键：N",
+    "moreActions": "更多：{{code}}",
+    "boardActions": "CSV 导入与导出",
+    "changeTarget": "修改目标网址",
+    "changeTargetHint": "短网址不变，印好的二维码照常可用",
+    "downloadQr": "下载 QR",
+    "downloadQrAs": "下载 QR（{{format}}）",
+    "downloadQrOf": "下载 {{code}} 的 QR（PNG）",
+    "copyFailed": "无法自动复制，短网址已选中：请长按复制，或按 Ctrl+C / ⌘C。",
+    "moreOptions": "更多选项",
+    "confirmDeleteAction": "删除链接",
+    "edit": "编辑",
+    "confirmRetarget": "修改 {{url}} 的目标网址？",
+    "confirmRetargetAction": "改为新目标网址",
+    "retargetFrom": "原来",
+    "retargetTo": "改为",
+    "confirmRetargetNote": "所有已印出的二维码和分享出去的短网址都会跟着指向新网址。",
+    "board": {
+      "all": "全部点击",
+      "referrer": "主要来源",
+      "country": "主要地区",
+      "device": "主要设备",
+      "empty": "还没有点击。分享短网址或贴出二维码后，点击会显示在这里。"
+    },
+    "routeTo": "前往"
   },
   "nav": {
     "links": "链接",
@@ -57,8 +107,13 @@
     "domains": "域名",
     "admin": "实例管理",
     "switcher": "工作区",
-    "workspace": "管理工作区",
-    "account": "账户"
+    "workspace": "成员与 API 密钥",
+    "account": "账户",
+    "label": "页面",
+    "settings": "设置",
+    "newWorkspace": "新建工作区",
+    "userMenu": "账户菜单",
+    "backToSettings": "设置"
   },
   "clicks": {
     "clicks": "点击",
@@ -74,7 +129,6 @@
     "overTime": "点击趋势",
     "total_one": "{{count}} 次点击",
     "total_other": "{{count}} 次点击",
-    "max": "峰值 {{value}}",
     "topLinks": "热门链接",
     "none": "此时间范围内没有点击。",
     "referrers": "来源",
@@ -87,7 +141,13 @@
       "desktop": "桌面",
       "mobile": "手机",
       "tablet": "平板"
-    }
+    },
+    "peak": "峰值",
+    "from": "起",
+    "to": "止",
+    "topLink": "最多点击",
+    "linksClicked": "有点击的链接",
+    "loading": "正在加载点击"
   },
   "invite": {
     "title": "接受邀请",
@@ -98,17 +158,18 @@
     "title": "域名",
     "domain": "域名",
     "status": "状态",
-    "dnsRecord": "DNS 记录",
-    "default": "默认域名",
+    "default": "默认",
     "dns": "用 CNAME 记录把自定义域名指向 {{host}}。实例管理员批准后即可使用。",
     "add": "添加域名",
+    "addTitle": "添加自定义域名",
     "remove": "移除",
     "confirmRemove": "移除 {{domain}}？它的链接将成为已删除链接，短码仍保持占用。",
     "statuses": {
-      "pending": "待审批",
+      "pending": "待批准",
       "approved": "已批准",
       "rejected": "已拒绝"
-    }
+    },
+    "confirmRemoveAction": "移除域名"
   },
   "admin": {
     "title": "实例管理",
@@ -116,7 +177,7 @@
       "title": "邀请用户",
       "email": "邮箱",
       "workspace": "工作区",
-      "workspaceHint": "slug，可选",
+      "workspaceHint": "工作区标识，可留空",
       "create": "创建邀请链接",
       "link": "邀请链接"
     },
@@ -125,7 +186,9 @@
       "workspace": "工作区",
       "approve": "批准",
       "reject": "拒绝",
-      "empty": "还没有自定义域名。"
+      "empty": "还没有自定义域名。",
+      "confirmReject": "拒绝 {{domain}}？它上面所有短网址（包括已印出的二维码）都将打不开。",
+      "confirmRejectAction": "拒绝域名"
     },
     "users": {
       "title": "用户",
@@ -138,7 +201,13 @@
       "makeAdmin": "设为实例管理员",
       "revokeAdmin": "取消实例管理员",
       "resetPassword": "重置密码",
-      "newPassword": "新密码："
+      "newPassword": "新密码：",
+      "active": "正常",
+      "confirmDisable": "停用 {{email}}？对方将立即被登出，且不能再登录。",
+      "confirmDisableAction": "停用用户",
+      "confirmRevoke": "取消 {{email}} 的实例管理员权限？",
+      "confirmRevokeAction": "取消实例管理员",
+      "you": "你"
     }
   },
   "members": {
@@ -150,7 +219,8 @@
     "makeOwner": "设为所有者",
     "makeMember": "设为成员",
     "remove": "移除",
-    "confirmRemove": "将 {{email}} 移出此工作区？"
+    "confirmRemove": "将 {{email}} 移出此工作区？",
+    "confirmRemoveAction": "移除成员"
   },
   "roles": {
     "owner": "所有者",
@@ -170,7 +240,9 @@
     "create": "创建 API 密钥",
     "secret": "密钥",
     "copy": "复制",
-    "secretOnce": "{{name}} 的密钥：请立即复制，之后不会再显示。"
+    "secretOnce": "{{name}} 的密钥：请立即复制，之后不会再显示。",
+    "confirmRevokeAction": "撤销 API 密钥",
+    "copyFailed": "无法自动复制：密钥已选中，请按 Ctrl+C 或长按复制。"
   },
   "account": {
     "title": "账户",
@@ -210,5 +282,8 @@
     "domain_taken": "该域名是默认域名，或已属于其他工作区。",
     "domain_not_found": "该域名不存在。",
     "domain_not_approved": "请使用默认域名或本工作区已批准的域名。"
-  }
+  },
+  "cancel": "取消",
+  "retry": "重试",
+  "close": "关闭"
 }

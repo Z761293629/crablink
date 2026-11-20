@@ -61,7 +61,44 @@ export async function signInPage(page: Page, email: string, password: string) {
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  await expect(userMenu(page)).toBeVisible();
+}
+
+/** The signed-in User's menu in the header: their Workspaces, then Account, Language, Instance Admin, Sign out. */
+export const userMenu = (page: Page) => page.getByRole('button', { name: /^(Account menu|账户菜单):/ });
+
+export async function openUserMenu(page: Page) {
+  await userMenu(page).click();
+}
+
+export async function signOut(page: Page) {
+  await openUserMenu(page);
+  await page.getByRole('button', { name: 'Sign out' }).click();
+}
+
+/** The header's one menu, which also switches Workspaces and names the current one. */
+export const switcher = userMenu;
+
+/** Opens the switcher; resolves to its list of Workspaces. */
+export async function openWorkspaceMenu(page: Page) {
+  await switcher(page).click();
+  return page.getByRole('list', { name: 'Workspace' }).getByRole('button');
+}
+
+export async function switchWorkspace(page: Page, name: string) {
+  await openWorkspaceMenu(page);
+  await page.getByRole('list', { name: 'Workspace' }).getByRole('button', { name, exact: true }).click();
+}
+
+/** Opens one of the current Workspace's pages from the switcher. */
+export async function openWorkspacePage(page: Page, name: 'Domains' | 'Members & API Keys' | 'New Workspace') {
+  await openWorkspaceMenu(page);
+  await page.getByRole('link', { name }).click();
+}
+
+/** Chooses the action (not Cancel) in the in-app "Are you sure?" dialog. */
+export async function confirmDialog(page: Page) {
+  await page.getByRole('dialog').getByRole('button').last().click();
 }
 
 async function signInApi(request: APIRequestContext, email: string, password: string) {

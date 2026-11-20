@@ -1,10 +1,18 @@
 // `/app/clicks`: the switcher's Workspace's Clicks with its top Links, or with
 // `?code=&domain=` one of its Links' Clicks with breakdowns.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, linkPath, type ClickBreakdown, type ClickBucket, type ClickStats, type WorkspaceClicks } from './api';
-import { errorMessage } from './i18n';
+import {
+  api,
+  linkPath,
+  type ClickBreakdown,
+  type ClickBucket,
+  type ClickStats,
+  type Link,
+  type WorkspaceClicks,
+} from './api';
+import { Flap, PageError, Plane } from './ui';
 
 /** The time ranges on offer: `n` buckets of `interval`, ending with the current one. */
 const RANGES = { '24h': ['hour', 24], '7d': ['day', 7], '30d': ['day', 30], '90d': ['day', 90] } as const;
@@ -35,52 +43,118 @@ function query(range: Range): string {
   }).toString();
 }
 
-/** Loads `path?{range}` whenever the range changes; `undefined` while loading. */
 /** GETs `path`, which may have a query already, over `range`. */
 function useClicks<T>(path: string, range: Range) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<unknown>();
+  const [tries, setTries] = useState(0);
   useEffect(() => {
     const sep = path.includes('?') ? '&' : '?';
     api<T>('GET', `${path}${sep}${query(range)}`).then(setData, setError);
-  }, [path, range]);
-  return { data, error };
+  }, [path, range, tries]);
+  const retry = () => {
+    setError(undefined);
+    setTries((n) => n + 1);
+  };
+  return { data, error, retry };
 }
 
-function RangePicker({ range, onChange }: { range: Range; onChange: (r: Range) => void }) {
-  const { t } = useTranslation();
+/**
+ * Under a Link's pass, its departures board: the last 7 days of Clicks as split-flap tiles, one a day,
+ * then where most of them came from.
+ */
+export function LinkBoard({ slug, link }: { slug: string; link: Link }) {
+  const { t, i18n } = useTranslation();
+  const id = useId();
+  const { data, error, retry } = useClicks<ClickStats>(linkPath(slug, link, '/clicks'), '7d');
+  const countryName = useCountryName();
+  // Day buckets are UTC days, named in UTC.
+  const day = new Intl.DateTimeFormat(i18n.language, { weekday: 'short', timeZone: 'UTC' });
+  const number = new Intl.NumberFormat(i18n.language);
+  const total = data?.series.reduce((sum, b) => sum + b.count, 0) ?? 0;
+  const tops: [string, ClickBreakdown | undefined, (v: string | null) => string][] = data
+    ? [
+        [t('links.board.referrer'), data.referrers[0], (v) => v ?? t('clicks.direct')],
+        [t('links.board.country'), data.countries[0], countryName],
+        [t('links.board.device'), data.devices[0], (v) => (v ? t(`clicks.device.${v}`, { defaultValue: v }) : t('clicks.unknown'))],
+      ]
+    : [];
   return (
-    <label className="inline">
-      {t('clicks.range')}
-      <select value={range} onChange={(e) => onChange(e.target.value as Range)}>
-        {Object.keys(RANGES).map((r) => (
-          <option key={r} value={r}>
-            {t(`clicks.ranges.${r}`)}
-          </option>
-        ))}
-      </select>
-    </label>
+    <section className="board-7d" aria-labelledby={id}>
+      <div className="board-7d-head">
+        <h2 id={id} className="micro">
+          <Plane className="plane" />
+          {t('clicks.ranges.7d')}
+        </h2>
+        <a className="micro" href={clicksHref(link)}>
+          {t('links.board.all')}
+        </a>
+      </div>
+      {error !== undefined ? (
+        <PageError error={error} onRetry={retry} />
+      ) : (
+        <>
+          <ol className="days" aria-busy={!data}>
+            {(data?.series ?? Array.from({ length: 7 }, () => undefined)).map((b, i) => (
+              <li key={b?.time ?? i} className={b?.count ? 'on' : undefined}>
+                <span className="micro">{b ? day.format(new Date(b.time)) : '\u00a0'}</span>
+                <span className="tile">{b && <Flap text={number.format(b.count)} />}</span>
+              </li>
+            ))}
+          </ol>
+          {data &&
+            (total === 0 ? (
+              <p className="quiet">{link.click_count === 0 ? t('links.board.empty') : t('clicks.none')}</p>
+            ) : (
+              <table className="tops">
+                <tbody>
+                  {tops.map(
+                    ([label, top, name]) =>
+                      top && (
+                        <tr key={label}>
+                          <th scope="row">{label}</th>
+                          <td>{name(top.value)}</td>
+                          <td className="num">
+                            <Flap text={number.format(top.count)} />
+                          </td>
+                        </tr>
+                      ),
+                  )}
+                </tbody>
+              </table>
+            ))}
+        </>
+      )}
+    </section>
   );
 }
+
+/** The server lists at most this many top Links. */
+const TOP_LINKS = 10;
 
 function LinkClicks({ slug, code, domain }: { slug: string; code: string; domain: string }) {
   const { t } = useTranslation();
   const [range, setRange] = useState<Range>('30d');
-  const { data, error } = useClicks<ClickStats>(linkPath(slug, { code, domain }, '/clicks'), range);
+  const { data, error, retry } = useClicks<ClickStats>(linkPath(slug, { code, domain }, '/clicks'), range);
   const countryName = useCountryName();
   return (
-    <>
-      <p>
-        <a href="/app/clicks">{t('clicks.workspaceTitle')}</a>
-      </p>
-      <h1>{t('clicks.linkTitle', { url: `${domain}/${code}` })}</h1>
-      <RangePicker range={range} onChange={setRange} />
+    <div className="counter">
+      <div className="page-head">
+        <div>
+          <a className="back" href="/app/clicks">
+            {t('clicks.workspaceTitle')}
+          </a>
+          <h1>{t('clicks.linkTitle', { url: `${domain}/${code}` })}</h1>
+        </div>
+      </div>
       {error !== undefined ? (
-        <p role="alert">{errorMessage(t, error)}</p>
+        <PageError error={error} onRetry={retry} />
+      ) : !data ? (
+        <Loading />
       ) : (
         data && (
-          <>
-            <SeriesChart series={data.series} hourly={RANGES[range][0] === 'hour'} />
+          // The back of the Link's pass: the range flown, Clicks over it, then each breakdown on the stub.
+          <ClicksPass series={data.series} range={range} onRange={setRange}>
             <div className="breakdowns">
               <Breakdown title={t('clicks.referrers')} rows={data.referrers} label={(v) => v ?? t('clicks.direct')} />
               <Breakdown title={t('clicks.countries')} rows={data.countries} label={countryName} />
@@ -91,56 +165,171 @@ function LinkClicks({ slug, code, domain }: { slug: string; code: string; domain
               />
               <Breakdown title={t('clicks.browsers')} rows={data.browsers} label={(v) => v ?? t('clicks.unknown')} />
             </div>
-          </>
+          </ClicksPass>
         )
       )}
-    </>
+    </div>
   );
 }
 
 function WorkspaceClicksView({ slug }: { slug: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const count = new Intl.NumberFormat(i18n.language);
   const [range, setRange] = useState<Range>('30d');
-  const { data, error } = useClicks<WorkspaceClicks>(`/workspaces/${encodeURIComponent(slug)}/clicks`, range);
+  const { data, error, retry } = useClicks<WorkspaceClicks>(`/workspaces/${encodeURIComponent(slug)}/clicks`, range);
+  const top = data?.top_links[0];
+  const clicked = data?.top_links.length ?? 0;
   return (
-    <>
-      <h1>{t('clicks.workspaceTitle')}</h1>
-      <RangePicker range={range} onChange={setRange} />
+    <div className="counter">
+      <div className="page-head">
+        <h1>{t('clicks.workspaceTitle')}</h1>
+      </div>
       {error !== undefined ? (
-        <p role="alert">{errorMessage(t, error)}</p>
+        <PageError error={error} onRetry={retry} />
+      ) : !data ? (
+        <Loading />
       ) : (
         data && (
-          <>
-            <SeriesChart series={data.series} hourly={RANGES[range][0] === 'hour'} />
-            <h2>{t('clicks.topLinks')}</h2>
+          <ClicksPass
+            series={data.series}
+            range={range}
+            onRange={setRange}
+            segs={
+              <>
+                <div className="seg l">
+                  <p className="micro">{t('clicks.topLink')}</p>
+                  <p className="val">{top ? <ShortLink link={top} /> : '—'}</p>
+                </div>
+                <div className="seg r">
+                  <p className="micro">{t('clicks.linksClicked')}</p>
+                  <p className="val">
+                    <Flap text={clicked < TOP_LINKS ? count.format(clicked) : `${count.format(TOP_LINKS)}+`} />
+                  </p>
+                </div>
+              </>
+            }
+          >
+            <h2 className="micro">{t('clicks.topLinks')}</h2>
             {data.top_links.length === 0 ? (
-              <p>{t('clicks.none')}</p>
+              <p className="empty">{t('clicks.none')}</p>
             ) : (
-              <div className="table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{t('links.shortUrl')}</th>
-                      <th>{t('clicks.clicks')}</th>
+              <table className="entries" aria-label={t('clicks.topLinks')}>
+                <tbody>
+                  {data.top_links.map((l) => (
+                    <tr key={l.short_url}>
+                      <td className="mono">
+                        <ShortLink link={l} />
+                      </td>
+                      <td className="num">
+                        <Flap text={count.format(l.count)} />
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {data.top_links.map((l) => (
-                      <tr key={l.short_url}>
-                        <td>
-                          <a href={clicksHref(l)}>{l.short_url}</a>
-                        </td>
-                        <td>{l.count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             )}
-          </>
+          </ClicksPass>
         )
       )}
+    </div>
+  );
+}
+
+/** The dashed flight path drawing out while the Clicks load. */
+function Loading() {
+  const { t } = useTranslation();
+  return (
+    <>
+      <div className="flightpath on" aria-hidden="true" />
+      <p className="vh" role="status">
+        {t('clicks.loading')}
+      </p>
     </>
+  );
+}
+
+/** A Short URL leading to its Link's Clicks. */
+function ShortLink({ link }: { link: { code: string; domain: string; short_url: string } }) {
+  return (
+    <a className="short-link" href={clicksHref(link)}>
+      <span className="vh">{link.short_url.slice(0, link.short_url.indexOf('://') + 3)}</span>
+      <span className="host">{link.domain}/</span>
+      <span className="code">{link.code}</span>
+    </a>
+  );
+}
+
+/**
+ * Clicks as a pass, on the same light paper as a Link's: the time range picked at its head, the range
+ * as its route, the Clicks in it as segments, the chart, then a perforation and the stub (`children`).
+ */
+function ClicksPass({
+  series,
+  range,
+  onRange,
+  segs,
+  children,
+}: {
+  series: ClickBucket[];
+  range: Range;
+  onRange: (r: Range) => void;
+  /** More segments, after the time range and the Clicks. */
+  segs?: ReactNode;
+  children: ReactNode;
+}) {
+  const { t, i18n } = useTranslation();
+  const hourly = RANGES[range][0] === 'hour';
+  const total = series.reduce((sum, b) => sum + b.count, 0);
+  // Day buckets are UTC days, named in UTC; hours in local time.
+  const [first, last] = [series[0], series[series.length - 1]];
+  const big = new Intl.DateTimeFormat(
+    i18n.language,
+    hourly ? { hour: '2-digit', minute: '2-digit' } : { month: 'short', day: 'numeric', timeZone: 'UTC' },
+  );
+  const small = new Intl.DateTimeFormat(i18n.language, hourly ? { month: 'short', day: 'numeric' } : { year: 'numeric', timeZone: 'UTC' });
+  const end = (label: string, b: ClickBucket) => (
+    <>
+      <span className="micro">
+        {label} · {small.format(new Date(b.time))}
+      </span>
+      <span className="code">{big.format(new Date(b.time))}</span>
+    </>
+  );
+  return (
+    <section className="pass clicks" aria-label={t('clicks.overTime')}>
+      <div className="ticket wide">
+        <div className="ticket-body">
+          <label className="range">
+            <span className="micro">{t('clicks.range')}</span>
+            <select name="range" value={range} onChange={(e) => onRange(e.target.value as Range)}>
+              {Object.keys(RANGES).map((r) => (
+                <option key={r} value={r}>
+                  {t(`clicks.ranges.${r}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {first && (
+            <div className="route">
+              <p className="from">{end(t('clicks.from'), first)}</p>
+              <div className="flight" aria-hidden="true">
+                <Plane className="plane" />
+              </div>
+              <p className="to">{end(t('clicks.to'), last)}</p>
+            </div>
+          )}
+          <div className="segs">
+            <div className="seg wide">
+              <p className="micro">{t('clicks.clicks')}</p>
+              <p className="val total">{t('clicks.total', { count: total })}</p>
+            </div>
+            {segs}
+          </div>
+          <SeriesChart series={series} hourly={hourly} />
+        </div>
+        <div className="tear">{children}</div>
+      </div>
+    </section>
   );
 }
 
@@ -155,7 +344,7 @@ const W = 640;
 const H = 160;
 const PAD = 4;
 
-/** Clicks per bucket as bars, with the total; each bar's tooltip gives its bucket and count. */
+/** Clicks per bucket as bars; each bar's tooltip gives its bucket and count. */
 function SeriesChart({ series, hourly }: { series: ClickBucket[]; hourly: boolean }) {
   const { t, i18n } = useTranslation();
   // Day buckets are UTC days, so they are named in UTC; hours in local time.
@@ -163,15 +352,22 @@ function SeriesChart({ series, hourly }: { series: ClickBucket[]; hourly: boolea
     i18n.language,
     hourly ? { hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', timeZone: 'UTC' },
   );
-  const total = series.reduce((sum, b) => sum + b.count, 0);
-  const max = Math.max(1, ...series.map((b) => b.count));
-  const slot = W / series.length;
-  const bar = Math.max(1, slot - 2);
+  const number = new Intl.NumberFormat(i18n.language);
+  const peak = Math.max(0, ...series.map((b) => b.count));
+  const max = Math.max(1, peak);
+  const slot = W / Math.max(1, series.length);
+  // Bars narrower than their slot, so a lone busy day reads as one day among the others.
+  const bar = Math.max(1, slot * 0.6);
   return (
     <figure className="chart">
-      <figcaption>{t('clicks.total', { count: total })}</figcaption>
+      {/* The dashed line's value, so the bars read against a scale. */}
+      <span className="peak-label micro">
+        {t('clicks.peak')} {number.format(peak)}
+      </span>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={t('clicks.overTime')}>
         <line x1={0} x2={W} y1={H - 0.5} y2={H - 0.5} className="axis" vectorEffect="non-scaling-stroke" />
+        {/* Hairline at the peak, so the bars read against a scale. */}
+        <line x1={0} x2={W} y1={PAD} y2={PAD} className="peak" vectorEffect="non-scaling-stroke" />
         {series.map((b, i) => {
           const h = (b.count / max) * (H - PAD);
           return (
@@ -179,14 +375,18 @@ function SeriesChart({ series, hourly }: { series: ClickBucket[]; hourly: boolea
               <title>{`${date.format(new Date(b.time))}: ${t('clicks.total', { count: b.count })}`}</title>
               {/* A full-height hit target, so an empty bucket still has a tooltip. */}
               <rect x={i * slot} y={0} width={slot} height={H} fill="transparent" />
-              {b.count > 0 && <rect x={i * slot + 1} y={H - h} width={bar} height={h} rx={Math.min(2, bar / 2)} />}
+              {b.count > 0 ? (
+                <rect x={i * slot + (slot - bar) / 2} y={H - h} width={bar} height={h} />
+              ) : (
+                // An empty bucket still shows: a stub on the axis.
+                <rect className="none" x={i * slot + (slot - bar) / 2} y={H - 3} width={bar} height={3} />
+              )}
             </g>
           );
         })}
       </svg>
-      <div className="chart-axis">
+      <div className="chart-axis micro">
         <span>{series.length > 0 && date.format(new Date(series[0].time))}</span>
-        <span>{t('clicks.max', { value: max })}</span>
         <span>{series.length > 0 && date.format(new Date(series[series.length - 1].time))}</span>
       </div>
     </figure>
@@ -203,13 +403,14 @@ function Breakdown({
   rows: ClickBreakdown[];
   label: (value: string | null) => string;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const max = Math.max(1, ...rows.map((r) => r.count));
+  const number = new Intl.NumberFormat(i18n.language);
   return (
     <section>
-      <h2>{title}</h2>
+      <h2 className="micro">{title}</h2>
       {rows.length === 0 ? (
-        <p>{t('clicks.none')}</p>
+        <p className="empty">{t('clicks.none')}</p>
       ) : (
         <table aria-label={title}>
           <tbody>
@@ -219,7 +420,9 @@ function Breakdown({
                   {label(r.value)}
                   <div className="bar" style={{ width: `${(r.count / max) * 100}%` }} />
                 </td>
-                <td className="count">{r.count}</td>
+                <td className="num">
+                  <Flap text={number.format(r.count)} />
+                </td>
               </tr>
             ))}
           </tbody>

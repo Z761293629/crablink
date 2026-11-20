@@ -1,0 +1,537 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-20T01:26:53+00:00",
+  "title": "Design System: crablink web UI",
+  "seededFrom": {
+    "world": "vernacular-ephemera-boarding-pass-and-gate-board",
+    "seed": "5255701d1f7e8592",
+    "verified": false,
+    "note": "Recorded in the surface brief; impeccable concept-seed --check-seed reports SEED UNKNOWN on this machine and no roll output was kept. Disclosed at the 2026-11-19 finish review."
+  },
+  "extensions": {
+    "colorMeta": {
+      "crab-red": {
+        "role": "primary",
+        "displayName": "Crab Red",
+        "canonical": "oklch(60.6% 0.199 31.3)",
+        "tonalRamp": [
+          "#2a0000",
+          "#5d0000",
+          "#8e0000",
+          "#b80a00",
+          "#e0422b",
+          "#fc7760",
+          "#ffad9b",
+          "#ffe5de"
+        ]
+      },
+      "crab-red-fill": {
+        "role": "primary",
+        "displayName": "Crab Red Fill",
+        "canonical": "oklch(57.4% 0.190 31.6)",
+        "tonalRamp": [
+          "#280000",
+          "#5a0000",
+          "#8a0000",
+          "#b41900",
+          "#db4932",
+          "#f77b65",
+          "#ffaf9e",
+          "#ffe6df"
+        ]
+      },
+      "crab-red-press": {
+        "role": "primary",
+        "displayName": "Crab Red Press",
+        "canonical": "oklch(51.5% 0.172 31.6)",
+        "tonalRamp": [
+          "#260000",
+          "#550000",
+          "#830000",
+          "#ad2915",
+          "#d2543f",
+          "#ef816d",
+          "#ffb3a3",
+          "#ffe7e1"
+        ]
+      },
+      "shell-ink": {
+        "role": "neutral",
+        "displayName": "Shell Ink",
+        "canonical": "oklch(21.0% 0.008 274.5)",
+        "tonalRamp": [
+          "#0a0b0f",
+          "#242529",
+          "#414246",
+          "#606166",
+          "#818287",
+          "#a3a5aa",
+          "#c7c9ce",
+          "#edeef4"
+        ],
+        "darkTheme": "#edeef0"
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "darkTheme": "#17181c"
+      },
+      "paper-2": {
+        "role": "neutral",
+        "displayName": "Paper Two",
+        "canonical": "oklch(97.6% 0.002 247.8)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#242526",
+          "#414243",
+          "#606162",
+          "#818283",
+          "#a4a5a6",
+          "#c8c9ca",
+          "#edeeef"
+        ],
+        "darkTheme": "#24262c"
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "canonical": "oklch(93.6% 0.005 258.3)",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#242527",
+          "#404244",
+          "#606164",
+          "#818285",
+          "#a3a5a8",
+          "#c7c9cc",
+          "#edeff2"
+        ],
+        "darkTheme": "#2f3137"
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Slate Muted",
+        "canonical": "oklch(47.0% 0.016 262.3)",
+        "tonalRamp": [
+          "#090b0f",
+          "#22252b",
+          "#3e424a",
+          "#5c616b",
+          "#7d838c",
+          "#a1a5ad",
+          "#c6c9cf",
+          "#edeef0"
+        ],
+        "darkTheme": "#a3a8b1"
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(89.3% 0.006 255.5)",
+        "tonalRamp": [
+          "#090b0e",
+          "#232528",
+          "#404245",
+          "#5f6165",
+          "#808286",
+          "#a2a5a9",
+          "#c6c9cd",
+          "#eceff3"
+        ],
+        "darkTheme": "#2f3137"
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Strong Line",
+        "canonical": "oklch(82.8% 0.009 258.3)",
+        "tonalRamp": [
+          "#090b0f",
+          "#22252a",
+          "#3f4247",
+          "#5e6167",
+          "#7f8388",
+          "#a1a5ab",
+          "#c5c9cf",
+          "#ebeff5"
+        ],
+        "darkTheme": "#3d4048"
+      },
+      "field-line": {
+        "role": "neutral",
+        "displayName": "Field Line",
+        "canonical": "oklch(63.8% 0.017 260.7)",
+        "tonalRamp": [
+          "#090b0f",
+          "#21252c",
+          "#3d424b",
+          "#5c626b",
+          "#7d838d",
+          "#a0a5ae",
+          "#c5c9d0",
+          "#edeef1"
+        ],
+        "darkTheme": "#6f7580"
+      },
+      "danger": {
+        "role": "status",
+        "displayName": "Danger",
+        "canonical": "oklch(50.0% 0.182 29.5)",
+        "tonalRamp": [
+          "#270000",
+          "#570000",
+          "#860000",
+          "#b12015",
+          "#d64f3f",
+          "#f37e6d",
+          "#ffb1a3",
+          "#ffe6e1"
+        ],
+        "darkTheme": "#ff8a7a"
+      },
+      "ok": {
+        "role": "status",
+        "displayName": "OK",
+        "canonical": "oklch(43.7% 0.114 148.6)",
+        "tonalRamp": [
+          "#001100",
+          "#003007",
+          "#00511d",
+          "#28723b",
+          "#4f945c",
+          "#7bb685",
+          "#add5b3",
+          "#e5f3e7"
+        ],
+        "darkTheme": "#5cc97c"
+      },
+      "warn": {
+        "role": "status",
+        "displayName": "Warn",
+        "canonical": "oklch(49.4% 0.109 66.9)",
+        "tonalRamp": [
+          "#1a0500",
+          "#3f1900",
+          "#653400",
+          "#8a5300",
+          "#ac7537",
+          "#ca9a68",
+          "#e4c2a0",
+          "#f8ece0"
+        ],
+        "darkTheme": "#f2b451"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The Code on the pass, the Click total, a Workspace name; shrinks to fit down to 1.25rem."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page titles."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section and board titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Prose and inputs; ledes capped at 65ch."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Segment values, board rows, hosts, counts; tabular."
+      },
+      "figure": {
+        "displayName": "Figure",
+        "purpose": "Split-flap tiles."
+      },
+      "label": {
+        "displayName": "Micro-label",
+        "purpose": "Field keys, column heads, stamps; uppercase; 0.75rem/0.04em in Chinese."
+      }
+    },
+    "shadows": [
+      {
+        "name": "pass-lift",
+        "value": "0 1px 2px rgb(23 24 28 / 0.06), 0 12px 28px -10px rgb(23 24 28 / 0.18)",
+        "dark": "0 1px 2px rgb(0 0 0 / 0.4), 0 16px 36px -12px rgb(0 0 0 / 0.7)",
+        "purpose": "Tickets, menus, confirm dialogs."
+      },
+      {
+        "name": "pass-drop",
+        "value": "drop-shadow(0 1px 1px rgb(23 24 28 / 0.06)) drop-shadow(0 8px 12px rgb(23 24 28 / 0.1))",
+        "dark": "drop-shadow(0 1px 1px rgb(0 0 0 / 0.4)) drop-shadow(0 10px 16px rgb(0 0 0 / 0.45))",
+        "purpose": "The notched pass card, as a filter so it follows the punched notches."
+      },
+      {
+        "name": "toast",
+        "value": "0 12px 28px -10px rgb(0 0 0 / 0.45)",
+        "purpose": "Toasts."
+      },
+      {
+        "name": "pressed",
+        "value": "inset 0 1px 2px rgb(23 24 28 / 0.18)",
+        "purpose": "New Link while its blank pass is open."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "The one easing for entrances and state changes."
+      },
+      {
+        "name": "print",
+        "value": "0.34s ease-out; from opacity 0.45, translateY(-1.25rem)",
+        "purpose": "A pass enters, never from blank."
+      },
+      {
+        "name": "fly",
+        "value": "0.4s ease-out; translateX(calc(-100cqi + 1.25rem)) to 0",
+        "purpose": "The plane crosses the route's flight line once."
+      },
+      {
+        "name": "flap",
+        "value": "0.26s ease-out; from opacity 0.4, scaleY(0.4), origin top; per-character delay min(30ms, 140ms/length)",
+        "purpose": "Split-flap figures; only changed characters flip again."
+      },
+      {
+        "name": "tear",
+        "value": "0.28s cubic-bezier(0.5, 0, 0.75, 0) forwards; to opacity 0, translate(1.5rem, 0.5rem) rotate(6deg) (stacked: translate(0.5rem, 1.5rem) rotate(2deg))",
+        "purpose": "The stub tears off when a new Link is issued."
+      },
+      {
+        "name": "land",
+        "value": "300ms ease-out after 120ms delay; from translateX(-0.75rem), opacity 0 (Web Animations, Links.tsx)",
+        "purpose": "A new or edited Link's row slides into its slot."
+      },
+      {
+        "name": "rerank",
+        "value": "360ms ease-out; FLIP translateY from the old place",
+        "purpose": "Rows slide to new places instead of popping."
+      },
+      {
+        "name": "drop-off",
+        "value": "240ms cubic-bezier(0.7, 0, 0.84, 0) forwards; to translateY(0.75rem) scaleY(0.85), opacity 0",
+        "purpose": "A deleted row leaves the board before the rest close up."
+      },
+      {
+        "name": "draw",
+        "value": "0.4s ease-out; scaleX(0) to 1, then held",
+        "purpose": "The dashed loading rule under the board head; no loop."
+      },
+      {
+        "name": "grow",
+        "value": "0.4s ease-out; scaleX(0) to 1",
+        "purpose": "Clicks breakdown bars."
+      },
+      {
+        "name": "fly-in",
+        "value": "0.3s ease-out; from opacity 0, translateX(-0.75rem)",
+        "purpose": "The small plane in Copied."
+      },
+      {
+        "name": "drop",
+        "value": "0.18s ease-out; from opacity 0, translateY(-0.375rem)",
+        "purpose": "Menus and confirm dialogs."
+      },
+      {
+        "name": "toast",
+        "value": "0.3s ease-out; from opacity 0, translateY(0.75rem)",
+        "purpose": "Toasts rise in."
+      },
+      {
+        "name": "control",
+        "value": "0.15s background-color, border-color, color; press translateY(1px) 0.1s; chevron rotate 0.2s ease-out",
+        "purpose": "Control state changes."
+      },
+      {
+        "name": "landed",
+        "value": ".pass.landed: print, plane and flaps set to none",
+        "purpose": "Right after create the row's landing owns the moment."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "@media (prefers-reduced-motion: reduce): animation and transition none !important; JS row animations skipped",
+        "purpose": "All motion off when asked."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "max-width: 47.99rem"
+      },
+      {
+        "name": "touch",
+        "value": "pointer: coarse"
+      },
+      {
+        "name": "narrow",
+        "value": "max-width: 40rem"
+      },
+      {
+        "name": "wide",
+        "value": "min-width: 60rem"
+      },
+      {
+        "name": "desk",
+        "value": "max-width: 63.99rem"
+      },
+      {
+        "name": "roomy",
+        "value": "min-width: 90rem"
+      },
+      {
+        "name": "pass-stacked",
+        "value": "@container pass (max-width: 30rem)"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Accent Button",
+      "kind": "button",
+      "refersTo": "button-accent",
+      "description": "New Link and Create only; the one Crab Red on screen.",
+      "html": "<button class=\"ds-btn ds-btn-accent\">New Link</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;height:2.5rem;padding:0 1rem;font:600 .875rem/1 'Inter Variable',Inter,system-ui,sans-serif;border-radius:6px;cursor:pointer;transition:background-color .15s,border-color .15s,color .15s,transform .1s}.ds-btn:active{transform:translateY(1px)}.ds-btn:focus-visible{outline:2px solid #17181c;outline-offset:2px}.ds-btn-accent{color:#fff;background:var(--accent-fill, #d13b24);border:1px solid var(--accent-fill, #d13b24)}.ds-btn-accent:hover{background:var(--accent-press, #b5311d);border-color:var(--accent-press, #b5311d)}"
+    },
+    {
+      "name": "Ink Button",
+      "kind": "button",
+      "refersTo": "button-ink",
+      "description": "Main action where red is not warranted.",
+      "html": "<button class=\"ds-btn-ink\">Save</button>",
+      "css": ".ds-btn-ink{display:inline-flex;align-items:center;height:2.5rem;padding:0 1rem;font:600 .875rem/1 'Inter Variable',Inter,system-ui,sans-serif;color:#fff;background:#17181c;border:1px solid #17181c;border-radius:6px;cursor:pointer;transition:background-color .15s,transform .1s}.ds-btn-ink:hover{background:color-mix(in srgb,#17181c 86%,#fff)}.ds-btn-ink:active{transform:translateY(1px)}.ds-btn-ink:focus-visible{outline:2px solid #17181c;outline-offset:2px}"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Every other action: Copy, Download QR, Cancel.",
+      "html": "<button class=\"ds-btn-default\">Download QR</button>",
+      "css": ".ds-btn-default{display:inline-flex;align-items:center;height:2.5rem;padding:0 1rem;font:600 .875rem/1 'Inter Variable',Inter,system-ui,sans-serif;color:#17181c;background:#fff;border:1px solid #868c96;border-radius:6px;cursor:pointer;transition:border-color .15s,transform .1s}.ds-btn-default:hover{border-color:#17181c}.ds-btn-default:active{transform:translateY(1px)}.ds-btn-default:focus-visible{outline:2px solid #17181c;outline-offset:2px}"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Micro-label over a 2.5rem field; the focus ring lies over the border.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-micro\">Target</span><input class=\"ds-input\" placeholder=\"https://example.com/a/long/page\"></label>",
+      "css": ".ds-field{display:grid;gap:.375rem;width:20rem}.ds-micro{font:500 .6875rem/1.2 'JetBrains Mono Variable','JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#565b64}.ds-input{height:2.5rem;padding:0 .75rem;font:400 .9375rem/1 'JetBrains Mono Variable','JetBrains Mono',monospace;color:#17181c;background:#fff;border:1px solid #868c96;border-radius:6px}.ds-input::placeholder{color:#565b64}.ds-input:hover{border-color:#17181c}.ds-input:focus-visible{outline:2px solid #17181c;outline-offset:-1px}"
+    },
+    {
+      "name": "Header Band",
+      "kind": "nav",
+      "refersTo": "band",
+      "description": "Shell Ink band in both themes: tabs Links and Clicks, one menu at the end.",
+      "html": "<nav class=\"ds-band\"><strong class=\"ds-logo\">crablink</strong><div class=\"ds-tabs\"><a href=\"#\" aria-current=\"page\">Links</a><a href=\"#\">Clicks</a></div><button class=\"ds-menu-btn\"><span class=\"ds-avatar\">Z</span></button></nav>",
+      "css": ".ds-band{display:grid;grid-template-columns:auto 1fr auto;align-items:center;column-gap:1.5rem;min-height:3.75rem;padding:0 2rem;color:#fff;background:#17181c;border-bottom:1px solid #2a2c33;font-family:'Inter Variable',Inter,system-ui,sans-serif}.ds-logo{font-weight:650}.ds-tabs{display:flex;align-self:stretch}.ds-tabs a{display:flex;align-items:center;padding:0 .875rem;font-size:.9375rem;font-weight:500;color:#b8bcc2;text-decoration:none;box-shadow:inset 0 -3px 0 transparent;transition:color .15s,box-shadow .15s}.ds-tabs a:hover{color:#fff}.ds-tabs a[aria-current=page]{color:#fff;box-shadow:inset 0 -3px 0 #fff}.ds-tabs a:focus-visible{outline:2px solid #fff;outline-offset:-4px}.ds-menu-btn{height:2.5rem;padding:0 .75rem;background:transparent;border:1px solid #6b7079;border-radius:6px;cursor:pointer}.ds-menu-btn:hover{border-color:#fff}.ds-avatar{display:grid;place-items:center;width:1.625rem;height:1.625rem;font:600 .75rem/1 'JetBrains Mono',monospace;color:#17181c;background:#e8eaed;border-radius:50%}"
+    },
+    {
+      "name": "Tag and Stamps",
+      "kind": "chip",
+      "refersTo": "tag",
+      "description": "Panel pill Tags; mono stamps for states; the fresh stamp's Crab Red border.",
+      "html": "<span class=\"ds-tag\">spring-campaign</span> <span class=\"ds-stamp ds-fresh\">New</span> <span class=\"ds-stamp ds-pending\">Pending</span>",
+      "css": ".ds-tag{display:inline-block;max-width:9rem;overflow:hidden;padding:.0625rem .5rem;font:500 .75rem/1.125rem 'Inter Variable',Inter,sans-serif;text-overflow:ellipsis;white-space:nowrap;color:#17181c;background:#e8eaed;border-radius:999px}.ds-stamp{display:inline-block;padding:.1875rem .4375rem;font:600 .6875rem/1.2 'JetBrains Mono Variable','JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#17181c;border:1px solid currentColor;border-radius:3px}.ds-fresh{border-color:#e0412a}.ds-pending{color:#8a5300}"
+    },
+    {
+      "name": "Boarding Pass",
+      "kind": "card",
+      "refersTo": "pass-card",
+      "description": "Route from Code to Target host, segments, punched perforation, Panel stub with the QR block.",
+      "html": "<article class=\"ds-pass\"><div class=\"ds-main\"><div class=\"ds-route\"><div><span class=\"ds-k\">go.example.com</span><div class=\"ds-code\">spring</div></div><div class=\"ds-flight\"></div><div style=\"text-align:right\"><span class=\"ds-k\">Target</span><div class=\"ds-host\">example.com</div></div></div><dl class=\"ds-segs\"><div><dt class=\"ds-k\">Expiry</dt><dd>Never</dd></div><div><dt class=\"ds-k\">Clicks</dt><dd>1,284</dd></div></dl></div><div class=\"ds-perf\"></div><div class=\"ds-stub\"><div class=\"ds-qr\"></div><span class=\"ds-short\">go.example.com/spring</span></div></article>",
+      "css": ".ds-pass{display:grid;grid-template-columns:minmax(0,1fr) 0 10.5rem;max-width:36rem;color:#17181c;background:#fff;border:1px solid #c3c7cd;border-radius:14px;filter:drop-shadow(0 1px 1px rgb(23 24 28/.06)) drop-shadow(0 8px 12px rgb(23 24 28/.1));-webkit-mask:radial-gradient(circle at calc(100% - 10.5rem) 0,transparent 11px,#000 11.5px),radial-gradient(circle at calc(100% - 10.5rem) 100%,transparent 11px,#000 11.5px);-webkit-mask-composite:source-in;mask:radial-gradient(circle at calc(100% - 10.5rem) 0,transparent 11px,#000 11.5px),radial-gradient(circle at calc(100% - 10.5rem) 100%,transparent 11px,#000 11.5px);mask-composite:intersect}.ds-main{padding:1.5rem 1.5rem 1.25rem 1.75rem;min-width:0}.ds-route{display:flex;align-items:flex-end;gap:.75rem}.ds-k{font:500 .6875rem/1.2 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#565b64}.ds-code{font:650 2.5rem/1.05 'JetBrains Mono Variable','JetBrains Mono',monospace;letter-spacing:-.02em}.ds-flight{flex:1 0 4rem;height:1.25rem;margin-bottom:.4rem;background:linear-gradient(90deg,#c3c7cd 50%,transparent 0) 0 50%/6px 1.5px repeat-x}.ds-host{font:500 .9375rem/1.3 'JetBrains Mono',monospace}.ds-segs{display:grid;grid-template-columns:1fr 1fr;margin:1.25rem 0 0}.ds-segs>div{padding:.75rem 0;border-top:1px solid #e1e3e7}.ds-segs>div:first-child{padding-right:1rem;border-right:1px solid #e1e3e7}.ds-segs>div+div{padding-left:1rem}.ds-segs dd{margin:.3125rem 0 0;font:500 .875rem/1.4 'JetBrains Mono',monospace}.ds-perf{border-left:2px dashed #c3c7cd}.ds-stub{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;padding:1.5rem 1rem 1.25rem;background:#e8eaed;border-radius:0 13px 13px 0}.ds-qr{width:7.75rem;aspect-ratio:1;background:repeating-conic-gradient(#17181c 0 25%,#fff 0 50%) 0 0/12px 12px;border:6px solid #fff;outline:1px solid #e1e3e7;border-radius:6px}.ds-short{font:500 .75rem/1.4 'JetBrains Mono',monospace;color:#565b64;text-align:center;overflow-wrap:anywhere}"
+    },
+    {
+      "name": "Selected Board Row",
+      "kind": "custom",
+      "refersTo": "board-row-selected",
+      "description": "Gate board under a 2px ink rule; the selected row inverts, a fresh row carries a faint Crab Red tint.",
+      "html": "<table class=\"ds-board\"><thead><tr><th>Short URL</th><th class=\"n\">Clicks</th></tr></thead><tbody><tr class=\"sel\"><td><span class=\"h\">go.example.com/</span><b>spring</b><span class=\"t\">example.com/campaigns/spring-2026</span></td><td class=\"n\">1,284</td></tr><tr class=\"fresh\"><td><span class=\"h\">go.example.com/</span><b>poster</b><span class=\"t\">example.com/print</span></td><td class=\"n\">0</td></tr><tr><td><span class=\"h\">go.example.com/</span><b>docs</b><span class=\"t\">example.com/docs</span></td><td class=\"n\">57</td></tr></tbody></table>",
+      "css": ".ds-board{width:28rem;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums;color:#17181c}.ds-board th{padding:0 .75rem .625rem;text-align:left;font:500 .6875rem/1.2 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#565b64;border-bottom:2px solid #17181c}.ds-board td{padding:.875rem .75rem;font:400 .875rem/1.35 'JetBrains Mono',monospace;border-bottom:1px solid #d9dce0}.ds-board .n{text-align:right}.ds-board td.n{font-weight:500;font-size:.9375rem}.ds-board .h{color:#565b64}.ds-board .t{display:block;font-size:.8125rem;color:#565b64}.ds-board tbody tr{transition:background-color .15s;cursor:pointer}.ds-board tbody tr:hover{background:#f6f7f8}.ds-board tr.sel{color:#fff;background:#17181c}.ds-board tr.sel .h,.ds-board tr.sel .t{color:#b8bcc2}.ds-board tr.sel td{border-bottom-color:#17181c}.ds-board tr.fresh{background:color-mix(in srgb,#e0412a 6%,#fff)}"
+    },
+    {
+      "name": "Split-flap Board",
+      "kind": "custom",
+      "refersTo": "flap-tile",
+      "description": "Shell Ink 7-day board under the pass: a flap tile per day, two leaves at a dark seam.",
+      "html": "<ol class=\"ds-days\"><li><span class=\"ds-tile\">12</span><span class=\"ds-d\">Mon</span></li><li><span class=\"ds-tile\">40</span><span class=\"ds-d\">Tue</span></li><li><span class=\"ds-tile off\">0</span><span class=\"ds-d\">Wed</span></li><li><span class=\"ds-tile\">7</span><span class=\"ds-d\">Thu</span></li></ol>",
+      "css": ".ds-days{display:grid;grid-template-columns:repeat(4,4rem);gap:.375rem;margin:0;padding:1.125rem 1.5rem 1.5rem;list-style:none;background:#17181c;border-radius:14px}.ds-days li{display:grid;gap:.375rem;text-align:center}.ds-tile{display:block;padding:.6875rem .25rem;font:600 1.25rem/1.1 'JetBrains Mono Variable','JetBrains Mono',monospace;font-variant-numeric:tabular-nums;color:#fff;background:linear-gradient(transparent calc(50% - .5px),#0b0b0d calc(50% - .5px),#0b0b0d calc(50% + .5px),transparent calc(50% + .5px)),linear-gradient(#2c2e35,#24262c);border-radius:4px;transform-origin:50% 0;animation:ds-flap .26s cubic-bezier(.16,1,.3,1) backwards}.ds-tile.off{color:#a3a8b1}.ds-d{font:500 .6875rem/1.2 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#a3a8b1}@keyframes ds-flap{from{opacity:.4;transform:scaleY(.4)}}@media (prefers-reduced-motion:reduce){.ds-tile{animation:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Gate Board That Issues Passes",
+    "overview": "Every Link is a boarding pass, and the Links page is the departures board that issues them. The board is a mono, tabular list on the open ground: Short URL as the row's headline, Target and Tags beneath, Click Count flush right. Picking a row inverts it to Shell Ink and lays its pass on the counter beside the board: a white, notched card whose route runs from the Code (at display size) across a dashed flight line with a plane to the Target's host, segments of mono data under hairlines, a perforated tear line, and a Panel-grey stub carrying the QR scan block, the Short URL and its Copy and Download QR. Under the pass sits a Shell Ink split-flap board of the Link's last 7 days of Clicks. Clicks, Manage Workspace, Domains, Settings, Instance Admin, sign-in and invites reuse the same grammar: a page is either a gate board (rows under a 2px ink rule) or a pass/ticket on the ground (card, perforation, stub or tear-off foot).\n\nThe system is calm, ink-on-paper and operational. Density is moderate: 15px Inter body, mono micro-labels and figures, hairline dividers, almost no fills. Texture comes only from the world's own materials: hairline segment rules, the dashed perforation with its punched notches, the dashed flight path, the QR block and the flap tiles' seam. Crab Red appears on one thing at a time, the primary action or the fresh-Link mark. The header band is Shell Ink in both themes; in dark theme the ground goes ink and the pass stays light paper, like a printed ticket on a dark counter.\n\nProvenance: the world is the catalog world `vernacular-ephemera-boarding-pass-and-gate-board`, dealt as a challenger. The surface brief (`.impeccable/surfaces/web-src-links-tsx.md`) records `seed:5255701d1f7e8592`, but `impeccable concept-seed --check-seed` reports SEED UNKNOWN on this machine and no roll output from the build was kept, so the seed is unverifiable; this was disclosed at the 2026-11-19 finish review.",
+    "keyCharacteristics": [
+      "A Link is a pass: route (Code to Target host), segments, perforation, stub with QR.",
+      "Lists are gate boards: mono rows, tabular figures, a 2px ink rule under the heads, hairlines between rows, the selected row inverted.",
+      "Crab Red is scarce: the primary action fill and the fresh mark only.",
+      "The pass is paper in both themes; the band and the 7-day board are ink in both themes.",
+      "Motion is airport grammar: print, fly, tear, flap, draw, rerank; each move at most 400ms, ease-out, never looping, off under reduced motion."
+    ],
+    "rules": [
+      {
+        "name": "The One Red Rule",
+        "body": "Crab Red fills only the primary action and marks only a fresh Link. While a blank pass is open, its New Link button goes neutral and pressed so the stub's Create is the only red on screen.",
+        "section": "colors"
+      },
+      {
+        "name": "The Paper Pass Rule",
+        "body": "The pass, tickets and confirm dialogs re-declare the light tokens and stay paper in dark theme; the band and the 7-day board stay ink in light theme. Theme changes the ground, never the materials.",
+        "section": "colors"
+      },
+      {
+        "name": "The Inversion Rule",
+        "body": "Selection is shown by inverting the row (Shell Ink with white text in light theme, Panel with ink text in dark), never by a colored highlight.",
+        "section": "colors"
+      },
+      {
+        "name": "The Printed Data Rule",
+        "body": "If it could be printed on a pass or flipped on a board, it is mono with tabular figures; if it is a sentence or an action, it is Inter.",
+        "section": "typography"
+      },
+      {
+        "name": "The Field Key Rule",
+        "body": "A micro-label names the field or column directly beneath it (FROM, TARGET, EXPIRY, CLICKS, WORKSPACE over its name). It is never a decorative line above a heading or a paragraph.",
+        "section": "typography"
+      },
+      {
+        "name": "The On-the-Counter Rule",
+        "body": "Only things lying on the counter (pass, ticket, menu, dialog, toast) cast a shadow, and it is soft and ambient. Rows, boards and sections never lift.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do model a new screen as a gate board (rows under a 2px ink rule) or a pass/ticket on the ground (card, perforation or tear-off foot), never a third container type.",
+      "Do set Codes, Short URLs, hosts, counts and dates in JetBrains Mono with tabular figures, and field keys as mono uppercase micro-labels (0.6875rem, 0.08em).",
+      "Do keep the pass, tickets and confirm dialogs paper in dark theme, and the band and 7-day board ink in light theme.",
+      "Do show selection by inversion and freshness by the Crab Red stamp plus a 6% tint.",
+      "Do keep every control 2.5rem high (2.75rem on the pass, on touch screens and on phones) with 6px corners and a Field Line border.",
+      "Do keep content that is copied or printed whole: shrink the mono to fit (Short URL to 11px, Code to 1.25rem), then break at a slash or hyphen; never ellipsise it.",
+      "Do keep each motion at or under 400ms, ease-out, on transform and opacity, playing once, and off under prefers-reduced-motion.",
+      "Do stack alternative states of one card (view and edit) in one grid cell so the card's size never jumps."
+    ],
+    "donts": [
+      "Don't use Crab Red for small text, borders of ordinary controls, charts, or more than one element on screen at a time.",
+      "Don't build the sidebar-plus-white-cards admin template or a marketing hero; there is no sidebar, and no hero.",
+      "Don't put a micro-label above a heading or a paragraph as decoration; it names the field beneath it.",
+      "Don't give rows, boards or sections a shadow; only objects on the counter lift.",
+      "Don't add texture beyond the world's own: hairlines, dashed perforations and flight paths, the QR block and the flap seam.",
+      "Don't loop an animation or let a loader spin; the flight path draws once and holds."
+    ]
+  }
+}
