@@ -15,7 +15,8 @@ Web UI 由 server 自己在 `/app` 提供（如 `https://crabl.ink/app`），与
 ```bash
 cd web
 pnpm install
-pnpm dev     # Vite 开发服务器，/api 代理到 localhost:8080 上的 server
+pnpm server  # localhost:8080 上的 server，用 embedded Postgres，不用 Docker；登录 admin@example.com / e2e admin password，Ctrl-C 后数据清空
+pnpm dev     # 另开一个终端：Vite 开发服务器（localhost:5173/app/），改前端热更新，/api 代理到 pnpm server
 pnpm build   # 输出 web/dist，下次编译 server 时打进二进制
 pnpm e2e     # Playwright 端到端测试：先 pnpm build，它会起 embedded Postgres 和真实的 crablink-server
 ```
