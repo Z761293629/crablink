@@ -1,6 +1,6 @@
 # 自托管
 
-部署、配置、自定义 Domain、邀请 User、备份与升级。
+部署、配置、容量、自定义 Domain、邀请 User、备份与升级。
 
 ## 本地试用（Docker Compose）
 
@@ -58,6 +58,10 @@ docker compose exec crablink crablink-server admin create --email you@example.co
 ```
 
 `POSTGRES_PASSWORD` 只在 Postgres 卷第一次初始化时写入，之后改 `.env` 不会改掉库里的密码。升级时改 `compose.yaml` 里的镜像版本号，再 `docker compose pull && docker compose up -d`，schema 在启动时自动升级。备份见下方[备份与恢复](#备份与恢复)，命令在同一目录里执行；把备份文件复制到这台主机以外。
+
+## 容量
+
+一个 server 配一个 Postgres 对团队绰绰有余。0.6.1 在 Apple M1 上实测：同一个 Link 被 200 个连接持续访问、每次都记 Click 时，跳转 7,132 req/s，p99 47 ms，Click 一个不丢；不记 Click 的爬虫跳转约 14,000 req/s。server 和数据库之间的网络往返决定上限：同样的测试把 Postgres 放进 macOS 的 Docker Desktop 只剩约 1,000 req/s，但按固定 500 req/s 压时 p99 仍是 34 ms。server 用 10 个数据库连接，暂不可配。场景、完整数据和复现方法见 [#78](https://github.com/Z761293629/crablink/issues/78)。
 
 ## 自定义 Domain
 
