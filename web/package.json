@@ -5,6 +5,7 @@
   "packageManager": "pnpm@12.21.0",
   "scripts": {
     "dev": "vite",
+    "server": "cargo build -p crablink-server --bin crablink-server && CRABLINK_LISTEN=127.0.0.1:8080 CRABLINK_BASE_URL=http://localhost:8080 CRABLINK_E2E_ADMIN_EMAIL=admin@example.com CRABLINK_E2E_ADMIN_PASSWORD='e2e admin password' cargo run -p crablink-server --example e2e",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
