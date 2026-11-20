@@ -53,6 +53,7 @@ crablink create https://example.com/a/very/long/path
 - [x] **0.3**：API 错误带 `kind`、CLI `--json`、QR 码
 - [x] **0.4 多用户地基**：Postgres、User 登录、Workspace 与 API Key、成员与角色、邀请与 User 管理（[#47](https://github.com/Z761293629/crablink/issues/47)）
 - [x] **0.5 团队日常使用**：自定义 Domain、Web UI、Click 图表、Tag 与搜索、CSV 导入导出（[#47](https://github.com/Z761293629/crablink/issues/47)）
+- [x] **0.6 Web UI 改版**：登机牌和航班信息屏的视觉、每个 Link 最近 7 天的 Click 翻牌屏、右上角统一菜单（[#72](https://github.com/Z761293629/crablink/pull/72)）
 
 接下来做什么见 [Issues](https://github.com/Z761293629/crablink/issues)。
 

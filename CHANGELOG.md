@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0
+
+web UI 改版，server、API 和 CLI 没有变化。
+
+### 升级说明
+
+- **从 0.5 升级**：换上新镜像重启即可，没有数据库迁移，CLI 不用重新 `login`。
+
+### 新功能
+
+- **web UI 改版：登机牌和航班信息屏**：Link 页是一块航班信息屏，选中的 Link 显示为一张登机牌：从 Domain 飞往 Target 的航线，二维码在可撕下的存根上，下方是这个 Link 最近 7 天 Click 的翻牌屏和排名第一的 Referrer、国家、设备。Clicks、Workspace、Domain、设置和实例管理页用同一套样式；改 Target 时卡片高度不变。新建 Link 时存根撕下，新行滑入。Inter 和 JetBrains Mono 字体随 server 自带，不再依赖系统字体；跟随系统的「减少动态效果」设置时关闭动画。(#72)
+- **右上角一个菜单**：切换 Workspace、进入 Workspace 的设置和 Domain、账户、切换语言和退出都放进页头右上角的同一个菜单，语言改为两段式切换，不再是下拉框。(#72)
+
 ## 0.5.0
 
 ### 升级说明
