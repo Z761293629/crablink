@@ -20,6 +20,9 @@ import {
   PageError,
   Plane,
   reducedMotion,
+  tearHalf,
+  tearOff,
+  untear,
   useConfirm,
   useLocationKey,
   useMedia,
@@ -619,7 +622,6 @@ function IssuePass({
   const id = useId();
   const [error, setError] = useState<unknown>();
   const [draft, setDraft] = useState<Record<string, string>>({});
-  const [tearing, setTearing] = useState(false);
   const usable = usableDomains(domains);
   const domain = draft.domain || usable[0]?.domain || '';
   const to = hostOf(draft.target ?? '');
@@ -628,7 +630,10 @@ function IssuePass({
     e.preventDefault();
     const form = e.currentTarget;
     const data = new FormData(form);
-    setError(undefined);
+    // The perforation runs down a wide pass, the stub beside the main column, and across a stacked one.
+    const stub = form.querySelector('.stub')!;
+    const down = stub.getBoundingClientRect().top <= form.getBoundingClientRect().top + 1;
+    // The last error stays until the answer replaces it: cleared now, a stacked stub would jump up and back.
     try {
       const link = await api<Link>('POST', base, {
         target: data.get('target'),
@@ -637,22 +642,22 @@ function IssuePass({
         expires_at: fromInput(data.get('expires_at') as string) ?? undefined,
         tags: tagList(data.get('tags') as string),
       });
-      // The stub tears off along the perforation, then the Link lands on the board.
-      if (!reducedMotion()) {
-        setTearing(true);
-        await new Promise((done) => setTimeout(done, 280));
-        setTearing(false);
-      }
+      // The stub is torn off along the perforation, then the Link lands on the board.
+      await tearOff(form, down);
+      untear(form);
+      setError(undefined);
       form.reset();
       setDraft({});
       onCreated(link);
     } catch (err) {
       setError(err);
+      // Refused: the stub tears partway and stays, to come away once the Link is issued.
+      tearHalf(form, down);
     }
   }
 
   return (
-    <section className={`pass${tearing ? ' tearing' : ''}`} aria-label={t('links.newLink')}>
+    <section className="pass" aria-label={t('links.newLink')}>
       <form
         className="pass-card print"
         onSubmit={submit}
@@ -710,7 +715,6 @@ function IssuePass({
           </details>
           {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
         </div>
-        <div className="perf" aria-hidden="true" />
         <div className="stub">
           <div className="qr blank">{t('links.qrPending')}</div>
           <ShortLine text={`${domain}/${draft.code || t('links.generatedShort')}`} />
@@ -988,7 +992,6 @@ function LinkPass({
           </div>
           {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
         </div>
-        <div className="perf" aria-hidden="true" />
         <div className="stub" ref={stub}>
           {expired ? (
             <div className="qr blank">{t('links.qrExpired')}</div>

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from './api';
 import { errorMessage } from './i18n';
+import { tearHalf, tearOff } from './ui';
 
 export function ChangePassword() {
   const { t } = useTranslation();
@@ -60,12 +61,17 @@ export function AcceptInvite() {
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const password = new FormData(e.currentTarget).get('password');
+    const ticket = e.currentTarget;
+    // The last error stays until the answer replaces it: cleared now, the button would jump up and back.
+    const password = new FormData(ticket).get('password');
     try {
       await api('POST', '/invites/accept', { token: location.hash.slice(1), password });
+      // Signed in: the foot is torn off along the perforation, then the app opens.
+      await tearOff(ticket);
       location.assign('/app/');
     } catch (err) {
       setError(err);
+      tearHalf(ticket);
     }
   }
 
