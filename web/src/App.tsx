@@ -364,6 +364,10 @@ function LanguageToggle() {
   );
 }
 
+// Under `pnpm dev` only, the sign-in form starts filled with the Instance Admin that
+// `pnpm server` creates (web/package.json); builds drop it, as import.meta.env.DEV is false.
+const devAdmin = import.meta.env.DEV ? { email: 'admin@example.com', password: 'e2e admin password' } : undefined;
+
 function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
   const { t } = useTranslation();
   const [error, setError] = useState<unknown>();
@@ -384,11 +388,17 @@ function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
         <h1>{t('signIn.title')}</h1>
         <label className="field">
           <span className="micro">{t('signIn.email')}</span>
-          <input name="email" type="email" autoComplete="username" required />
+          <input name="email" type="email" autoComplete="username" defaultValue={devAdmin?.email} required />
         </label>
         <label className="field">
           <span className="micro">{t('signIn.password')}</span>
-          <input name="password" type="password" autoComplete="current-password" required />
+          <input
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            defaultValue={devAdmin?.password}
+            required
+          />
         </label>
         {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
       </div>
