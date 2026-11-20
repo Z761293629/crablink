@@ -7,7 +7,7 @@ import { Domains } from './Domains';
 import { InstanceAdmin } from './InstanceAdmin';
 import { Links } from './Links';
 import { errorMessage, languages, setLanguage } from './i18n';
-import { Chevron, interceptLinks, navigate, PageError, useLocationKey, usePopover } from './ui';
+import { Chevron, interceptLinks, navigate, PageError, tearHalf, tearOff, useLocationKey, usePopover } from './ui';
 import { ManageWorkspace } from './Workspace';
 import logoReversed from './assets/crablink-horizontal-reversed.svg';
 
@@ -374,16 +374,24 @@ function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
+    const ticket = e.currentTarget;
+    // The last error stays until the answer replaces it: cleared now, the button would jump up and back.
+    const form = new FormData(ticket);
     try {
-      onSignedIn(await api<User>('POST', '/session', { email: form.get('email'), password: form.get('password') }));
+      const user = await api<User>('POST', '/session', { email: form.get('email'), password: form.get('password') });
+      // Signed in: the foot is torn off along the perforation, then the app opens.
+      await tearOff(ticket);
+      onSignedIn(user);
     } catch (err) {
       setError(err);
+      // Refused: the foot tears partway and stays, to come away once the password is right.
+      tearHalf(ticket);
     }
   }
 
   return (
-    <form className="ticket" onSubmit={submit}>
+    <form
+      className="ticket" onSubmit={submit}>
       <div className="ticket-body">
         <h1>{t('signIn.title')}</h1>
         <label className="field">

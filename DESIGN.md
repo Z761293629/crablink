@@ -271,15 +271,15 @@ Responsive behavior:
 - **WIDE, 60rem and up:** board and pane side by side; the band is sticky.
 - **Below 64rem:** the desk stacks; the band tightens to 1.25rem padding.
 - **ROOMY, 90rem and up:** board rows show Copy and QR beside their More menu; below it they fold into the menu.
-- **Container query, pass at 30rem or narrower:** the pass stacks, the stub moves under the main column, the perforation turns horizontal with painted (not punched) notches, and field segments go one per line.
+- **Container query, pass at 30rem or narrower:** the pass stacks, the stub moves under the main column, the perforation turns horizontal and the main column and stub each punch their half of its notches, and field segments go one per line.
 
 ## Elevation & Depth
 
-Mostly flat: the ground, boards and rows have no shadow, and depth is tonal (Paper over Panel, ink band over paper). One soft, ambient lift is reserved for objects that are physically on top: the pass, tickets, menus and dialogs. The pass, whose notches are punched through it by a mask, takes the same shadow as a `drop-shadow` filter so it follows the holes.
+Mostly flat: the ground, boards and rows have no shadow, and depth is tonal (Paper over Panel, ink band over paper). One soft, ambient lift is reserved for objects that are physically on top: the pass, tickets, menus and dialogs. The pass and tickets, whose notches are punched through them by a mask, take the same shadow as a `drop-shadow` filter so it follows the holes.
 
 ### Shadow Vocabulary
 - **Pass lift** (`box-shadow: 0 1px 2px rgb(23 24 28 / 0.06), 0 12px 28px -10px rgb(23 24 28 / 0.18)`; dark `0 1px 2px rgb(0 0 0 / 0.4), 0 16px 36px -12px rgb(0 0 0 / 0.7)`): tickets, menus, confirm dialogs.
-- **Pass drop** (`filter: drop-shadow(0 1px 1px rgb(23 24 28 / 0.06)) drop-shadow(0 8px 12px rgb(23 24 28 / 0.1))`): the notched pass card.
+- **Pass drop** (`filter: drop-shadow(0 1px 1px rgb(23 24 28 / 0.06)) drop-shadow(0 8px 12px rgb(23 24 28 / 0.1))`): the notched pass card and tickets.
 - **Toast** (`box-shadow: 0 12px 28px -10px rgb(0 0 0 / 0.45)`).
 - **Pressed** (`box-shadow: inset 0 1px 2px rgb(23 24 28 / 0.18)`): New Link while its blank pass is open.
 - **Rule underlines** (`inset 0 -3px 0` on band tabs, `inset 0 3px 0` on phone tabs): current-tab marks, drawn as inset rules, not elevation.
@@ -289,7 +289,7 @@ Mostly flat: the ground, boards and rows have no shadow, and depth is tonal (Pap
 
 ## Shapes
 
-Gently rounded and paper-like. The pass and tickets are 14px cards (inner surfaces 13px); controls are 6px; sheets and toasts 8px; menus 10px; flap tiles 4px; stamps 3px; Tag chips are pills; the avatar is a disc. The pass's signature silhouette is the perforation: a 2px dashed line 10.5rem from the right edge with 11px half-circle notches punched through the card at top and bottom (a mask, so the shadow follows). Tickets, the Instance Admin coupon and confirm dialogs use the same idea horizontally: a dashed top rule on a Paper Two foot with half-circle notches at its ends. The flight path is a 1.5px dashed rule; the loading rule a 2px dashed one (6px dash, 5px gap). Dashed 1.5px borders also mark placeholders and secrets (blank QR, empty pane, revealed API Key).
+Gently rounded and paper-like. The pass and tickets are 14px cards; controls are 6px; sheets and toasts 8px; menus 10px; flap tiles 4px; stamps 3px; Tag chips are pills; the avatar is a disc. The pass's signature silhouette is the perforation: a 2px dashed line, the stub's left border, 10.5rem from the right edge, with 11px half-circle notches punched through the card at top and bottom (the main column and the stub each draw their own side of the card and mask their half of each notch, so the shadow follows and the stub can be torn off). Tickets, the Instance Admin coupon and confirm dialogs use the same idea horizontally: a dashed top rule on a Paper Two foot with half-circle notches at its ends; on the pass and tickets they are punched (the body and the foot each mask their half), so the ground and the shadow show through, while confirm dialogs have none. The flight path is a 1.5px dashed rule; the loading rule a 2px dashed one (6px dash, 5px gap). Dashed 1.5px borders also mark placeholders and secrets (blank QR, empty pane, revealed API Key).
 
 ## Components
 
@@ -309,7 +309,7 @@ Firm, quiet and exact.
 - **State lamp:** mono uppercase label led by a 7px square lamp in the status color, for status columns on gate boards.
 
 ### Cards / Containers
-- **Pass card:** Paper, 1px Strong Line border, 14px corners, Pass drop shadow; grid of main column, perforation and 10.5rem stub.
+- **Pass card:** Paper, 1px Strong Line border, 14px corners, Pass drop shadow; grid of main column and 10.5rem stub, each drawing its own side of the card, the stub's dashed left border the perforation.
 - **Ticket:** Paper card (max 25rem, or full width as `wide`), body above a dashed tear-off foot on Paper Two.
 - **Faces:** the pass's view and edit faces share one grid cell, the inactive face hidden but laid out, so the card keeps the taller face's height while switching between viewing and editing.
 - **Ink board:** the 7-day departures board under a Link's pass: Shell Ink (the dark band color in dark theme), 14px corners, seven split-flap tiles, then where most Clicks came from as ink rows.
@@ -335,7 +335,7 @@ Ease-out `cubic-bezier(0.16, 1, 0.3, 1)` throughout, transform and opacity only,
 - **Print** (0.34s): a pass enters from 45% opacity and 1.25rem up, never from blank.
 - **Fly** (0.4s): the plane crosses its flight line once.
 - **Flap** (0.26s per character, staggered so the last starts by 140ms): figures flip in from 40% opacity and scaleY 0.4; only changed characters flip again.
-- **Tear** (0.28s, ease-in `cubic-bezier(0.5, 0, 0.75, 0)`): the stub tears away when a new Link is issued and never comes back.
+- **Tear** (0.4s): a stub or foot is ripped off along its perforation, on sign-in, on accepting an invite and when a new Link is issued, and never comes back. The rip runs along the line from a random end (0.26s: quick, catching about halfway, then through), leaving both edges ragged and fibrous behind it, drawn fresh each time: the tear wanders a few px off the line, frays, nicks and opens a little. Torn through, the foot comes away, 0.5rem and fading (0.14s, ease-in), and the held half springs back 1.5px. A refused submit (a wrong password, a taken Code) tears it only partway, half the first time and a little further each try after, up to 80%; it stays so, still usable, and the next success rips on from there. Forms that stay on screen (change password, add a Domain, create a Workspace, invite) do not tear. Off under reduced motion: nothing is torn.
 - **Land** (300ms after a 120ms delay): the new row slides in from 0.75rem left while the others rerank (360ms FLIP slide).
 - **Drop off** (240ms, ease-in `cubic-bezier(0.7, 0, 0.84, 0)`): a deleted row drops 0.75rem and fades before the rest close up.
 - **Draw** (0.4s): the dashed loading rule draws out once and holds; **grow** (0.4s) for breakdown bars.

@@ -27,7 +27,6 @@
   --ok: #13622b;
   --warn: #8a5300;
   --focus: #17181c;
-  --notch: var(--ground);
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%2317181c' stroke-width='1.6'/%3E%3C/svg%3E");
   --font-sans:
     'Inter Variable', Inter, system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
@@ -1590,20 +1589,12 @@ table.board.compact col.c-acts {
   container: pass / inline-size;
 }
 
+/* The main column and the stub each draw their own side of the card and punch their own half of the notches
+   (see --notch-a), so the stub can be torn off; the stub's dashed left border is the perforation. The column
+   is 1px wider than the stub's 10.5rem for the main column's lost right border. */
 .pass-card {
-  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 0 10.5rem;
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  /* The notches are holes punched through the card where the perforation meets its edges (centred on the
-     dashed line, 10.5rem in from the right), so its shadow, a drop-shadow on the pass, follows them. The
-     perforation's half-circles draw their rims. */
-  mask:
-    radial-gradient(circle at calc(100% - 10.5rem) 0, transparent 11px, #000 11.5px),
-    radial-gradient(circle at calc(100% - 10.5rem) 100%, transparent 11px, #000 11.5px);
-  mask-composite: intersect;
+  grid-template-columns: minmax(0, 1fr) calc(10.5rem + 1px);
 }
 
 .pass:has(> .pass-card) {
@@ -1633,33 +1624,12 @@ table.board.compact col.c-acts {
 .pass-main {
   min-width: 0;
   padding: 1.5rem 1.5rem 1.25rem 1.75rem;
-}
-
-.perf {
-  position: relative;
-  border-left: 2px dashed var(--line-strong);
-}
-
-.perf::before,
-.perf::after {
-  content: '';
-  position: absolute;
-  left: -0.8125rem;
-  width: 1.5rem;
-  height: 1.5rem;
-  background: var(--notch);
+  background-color: var(--surface);
   border: 1px solid var(--line-strong);
-  border-radius: 50%;
-}
-
-.perf::before {
-  top: -0.8125rem;
-  clip-path: inset(50% 0 0 0);
-}
-
-.perf::after {
-  bottom: -0.8125rem;
-  clip-path: inset(0 0 50% 0);
+  border-right: 0;
+  border-radius: 14px 0 0 14px;
+  --notch-a: calc(100% + 1px) 0;
+  --notch-b: calc(100% + 1px) 100%;
 }
 
 .stub {
@@ -1672,67 +1642,56 @@ table.board.compact col.c-acts {
   min-width: 0;
   padding: 1.5rem 1rem 1.25rem;
   /* Panel, a material apart from the pass's white, so the tear line separates two surfaces. */
-  background: #e8eaed;
-  border-radius: 0 13px 13px 0;
+  background-color: #e8eaed;
+  border: 1px solid var(--line-strong);
+  border-left: 2px dashed var(--line-strong);
+  border-radius: 0 14px 14px 0;
+  --notch-a: 1px 0;
+  --notch-b: 1px 100%;
 }
 
-.pass.tearing .stub {
-  animation: tear 0.28s cubic-bezier(0.5, 0, 0.75, 0) forwards;
-}
-
-/* While the stub tears away the card is unmasked, so the stub is not clipped at the card's edge. */
-.pass.tearing .pass-card {
-  mask: none;
-}
-
-/* The stub tears off along the perforation and leaves; it never comes back. */
-@keyframes tear {
-  to {
-    opacity: 0;
-    transform: var(--tear, translate(1.5rem, 0.5rem) rotate(6deg));
-  }
+/* A card torn in two halves, each with its own border, has the tear line's notches punched out of both
+   halves, so the drop shadow and whatever lies behind show through them. A half sets --notch-a and --notch-b,
+   the two ends of the 2px dashed line's centre: 1px beyond its own edge, or 1px into its dashed border.
+   Without them these declarations are invalid, so a half that sets none has no notches. */
+.ticket-body,
+.tear,
+.pass-main,
+.stub {
+  background-image:
+    radial-gradient(circle at var(--notch-a), transparent 11px, var(--line-strong) 11.5px 12px, transparent 12.5px),
+    radial-gradient(circle at var(--notch-b), transparent 11px, var(--line-strong) 11.5px 12px, transparent 12.5px);
+  background-origin: border-box;
+  background-repeat: no-repeat;
+  mask:
+    radial-gradient(circle at var(--notch-a), transparent 11px, #000 11.5px),
+    radial-gradient(circle at var(--notch-b), transparent 11px, #000 11.5px);
+  mask-composite: intersect;
 }
 
 @container pass (max-width: 30rem) {
-  /* Stacked, the notches sit at the sides, where the shadow barely shows: they are painted, not punched. */
+  /* Stacked, the perforation runs across: the stub's top border. */
   .pass-card {
     grid-template-columns: minmax(0, 1fr);
-    mask: none;
   }
 
-  .perf {
-    height: 0;
-    border-top: 2px dashed var(--line-strong);
-    border-left: 0;
-  }
-
-  .perf::before,
-  .perf::after {
-    top: -0.8125rem;
-    bottom: auto;
-  }
-
-  .perf::before {
-    left: -0.8125rem;
-    clip-path: inset(0 0 0 50%);
-  }
-
-  /* Drawn as the half that shows, so nothing hangs past the pass's edge for it to scroll sideways. */
-  .perf::after {
-    right: 0;
-    left: auto;
-    width: 0.75rem;
-    clip-path: none;
-    border-right: 0;
-    border-radius: 0.8125rem 0 0 0.8125rem;
+  .pass-main {
+    border: 1px solid var(--line-strong);
+    border-bottom: 0;
+    border-radius: 14px 14px 0 0;
+    --notch-a: 0 calc(100% + 1px);
+    --notch-b: 100% calc(100% + 1px);
   }
 
   .stub {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    border-radius: 0 0 13px 13px;
-    --tear: translate(0.5rem, 1.5rem) rotate(2deg);
+    border: 1px solid var(--line-strong);
+    border-top: 2px dashed var(--line-strong);
+    border-radius: 0 0 14px 14px;
+    --notch-a: 0 1px;
+    --notch-b: 100% 1px;
   }
 
   .stub .qr {
@@ -2304,16 +2263,20 @@ table.entries tr:last-child td {
 .ticket {
   max-width: 25rem;
   margin: clamp(1.5rem, 8vh, 5rem) auto 0;
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  box-shadow: var(--pass-shadow);
+  /* The halves draw the card and punch its notches (see --notch-a); the shadow follows the holes. */
+  filter: var(--pass-drop);
 }
 
 .ticket .ticket-body {
   display: grid;
   gap: 1rem;
   padding: 1.75rem 1.75rem 1.5rem;
+  background-color: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  --notch-a: 0 calc(100% + 1px);
+  --notch-b: 100% calc(100% + 1px);
 }
 
 .ticket h1 {
@@ -2325,41 +2288,55 @@ table.entries tr:last-child td {
 }
 
 .ticket .tear {
-  position: relative;
   padding: 1.25rem 1.75rem 1.5rem;
-  background: var(--surface-2);
-  border-top: 2px dashed var(--line-strong);
-  border-radius: 0 0 13px 13px;
-}
-
-.ticket .tear::before,
-.ticket .tear::after {
-  content: '';
-  position: absolute;
-  top: -0.8125rem;
-  width: 1.5rem;
-  height: 1.5rem;
-  background: var(--notch);
+  background-color: var(--surface-2);
   border: 1px solid var(--line-strong);
-  border-radius: 50%;
-}
-
-.ticket .tear::before {
-  left: -0.8125rem;
-  clip-path: inset(0 0 0 50%);
-}
-
-/* Drawn as the half that shows, so nothing hangs past the ticket's edge for the page to scroll sideways. */
-.ticket .tear::after {
-  right: 0;
-  width: 0.75rem;
-  border-right: 0;
-  border-radius: 0.8125rem 0 0 0.8125rem;
+  border-top: 2px dashed var(--line-strong);
+  border-radius: 0 0 14px 14px;
+  --notch-a: 0 1px;
+  --notch-b: 100% 1px;
 }
 
 .ticket .tear > button {
   width: 100%;
   height: 2.75rem;
+}
+
+/* A ticket or pass being ripped along its perforation (see tearOff() in ui.tsx, which runs the rip): both torn
+   edges are clipped ragged, their paper fibres an uneven band, a pseudo-element, that follows each edge. Across a
+   ticket or stacked pass the perforation runs across (data-rip="across"); on a wide pass it runs down. */
+[data-rip] :is(.ticket-body, .pass-main, .tear, .stub) {
+  position: relative;
+}
+
+[data-rip] :is(.ticket-body, .pass-main)::after,
+[data-rip] :is(.tear, .stub)::before {
+  content: '';
+  position: absolute;
+  background: var(--line-strong);
+  /* Hidden until the rip draws it. */
+  clip-path: inset(50%);
+  pointer-events: none;
+}
+
+[data-rip='across'] :is(.ticket-body, .pass-main)::after {
+  inset: auto -1px 0;
+  height: 8px;
+}
+
+[data-rip='across'] :is(.tear, .stub)::before {
+  inset: -2px -1px auto;
+  height: 18px;
+}
+
+[data-rip='down'] .pass-main::after {
+  inset: -1px 0 -1px auto;
+  width: 8px;
+}
+
+[data-rip='down'] .stub::before {
+  inset: -1px auto -1px -2px;
+  width: 18px;
 }
 
 /* A page that is one pass on the ground: Clicks, a Workspace, Domains. */
