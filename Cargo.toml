@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/api", "crates/server", "crates/cli"]
 
 [workspace.package]
-version = "0.6.0"
+version = "0.6.1"
 
 # Unoptimised, password hashing makes every sign-in in the tests take seconds.
 [profile.dev.package.argon2]
