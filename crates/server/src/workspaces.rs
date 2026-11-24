@@ -6,6 +6,7 @@ use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequestParts, Path, State};
 use axum::http::request::Parts;
 use axum::http::{StatusCode, header};
+use chrono::{DateTime, Utc};
 use crablink_api::{CreateWorkspace, Membership, Role, UpdateWorkspace, Workspace};
 use sqlx::PgConnection;
 
@@ -206,18 +207,29 @@ pub(crate) async fn delete_workspace(
 ) -> Result<StatusCode, ApiError> {
     let workspace_id = caller.owner_of(&s, &slug).await?.workspace_id;
     let mut tx = s.pool.begin().await?;
-    sqlx::query("UPDATE links SET deleted_at = $2 WHERE workspace_id = $1 AND deleted_at IS NULL")
-        .bind(workspace_id)
-        .bind((s.clock)())
-        .execute(&mut *tx)
-        .await?;
-    // Takes its memberships and API Keys with it; its Links stay, with no Workspace.
-    sqlx::query("DELETE FROM workspaces WHERE id = $1")
-        .bind(workspace_id)
-        .execute(&mut *tx)
-        .await?;
+    delete(&mut tx, workspace_id, (s.clock)()).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Deletes Workspace `workspace_id` on `conn` at `now`: its Links become Deleted
+/// Links, and its memberships and API Keys go with it.
+pub(crate) async fn delete(
+    conn: &mut PgConnection,
+    workspace_id: i64,
+    now: DateTime<Utc>,
+) -> Result<(), ApiError> {
+    sqlx::query("UPDATE links SET deleted_at = $2 WHERE workspace_id = $1 AND deleted_at IS NULL")
+        .bind(workspace_id)
+        .bind(now)
+        .execute(&mut *conn)
+        .await?;
+    // Its Links stay, with no Workspace.
+    sqlx::query("DELETE FROM workspaces WHERE id = $1")
+        .bind(workspace_id)
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 /// Any other `/api` path: 404, except that an unknown Bearer value gets its 401, so a

@@ -283,7 +283,12 @@
     "currentPassword": "当前密码",
     "newPassword": "新密码",
     "change": "修改密码",
-    "changed": "密码已修改。"
+    "changed": "密码已修改。",
+    "password": "密码",
+    "delete": "删除账户",
+    "deleteLede": "你的个人工作区，以及只有你一人的工作区，会随之删除，其中的链接变为已删除链接。你会退出其他所有工作区。",
+    "deleteLedeNoPassword": "你的个人工作区，以及只有你一人的工作区，会随之删除，其中的链接变为已删除链接。你会退出其他所有工作区。为确认是你本人，你须在最近 5 分钟内通过你的登录服务登录过。",
+    "confirmDelete": "删除你的账户？此操作无法撤销。"
   },
   "errors": {
     "network": "无法连接服务器，请检查网络后重试。",
@@ -324,7 +329,8 @@
     "identity_provider_failed": "登录未成功，请重试。",
     "identity_provider_email_unverified": "你的登录服务尚未验证你的邮箱，因此无法在此登录。",
     "invite_needed": "这里还没有使用你邮箱的用户：请向实例管理员索取邀请。",
-    "user_disabled": "你的用户已被停用。"
+    "user_disabled": "你的用户已被停用。",
+    "fresh_sign_in_needed": "请退出后通过你的登录服务重新登录，并在 5 分钟内删除账户。"
   },
   "cancel": "取消",
   "retry": "重试",

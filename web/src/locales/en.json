@@ -283,7 +283,12 @@
     "currentPassword": "Current password",
     "newPassword": "New password",
     "change": "Change password",
-    "changed": "Password changed."
+    "changed": "Password changed.",
+    "password": "Password",
+    "delete": "Delete account",
+    "deleteLede": "Your Personal Workspace, and every Workspace only you are in, is deleted with it, its Links becoming Deleted Links. You leave every other Workspace.",
+    "deleteLedeNoPassword": "Your Personal Workspace, and every Workspace only you are in, is deleted with it, its Links becoming Deleted Links. You leave every other Workspace. To confirm it's you, you must have signed in through your sign-in service in the last 5 minutes.",
+    "confirmDelete": "Delete your account? This cannot be undone."
   },
   "errors": {
     "network": "Can't reach the server. Check your connection and try again.",
@@ -324,7 +329,8 @@
     "identity_provider_failed": "Signing in didn’t work. Try again.",
     "identity_provider_email_unverified": "Your sign-in service hasn’t verified your email, so it can’t sign you in here.",
     "invite_needed": "No one here has your email yet: ask an Instance Admin for an Invite.",
-    "user_disabled": "Your User is disabled."
+    "user_disabled": "Your User is disabled.",
+    "fresh_sign_in_needed": "Sign out and sign in again through your sign-in service, then delete your account within 5 minutes."
   },
   "cancel": "Cancel",
   "retry": "Try again",

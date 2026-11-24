@@ -2,6 +2,7 @@ import { baseURL } from '../playwright.config';
 import {
   test,
   expect,
+  confirmDialog,
   inviteUrl,
   newEmail,
   openUserMenu,
@@ -62,4 +63,28 @@ test('a User changes their password and signs in with the new one', async ({ pag
   // Navigating before sign-out finishes would cancel it, leaving no sign-in form to fill.
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
   await signInPage(page, user.email, 'a brand new password');
+});
+
+test('a User deletes their account, after which it cannot sign in', async ({ page, user }) => {
+  await signInPage(page, user.email, user.password);
+  await openUserMenu(page);
+  await page.getByRole('link', { name: 'Account' }).click();
+  const password = page.getByLabel('Password', { exact: true });
+
+  await password.fill('not the password');
+  await page.getByRole('button', { name: 'Delete account' }).click();
+  await expect(page.getByRole('dialog')).toContainText('cannot be undone');
+  await confirmDialog(page);
+  await expect(page.getByRole('alert')).toHaveText('The current password is wrong.');
+
+  await password.fill(user.password);
+  await page.getByRole('button', { name: 'Delete account' }).click();
+  await confirmDialog(page);
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  await expect(page).toHaveURL(`${baseURL}/app/`);
+
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('alert')).toHaveText('Wrong email or password.');
 });

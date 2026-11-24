@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AcceptInvite, ChangePassword, ForgotPassword, ResetPassword } from './Account';
+import { AcceptInvite, Account, ForgotPassword, ResetPassword } from './Account';
 import { api, ApiError, type IdentityProvider, type Instance, type Membership, type User } from './api';
 import { Clicks } from './Clicks';
 import { Domains } from './Domains';
@@ -77,10 +77,14 @@ export function App() {
     return () => document.removeEventListener('click', interceptLinks);
   }, []);
 
-  async function signOut() {
-    await api('DELETE', '/session');
+  function signedOut() {
     setUser(null);
     setWorkspaces(undefined);
+  }
+
+  async function signOut() {
+    await api('DELETE', '/session');
+    signedOut();
   }
 
   function switchTo(next: string) {
@@ -109,7 +113,16 @@ export function App() {
       />
     );
   else if (page === 'admin' && user.instance_admin) main = <InstanceAdmin me={user.email} />;
-  else if (page === 'account' && user.has_password) main = <ChangePassword />;
+  else if (page === 'account')
+    main = (
+      <Account
+        hasPassword={user.has_password}
+        onDeleted={() => {
+          signedOut();
+          navigate('/app/', { replace: true });
+        }}
+      />
+    );
   else if (page === 'settings') main = <Settings user={user} workspace={workspace} onSignOut={signOut} />;
   else if (!workspaces) main = null;
   else if (page === 'workspace')
@@ -282,14 +295,11 @@ function AccountItems({ user, onSignOut }: { user: User; onSignOut: () => void }
   return (
     <>
       <ul className="links-list">
-        {/* The account page only changes the password, which some Users don't have. */}
-        {user.has_password && (
-          <li>
-            <a className="item" href="/app/account">
-              {t('nav.account')}
-            </a>
-          </li>
-        )}
+        <li>
+          <a className="item" href="/app/account">
+            {t('nav.account')}
+          </a>
+        </li>
         {user.instance_admin && (
           <li>
             <a className="item" href="/app/admin">

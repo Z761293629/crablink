@@ -93,6 +93,10 @@ pub enum ApiError {
     InviteNeeded,
     #[error("this User is disabled")]
     UserDisabled,
+    #[error(
+        "sign in through your Identity Provider again, then delete your account within 5 minutes"
+    )]
+    FreshSignInNeeded,
     #[error("could not generate a free code, try again")]
     CodesExhausted,
     /// Details are logged, never sent.
@@ -139,6 +143,7 @@ impl ApiError {
             Self::IdentityProviderEmailUnverified => ErrorKind::IdentityProviderEmailUnverified,
             Self::InviteNeeded => ErrorKind::InviteNeeded,
             Self::UserDisabled => ErrorKind::UserDisabled,
+            Self::FreshSignInNeeded => ErrorKind::FreshSignInNeeded,
             Self::CodesExhausted | Self::Internal => ErrorKind::Internal,
         }
     }
@@ -155,7 +160,8 @@ impl ApiError {
             | Self::LinkBlocked
             | Self::IdentityProviderEmailUnverified
             | Self::InviteNeeded
-            | Self::UserDisabled => StatusCode::FORBIDDEN,
+            | Self::UserDisabled
+            | Self::FreshSignInNeeded => StatusCode::FORBIDDEN,
             Self::NotFound
             | Self::LinkNotFound
             | Self::InviteNotFound

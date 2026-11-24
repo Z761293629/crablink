@@ -13,8 +13,8 @@ use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use chrono::TimeDelta;
-use crablink_api::{ChangePassword, Me, SignIn, User, Workspace};
+use chrono::{DateTime, TimeDelta, Utc};
+use crablink_api::{ChangePassword, DeleteAccount, Me, Role, SignIn, User, Workspace};
 use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, PgPool};
 
@@ -26,6 +26,9 @@ use crate::workspaces::{self, Caller};
 const COOKIE: &str = "crablink_session";
 const SESSION_TTL: TimeDelta = TimeDelta::days(30);
 const MIN_PASSWORD_LEN: usize = 8;
+/// How recently a User without a password must have signed in through an Identity
+/// Provider to delete their account.
+const FRESH_SIGN_IN: TimeDelta = TimeDelta::minutes(5);
 
 /// Creates a User who signs in with `email` and `password`, as an Instance Admin
 /// when `instance_admin`. This is what `crablink-server admin create` runs.
@@ -350,6 +353,98 @@ pub(crate) async fn change_password(
     set_password(&mut tx, session.user_id, hash, Some(&session.token_hash)).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// `DELETE /api/me`: deletes the signed-in User, confirmed with their password or,
+/// for a User without one, a sign-in through an Identity Provider within
+/// `FRESH_SIGN_IN`.
+/// Every Workspace they are the only member of goes with them, its Links becoming
+/// Deleted Links; they just leave the others.
+pub(crate) async fn delete_account(
+    State(s): State<AppState>,
+    session: Session,
+    body: Result<Json<DeleteAccount>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let Json(req) = body?;
+    let (hash, expires_at): (Option<String>, DateTime<Utc>) = sqlx::query_as(
+        "SELECT u.password_hash, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id \
+         WHERE s.token_hash = $1",
+    )
+    .bind(&session.token_hash)
+    .fetch_one(&s.pool)
+    .await?;
+    match hash {
+        Some(hash) => {
+            let password = req.password.unwrap_or_default();
+            if !verify_password(password, Some(hash)).await? {
+                return Err(ApiError::WrongPassword);
+            }
+        }
+        // A User without a password has only sessions an Identity Provider started,
+        // each SESSION_TTL long, so this one's start says when they last signed in.
+        None if expires_at - SESSION_TTL + FRESH_SIGN_IN < (s.clock)() => {
+            return Err(ApiError::FreshSignInNeeded);
+        }
+        None => {}
+    }
+    let mut tx = s.pool.begin().await?;
+    // Locks every enabled Instance Admin as `admin::update_user` does, so two of
+    // them deleting their accounts at once can't both succeed.
+    sqlx::query("SELECT id FROM users WHERE instance_admin AND NOT disabled FOR UPDATE")
+        .execute(&mut *tx)
+        .await?;
+    // Locks the User's Workspaces as `members::change` does, so no Owner leaves or
+    // is demoted meanwhile.
+    sqlx::query(
+        "SELECT 1 FROM workspaces WHERE id IN \
+         (SELECT workspace_id FROM memberships WHERE user_id = $1) FOR UPDATE",
+    )
+    .bind(session.user_id)
+    .execute(&mut *tx)
+    .await?;
+    // Each Workspace of theirs: whether anyone else is in it, and whether it would
+    // be left without an Owner.
+    let theirs: Vec<(i64, bool, bool)> = sqlx::query_as(
+        "SELECT m.workspace_id, \
+         EXISTS (SELECT 1 FROM memberships o WHERE o.workspace_id = m.workspace_id \
+                 AND o.user_id <> $1), \
+         m.role = $2 AND NOT EXISTS (SELECT 1 FROM memberships o \
+                 WHERE o.workspace_id = m.workspace_id AND o.user_id <> $1 AND o.role = $2) \
+         FROM memberships m WHERE m.user_id = $1",
+    )
+    .bind(session.user_id)
+    .bind(workspaces::stored_role(Role::Owner))
+    .fetch_all(&mut *tx)
+    .await?;
+    for (workspace_id, others, last_owner) in theirs {
+        if !others {
+            workspaces::delete(&mut tx, workspace_id, (s.clock)()).await?;
+        } else if last_owner {
+            // Dropping `tx` rolls back the Workspaces already deleted.
+            return Err(ApiError::LastOwner);
+        }
+    }
+    // Takes their sessions, memberships and identities with it.
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(session.user_id)
+        .execute(&mut *tx)
+        .await?;
+    if session.user.instance_admin {
+        let admins_left: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM users WHERE instance_admin AND NOT disabled)",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        if !admins_left {
+            return Err(ApiError::LastInstanceAdmin);
+        }
+    }
+    tx.commit().await?;
+    Ok((
+        StatusCode::NO_CONTENT,
+        [(header::SET_COOKIE, session_cookie("", 0))],
+    )
+        .into_response())
 }
 
 /// A live session of an enabled User, from the session cookie. A state-changing

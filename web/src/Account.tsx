@@ -1,13 +1,69 @@
-// A User's own password: changing it, resetting a forgotten one by email, and
-// choosing it when accepting an invite.
+// A User's own account: changing their password, deleting the account, resetting
+// a forgotten password by email, and choosing one when accepting an invite.
 
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from './api';
 import { errorMessage } from './i18n';
-import { tearHalf, tearOff } from './ui';
+import { tearHalf, tearOff, useConfirm } from './ui';
 
-export function ChangePassword() {
+/** `/app/account`: changing the password, for Users who have one, and deleting the account. */
+export function Account({ hasPassword, onDeleted }: { hasPassword: boolean; onDeleted: () => void }) {
+  return (
+    <>
+      {hasPassword && <ChangePassword />}
+      <DeleteAccount hasPassword={hasPassword} onDeleted={onDeleted} />
+    </>
+  );
+}
+
+/**
+ * Deletes the account after an "it cannot be undone"; a User with a password confirms with it,
+ * one without must have just signed in through an Identity Provider.
+ */
+function DeleteAccount({ hasPassword, onDeleted }: { hasPassword: boolean; onDeleted: () => void }) {
+  const { t } = useTranslation();
+  const [dialog, ask] = useConfirm();
+  const [error, setError] = useState<unknown>();
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const password = new FormData(e.currentTarget).get('password') ?? undefined;
+    if (!(await ask(t('account.confirmDelete'), t('account.delete')))) return;
+    try {
+      await api('DELETE', '/me', { password });
+      onDeleted();
+    } catch (err) {
+      setError(err);
+    }
+  }
+
+  return (
+    <>
+      <form className="ticket" aria-labelledby="delete-account" onSubmit={submit}>
+        <div className="ticket-body">
+          <h2 id="delete-account">{t('account.delete')}</h2>
+          <p>{t(hasPassword ? 'account.deleteLede' : 'account.deleteLedeNoPassword')}</p>
+          {hasPassword && (
+            <label className="field">
+              <span className="micro">{t('account.password')}</span>
+              <input name="password" type="password" autoComplete="current-password" required />
+            </label>
+          )}
+          {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+        </div>
+        <div className="tear">
+          <button type="submit" className="danger">
+            {t('account.delete')}
+          </button>
+        </div>
+      </form>
+      {dialog}
+    </>
+  );
+}
+
+function ChangePassword() {
   const { t } = useTranslation();
   const [result, setResult] = useState<unknown>();
 

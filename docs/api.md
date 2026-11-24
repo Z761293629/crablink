@@ -32,6 +32,7 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `GET` | `/auth/{id}` | 浏览器经 Identity Provider `id` 登录：跳到它那里（授权码流程 + PKCE），用一个 10 分钟的 cookie 把这次登录绑在这个浏览器上；未知 `id` 404 |
 | `GET` | `/auth/{id}/callback` | Identity Provider 跳回的地址：验证 ID token 后开 session 并跳到 `/app/`；被拒时跳到 `/app/?error=<kind>`：`identity_provider_failed`（超时、换了浏览器、Identity Provider 拒绝或 ID token 验证不过）、`identity_provider_email_unverified`（未声明 `email_verified`）、`invite_needed`（没有该 email 的 User，且其域名不在该 Identity Provider 的允许列表里）、`user_disabled` |
 | `POST` | `/api/me/password` | 修改密码；没有密码的 User 403（`wrong_password`） |
+| `DELETE` | `/api/me` | 删除自己的账户（仅 session），body `{ password }`，无法撤销：有密码的 User 密码错误 403（`wrong_password`）；没有密码的 User 省略 `password`，须在 5 分钟内经 Identity Provider 登录过，否则 403（`fresh_sign_in_needed`）。个人 Workspace 以及只有自己一人的 Workspace 一并删除（其 Link 变为 Deleted Link），其他 Workspace 只是退出。是某个有其他成员的 Workspace 唯一的 Owner 时 409（`last_owner`），是最后一位启用的 Instance Admin 时 409（`last_instance_admin`）。成功 204 并清除 session cookie |
 | `GET` | `/api/instance` | 无需凭据：登录前页面要知道的实例功能：`{ password_reset }`，实例能发邮件时为 `true` |
 | `POST` | `/api/password-resets` | 无需凭据：`{ email }` 给该 email 有密码的 User 发重置密码链接（1 小时内有效），有没有这个 User 都回 204；按访客 IP 限流；实例不发邮件时 404（`not_found`） |
 | `POST` | `/api/password-resets/use` | 无需凭据：`{ token, password }` 设新密码、结束该 User 所有 session 并登录；链接未知、已过期或已用过 410（`reset_link_expired`），用掉一个链接即用掉该 User 所有重置链接 |

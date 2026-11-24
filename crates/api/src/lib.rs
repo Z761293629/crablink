@@ -145,6 +145,15 @@ pub struct ChangePassword {
     pub new_password: String,
 }
 
+/// Body of `DELETE /api/me`: deleting one's own account.
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct DeleteAccount {
+    /// The User's password. A User without one leaves it out, and must have signed
+    /// in through an Identity Provider within the last 5 minutes instead.
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
 /// The signed-in User, as returned by sign-in and `GET /api/me`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -420,6 +429,14 @@ impl std::fmt::Debug for SignIn {
     }
 }
 
+impl std::fmt::Debug for DeleteAccount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeleteAccount")
+            .field("password", &self.password.as_ref().map(|_| REDACTED))
+            .finish()
+    }
+}
+
 impl std::fmt::Debug for ChangePassword {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ChangePassword")
@@ -585,6 +602,9 @@ pub enum ErrorKind {
     InviteNeeded,
     /// Signing in through an Identity Provider as a disabled User.
     UserDisabled,
+    /// Deleting the account of a User without a password who last signed in
+    /// through an Identity Provider more than 5 minutes ago: sign in again first.
+    FreshSignInNeeded,
     /// The server failed; details are in its log, never in `error`. Includes running out
     /// of free Generated Codes, where retrying may help.
     Internal,
@@ -773,6 +793,12 @@ mod tests {
                 ChangePassword {
                     current_password: s(),
                     new_password: s()
+                }
+            ),
+            format!(
+                "{:?}",
+                DeleteAccount {
+                    password: Some(s())
                 }
             ),
             format!(
