@@ -105,12 +105,16 @@ export function linkPath(slug: string, link: { code: string; domain: string }, s
   return `/workspaces/${encodeURIComponent(slug)}/links/${code}${sub}?domain=${encodeURIComponent(link.domain)}`;
 }
 
-/** An error response: `kind` is stable, `message` is the server's English text. */
+/**
+ * An error response: `kind` is stable, `message` is the server's English text, and
+ * `retryAfter` the seconds a `rate_limited` caller must wait.
+ */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly kind: string,
     message: string,
+    readonly retryAfter?: number,
   ) {
     super(message);
   }
@@ -137,7 +141,8 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, err.kind ?? 'unknown', err.error ?? res.statusText);
+    const retryAfter = Number(res.headers.get('retry-after')) || undefined;
+    throw new ApiError(res.status, err.kind ?? 'unknown', err.error ?? res.statusText, retryAfter);
   }
   return res.status === 204 ? (undefined as T) : res.json();
 }

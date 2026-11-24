@@ -18,6 +18,7 @@ mod domains;
 mod error;
 mod links;
 mod members;
+mod rate_limit;
 mod redirect;
 mod users;
 mod web;
@@ -27,6 +28,7 @@ pub use clicks::{ClickRecording, dbip_country_lookup};
 pub use db::connect;
 pub use error::ApiError;
 pub use links::random_code;
+pub use rate_limit::{Limit, RateLimits};
 pub use users::{create_user, set_user_disabled};
 
 use admin::{accept_invite, create_invite, list_users, reset_password, update_user};
@@ -65,6 +67,8 @@ pub struct Settings {
     pub base_url: String,
     /// `CRABLINK_TRUST_PROXY`: whether the visitor's IP is the first `X-Forwarded-For` entry.
     pub trust_proxy: bool,
+    /// `CRABLINK_RATE_LIMIT_*`: all off by default.
+    pub rate_limits: RateLimits,
     pub codes: CodeGenerator,
     pub clock: Clock,
     pub country: CountryLookup,
@@ -77,6 +81,7 @@ impl Settings {
         Settings {
             base_url: base_url.into(),
             trust_proxy: false,
+            rate_limits: RateLimits::default(),
             codes: Arc::new(random_code),
             clock: Arc::new(Utc::now),
             country: Arc::new(|_| None),
@@ -92,6 +97,7 @@ struct AppState {
     country: CountryLookup,
     /// Whether the visitor's IP is the first `X-Forwarded-For` entry rather than the socket's.
     trust_proxy: bool,
+    limiters: Arc<rate_limit::Limiters>,
     /// The scheme of Short URLs: `CRABLINK_BASE_URL`'s.
     scheme: Arc<str>,
     /// The Default Domain: its host, and port if any.
@@ -126,6 +132,7 @@ pub async fn app(
     let Settings {
         base_url,
         trust_proxy,
+        rate_limits,
         codes,
         clock,
         country,
@@ -146,6 +153,7 @@ pub async fn app(
         clock,
         country,
         trust_proxy,
+        limiters: Arc::new(rate_limit::Limiters::new(rate_limits)),
         scheme: url.scheme().into(),
         default_domain: default_domain.into(),
         default_host: default_host.into(),

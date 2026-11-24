@@ -281,7 +281,9 @@
     "invalid_domain": "请输入形如 go.example.com 的主机名。",
     "domain_taken": "该域名是默认域名，或已属于其他工作区。",
     "domain_not_found": "该域名不存在。",
-    "domain_not_approved": "请使用默认域名或本工作区已批准的域名。"
+    "domain_not_approved": "请使用默认域名或本工作区已批准的域名。",
+    "rate_limited": "请求太多，请稍后再试。",
+    "rate_limited_for": "请求太多，请{{wait}}后再试。"
   },
   "cancel": "取消",
   "retry": "重试",

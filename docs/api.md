@@ -45,3 +45,5 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 Member 只能管理 Link；成员、API Key 和 Workspace 设置只归 Owner，Member 或 API Key 去做得到 403（`forbidden`）。`/api/admin` 只接受 Instance Admin 的 session，其他凭据 403。最后一个 Owner 不能退出、被移除或降级，得到 409（`last_owner`）。
 
 程序用 `Authorization: Bearer <API Key>`；API Key 属于 Workspace，创建它的人离开后照样可用。带 session cookie 的写请求必须带与 Host 一致的 `Origin`。未知或已吊销的 Bearer 值（包括 0.2 / 0.3 的 token）得到 401，提示用 API Key 重新登录。
+
+实例开了限流（`CRABLINK_RATE_LIMIT_*`，见[自建部署](self-hosting.md#限流)）时，超出限额的请求得到 429（`rate_limited`），`Retry-After` 头给出要等的秒数。登录按访客 IP 计数；建 Link 按 Workspace 计数，每个 Link 算一次，CSV 导入逐行计数，超出的行以 `rate_limited` 跳过。跳转从不限流。

@@ -36,6 +36,13 @@ pub struct TestServer {
 /// Starts a server with random Generated Codes and an empty database, signs in as a
 /// new User and issues an API Key of their personal Workspace.
 pub fn server() -> TestServer {
+    server_with(|_| {})
+}
+
+/// `server` whose settings `configure` changes, e.g. to turn on a switch.
+pub fn server_with(
+    configure: impl FnOnce(&mut crablink_server::Settings) + Send + 'static,
+) -> TestServer {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -51,9 +58,9 @@ pub fn server() -> TestServer {
             crablink_server::create_user(&pool, INSTANCE_ADMIN, PASSWORD, true)
                 .await
                 .unwrap();
-            let app = crablink_server::app(pool, crablink_server::Settings::new(&url))
-                .await
-                .unwrap();
+            let mut settings = crablink_server::Settings::new(&url);
+            configure(&mut settings);
+            let app = crablink_server::app(pool, settings).await.unwrap();
             tx.send(url).unwrap();
             axum::serve(listener, app).await.unwrap();
         });

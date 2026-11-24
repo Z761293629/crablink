@@ -41,6 +41,17 @@ Web UI 在构建时打进 server 二进制（Docker 镜像和 Release 已包含�
 
 Click 只记时间、Referrer 的 host、国家、设备类型和浏览器，从不存 IP 和完整 User-Agent（[ADR-0006](adr/0006-clicks-store-no-ip.md)）；爬虫和链接预览（Slack 等）照常跳转，但不算 Click。国家数据来自 [IP Geolocation by DB-IP](https://db-ip.com)（CC BY 4.0）。
 
+### 限流
+
+默认不限流。每项限额写成 `<次数>/<时间窗>`，时间窗是数字加 `s`、`m`、`h` 或 `d`，如 `10/1m`、`1000/1d`；格式不对就以退出码 2 退出。
+
+| 环境变量 | 计数对象 | 说明 |
+|---|---|---|
+| `CRABLINK_RATE_LIMIT_SIGN_IN` | 访客 IP | 密码登录的尝试次数，无论成败 |
+| `CRABLINK_RATE_LIMIT_LINKS` | Workspace | 新建的 Link 数，API、Web UI、CLI 和 CSV 导入（每行算一个）都算 |
+
+超出限额得到 429（`rate_limited`）和 `Retry-After`；跳转从不限流。访客 IP 按 `CRABLINK_TRUST_PROXY` 取，所以反向代理之后务必设它，否则所有访客共用代理的地址。计数只在进程内存里，重启即清零，也从不写进数据库；跑多个 server 实例时每个实例各算各的。
+
 ## 生产部署（HTTPS）
 
 `deploy/` 里是对外部署用的 `compose.yaml` 和 `Caddyfile`：Caddy 自动申请、续期 Let's Encrypt 证书并反代到 server；server 和 Postgres 都不对外开端口，只有 Caddy 监听 80 / 443；镜像钉在发布的版本号上；域名和数据库密码从 `.env` 读，缺了就拒绝启动。

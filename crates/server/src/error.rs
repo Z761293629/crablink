@@ -2,7 +2,7 @@
 
 use axum::Json;
 use axum::extract::rejection::{JsonRejection, QueryRejection};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use crablink_api::ErrorKind;
 
@@ -75,6 +75,9 @@ pub enum ApiError {
     DomainNotFound,
     #[error("domain is neither the Default Domain nor an approved Domain of this Workspace")]
     DomainNotApproved,
+    /// Over a rate limit; retry after this many seconds.
+    #[error("too many requests: try again in {0} seconds")]
+    RateLimited(u64),
     #[error("could not generate a free code, try again")]
     CodesExhausted,
     /// Details are logged, never sent.
@@ -113,6 +116,7 @@ impl ApiError {
             Self::DomainTaken => ErrorKind::DomainTaken,
             Self::DomainNotFound => ErrorKind::DomainNotFound,
             Self::DomainNotApproved => ErrorKind::DomainNotApproved,
+            Self::RateLimited(_) => ErrorKind::RateLimited,
             Self::CodesExhausted | Self::Internal => ErrorKind::Internal,
         }
     }
@@ -144,6 +148,7 @@ impl ApiError {
             | Self::LastOwner
             | Self::LastInstanceAdmin
             | Self::DomainTaken => StatusCode::CONFLICT,
+            Self::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::CodesExhausted | Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -161,7 +166,12 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status(), Json(self.body())).into_response()
+        let mut res = (self.status(), Json(self.body())).into_response();
+        if let Self::RateLimited(seconds) = self {
+            res.headers_mut()
+                .insert(header::RETRY_AFTER, seconds.into());
+        }
+        res
     }
 }
 

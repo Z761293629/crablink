@@ -20,6 +20,7 @@ use sqlx::{PgConnection, PgPool};
 
 use crate::AppState;
 use crate::error::ApiError;
+use crate::rate_limit::VisitorIp;
 use crate::workspaces::{self, Caller};
 
 const COOKIE: &str = "crablink_session";
@@ -226,8 +227,10 @@ struct SignInRow {
 pub(crate) async fn sign_in(
     State(s): State<AppState>,
     _: SameOrigin,
+    VisitorIp(ip): VisitorIp,
     body: Result<Json<SignIn>, JsonRejection>,
 ) -> Result<Response, ApiError> {
+    s.limiters.sign_in.hit(ip, (s.clock)())?;
     let Json(req) = body?;
     let row: Option<SignInRow> = sqlx::query_as(
         "SELECT id, email, instance_admin, password_hash FROM users \

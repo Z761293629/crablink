@@ -446,6 +446,10 @@ pub enum ErrorKind {
     /// A Link on a Domain that is neither the Default Domain nor an approved Domain of
     /// the Workspace.
     DomainNotApproved,
+    /// Over one of the instance's rate limits (sign-in attempts per visitor IP, Links
+    /// created per Workspace, …): status 429, and the `Retry-After` header says how
+    /// many seconds to wait.
+    RateLimited,
     /// The server failed; details are in its log, never in `error`. Includes running out
     /// of free Generated Codes, where retrying may help.
     Internal,

@@ -12,6 +12,15 @@ fn required(name: &str) -> String {
     }
 }
 
+/// A rate limit from env var `name` such as `10/1m`; `None` when unset.
+fn rate_limit(name: &str) -> Option<crablink_server::Limit> {
+    let value = std::env::var(name).ok()?;
+    Some(value.parse().unwrap_or_else(|e| {
+        eprintln!("crablink-server: {name}: {e}");
+        exit(2);
+    }))
+}
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -86,9 +95,15 @@ async fn serve() {
         }
     };
 
+    let rate_limits = crablink_server::RateLimits {
+        sign_in: rate_limit("CRABLINK_RATE_LIMIT_SIGN_IN"),
+        links: rate_limit("CRABLINK_RATE_LIMIT_LINKS"),
+    };
+
     let pool = open_database(&db_url).await;
     let settings = crablink_server::Settings {
         trust_proxy,
+        rate_limits,
         country,
         ..crablink_server::Settings::new(base_url)
     };

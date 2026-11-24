@@ -69,15 +69,21 @@ pub async fn app() -> TestApp {
 
 /// App with random Generated Codes that trusts `X-Forwarded-For` from its proxy.
 pub async fn app_behind_proxy() -> TestApp {
-    build(&[], true).await
+    app_with(|s| s.trust_proxy = true).await
 }
 
 /// App whose Code generator yields `codes` in order, then random Codes.
 pub async fn app_with_codes(codes: &[&str]) -> TestApp {
-    build(codes, false).await
+    build(codes, |_| {}).await
 }
 
-async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
+/// App with random Generated Codes whose test settings `configure` changes, e.g.
+/// to turn on a switch.
+pub async fn app_with(configure: impl FnOnce(&mut crablink_server::Settings)) -> TestApp {
+    build(&[], configure).await
+}
+
+async fn build(codes: &[&str], configure: impl FnOnce(&mut crablink_server::Settings)) -> TestApp {
     let pool = crablink_server::connect(&pg::database_url().await)
         .await
         .unwrap();
@@ -92,10 +98,12 @@ async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
     let now = Arc::new(Mutex::new(Utc::now()));
     let clock = now.clone();
     let clock: crablink_server::Clock = Arc::new(move || *clock.lock().unwrap());
-    let settings = crablink_server::Settings {
+    let mut settings = crablink_server::Settings {
         codes: generator,
-        ..settings(BASE_URL, clock, trust_proxy)
+        ..settings(BASE_URL, clock, false)
     };
+    configure(&mut settings);
+    let trust_proxy = settings.trust_proxy;
     let router = crablink_server::app(pool.clone(), settings).await.unwrap();
     let mut app = TestApp {
         router,

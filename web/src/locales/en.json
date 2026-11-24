@@ -281,7 +281,9 @@
     "invalid_domain": "Enter a host name such as go.example.com.",
     "domain_taken": "That Domain is the Default Domain or another Workspace’s.",
     "domain_not_found": "That Domain doesn’t exist.",
-    "domain_not_approved": "Use the Default Domain or one of this Workspace’s approved Domains."
+    "domain_not_approved": "Use the Default Domain or one of this Workspace’s approved Domains.",
+    "rate_limited": "Too many requests. Try again later.",
+    "rate_limited_for": "Too many requests. Try again in {{wait}}."
   },
   "cancel": "Cancel",
   "retry": "Try again",

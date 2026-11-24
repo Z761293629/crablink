@@ -50,6 +50,15 @@ export function setLanguage(lng: string) {
 
 /** An error in the UI's language: an API error by its `kind`, or its English message for a kind this UI doesn't know. */
 export function errorMessage(t: TFunction, err: unknown): string {
+  if (err instanceof ApiError && err.retryAfter) {
+    return t('errors.rate_limited_for', { wait: duration(err.retryAfter) });
+  }
   if (err instanceof ApiError) return t(`errors.${err.kind}`, { defaultValue: err.message });
   return t('errors.network');
+}
+
+/** `seconds` in the UI's language, as minutes from two minutes up: "45 seconds", "59 minutes". */
+function duration(seconds: number): string {
+  const [n, unit] = seconds < 120 ? [seconds, 'second'] : [Math.ceil(seconds / 60), 'minute'];
+  return new Intl.NumberFormat(i18n.language, { style: 'unit', unit, unitDisplay: 'long' }).format(n);
 }

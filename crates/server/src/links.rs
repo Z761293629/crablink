@@ -179,12 +179,14 @@ pub(crate) async fn create_link(
     Ok((StatusCode::CREATED, Json(link)))
 }
 
-/// Creates a Link in Workspace `workspace_id`; shared by create and CSV import.
+/// Creates a Link in Workspace `workspace_id`; shared by create and CSV import, so
+/// every attempt counts against the Workspace's rate limit.
 async fn insert_link(
     s: &AppState,
     workspace_id: i64,
     req: crablink_api::CreateLink,
 ) -> Result<crablink_api::Link, ApiError> {
+    s.limiters.links.hit(workspace_id, (s.clock)())?;
     validate_target(&req.target, &s.default_host)?;
     if let Some(code) = &req.code {
         validate_custom_code(code)?;
