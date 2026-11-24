@@ -56,6 +56,34 @@ pub type Clock = Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>;
 /// can place visitors; production reads the bundled DB-IP Lite database.
 pub type CountryLookup = Arc<dyn Fn(IpAddr) -> Option<String> + Send + Sync>;
 
+/// Everything `app` takes besides the database: the instance switches and the
+/// injected services. Start from `Settings::new` and override fields with struct
+/// update syntax, so a new field only touches the callers that set it.
+#[derive(Clone)]
+pub struct Settings {
+    /// `CRABLINK_BASE_URL`: the scheme of Short URLs and the Default Domain.
+    pub base_url: String,
+    /// `CRABLINK_TRUST_PROXY`: whether the visitor's IP is the first `X-Forwarded-For` entry.
+    pub trust_proxy: bool,
+    pub codes: CodeGenerator,
+    pub clock: Clock,
+    pub country: CountryLookup,
+}
+
+impl Settings {
+    /// An instance on `base_url` with every switch off, random Generated Codes,
+    /// the real clock and no country lookup.
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Settings {
+            base_url: base_url.into(),
+            trust_proxy: false,
+            codes: Arc::new(random_code),
+            clock: Arc::new(Utc::now),
+            country: Arc::new(|_| None),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct AppState {
     pool: PgPool,
@@ -88,18 +116,21 @@ fn request_host<'a>(headers: &'a HeaderMap, uri: &'a Uri) -> Option<&'a str> {
         .or_else(|| uri.authority().map(|a| a.as_str()))
 }
 
-/// Builds the full HTTP app, first creating the Default Domain from `base_url`
-/// (`CRABLINK_BASE_URL`: its host, and port if any) if missing. Serve it with
+/// Builds the full HTTP app, first creating the Default Domain from
+/// `settings.base_url` (its host, and port if any) if missing. Serve it with
 /// `ConnectInfo<SocketAddr>` so Clicks can find the visitor's country.
 pub async fn app(
     pool: PgPool,
-    codes: CodeGenerator,
-    clock: Clock,
-    country: CountryLookup,
-    trust_proxy: bool,
-    base_url: &str,
+    settings: Settings,
 ) -> Result<Router, Box<dyn std::error::Error + Send + Sync>> {
-    let url = url::Url::parse(base_url)?;
+    let Settings {
+        base_url,
+        trust_proxy,
+        codes,
+        clock,
+        country,
+    } = settings;
+    let url = url::Url::parse(&base_url)?;
     let Some(default_host) = url.host_str() else {
         return Err(format!("{base_url} has no host").into());
     };

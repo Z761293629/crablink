@@ -9,7 +9,7 @@
 #[path = "../../../server/tests/common/pg.rs"]
 mod pg;
 
-use std::sync::{Arc, mpsc};
+use std::sync::mpsc;
 
 use crablink_api::{CreateLink, Link};
 use crablink_cli::tui::{App, Caps};
@@ -51,16 +51,9 @@ pub fn server() -> TestServer {
             crablink_server::create_user(&pool, INSTANCE_ADMIN, PASSWORD, true)
                 .await
                 .unwrap();
-            let app = crablink_server::app(
-                pool,
-                Arc::new(crablink_server::random_code),
-                Arc::new(chrono::Utc::now),
-                Arc::new(|_| None),
-                false,
-                &url,
-            )
-            .await
-            .unwrap();
+            let app = crablink_server::app(pool, crablink_server::Settings::new(&url))
+                .await
+                .unwrap();
             tx.send(url).unwrap();
             axum::serve(listener, app).await.unwrap();
         });

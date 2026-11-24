@@ -87,19 +87,19 @@ async fn serve() {
     };
 
     let pool = open_database(&db_url).await;
-    let app = crablink_server::app(
-        pool.clone(),
-        Arc::new(crablink_server::random_code),
-        Arc::new(chrono::Utc::now),
-        country,
+    let settings = crablink_server::Settings {
         trust_proxy,
-        &base_url,
-    )
-    .await
-    .unwrap_or_else(|e| {
-        eprintln!("crablink-server: cannot set up the Default Domain from CRABLINK_BASE_URL: {e}");
-        exit(1);
-    });
+        country,
+        ..crablink_server::Settings::new(base_url)
+    };
+    let app = crablink_server::app(pool.clone(), settings)
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!(
+                "crablink-server: cannot set up the Default Domain from CRABLINK_BASE_URL: {e}"
+            );
+            exit(1);
+        });
     let listener = tokio::net::TcpListener::bind(&listen)
         .await
         .unwrap_or_else(|e| {
