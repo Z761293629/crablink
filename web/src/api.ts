@@ -116,6 +116,12 @@ export interface WorkspaceClicks {
   top_links: { code: string; domain: string; short_url: string; count: number }[];
 }
 
+/** What the instance offers before sign-in, from `GET /api/instance`. */
+export interface Instance {
+  /** Whether Users can reset a forgotten password by email. */
+  password_reset: boolean;
+}
+
 export interface ManagedUser {
   id: number;
   email: string;
@@ -161,9 +167,12 @@ export interface ImportedRow {
  */
 export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
   const raw = body instanceof Blob;
+  // The UI's language, not the browser's: emails the request sends follow it.
+  const headers: Record<string, string> = { 'accept-language': document.documentElement.lang || 'en' };
+  if (body !== undefined && !raw) headers['content-type'] = 'application/json';
   const res = await fetch(`/api${path}`, {
     method,
-    headers: body === undefined || raw ? {} : { 'content-type': 'application/json' },
+    headers,
     body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
   });
   if (!res.ok) {

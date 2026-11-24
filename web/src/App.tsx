@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AcceptInvite, ChangePassword } from './Account';
-import { api, ApiError, type IdentityProvider, type Membership, type User } from './api';
+import { AcceptInvite, ChangePassword, ForgotPassword, ResetPassword } from './Account';
+import { api, ApiError, type IdentityProvider, type Instance, type Membership, type User } from './api';
 import { Clicks } from './Clicks';
 import { Domains } from './Domains';
 import { InstanceAdmin } from './InstanceAdmin';
@@ -94,6 +94,8 @@ export function App() {
   let board = false;
   if (page === 'invite') main = <AcceptInvite />;
   else if (page === 'report') main = <ReportShortUrl />;
+  else if (page === 'reset-password') main = <ResetPassword />;
+  else if (page === 'forgot-password') main = <ForgotPassword />;
   else if (user === undefined) main = null;
   else if (!user) main = <SignIn onSignedIn={signedInAs} />;
   else if (error !== undefined)
@@ -380,12 +382,15 @@ function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
   const { t } = useTranslation();
   const [error, setError] = useState<unknown>(refusal);
   const [providers, setProviders] = useState<IdentityProvider[]>([]);
+  const [instance, setInstance] = useState<Instance>();
 
   useEffect(() => {
     // Shown once: a reload or the next sign-in starts clean.
     if (location.search) history.replaceState(null, '', location.pathname);
     // Without the list, the password form still works.
     api<IdentityProvider[]>('GET', '/identity-providers').then(setProviders, () => {});
+    // Without it, the form still signs in; it just offers no "forgot password".
+    api<Instance>('GET', '/instance').then(setInstance, () => {});
   }, []);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -437,6 +442,11 @@ function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
           />
         </label>
         {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+        {instance?.password_reset && (
+          <p>
+            <a href="/app/forgot-password">{t('signIn.forgot')}</a>
+          </p>
+        )}
       </div>
       <div className="tear">
         <button type="submit" className="primary">

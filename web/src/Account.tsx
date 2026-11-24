@@ -1,4 +1,5 @@
-// A User's own password: changing it, and choosing it when accepting an invite.
+// A User's own password: changing it, resetting a forgotten one by email, and
+// choosing it when accepting an invite.
 
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,6 +49,86 @@ export function ChangePassword() {
       <div className="tear">
         <button type="submit" className="primary">
           {t('account.change')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** `/app/forgot-password`: asks for a password reset link by email. The answer never says whether a User has the email. */
+export function ForgotPassword() {
+  const { t } = useTranslation();
+  const [result, setResult] = useState<unknown>();
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const email = new FormData(e.currentTarget).get('email');
+    try {
+      await api('POST', '/password-resets', { email });
+      setResult('sent');
+    } catch (err) {
+      setResult(err);
+    }
+  }
+
+  return (
+    <form className="ticket" onSubmit={submit}>
+      <div className="ticket-body">
+        <h1>{t('forgotPassword.title')}</h1>
+        <label className="field">
+          <span className="micro">{t('signIn.email')}</span>
+          <input name="email" type="email" autoComplete="username" required />
+        </label>
+        {result === 'sent' ? (
+          <p role="status">{t('forgotPassword.sent')}</p>
+        ) : (
+          result !== undefined && <p role="alert">{errorMessage(t, result)}</p>
+        )}
+        <p>
+          <a href="/app/">{t('forgotPassword.back')}</a>
+        </p>
+      </div>
+      <div className="tear">
+        <button type="submit" className="primary">
+          {t('forgotPassword.submit')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** `/app/reset-password#<token>`: the emailed link; choosing a new password signs the User in. */
+export function ResetPassword() {
+  const { t } = useTranslation();
+  const [error, setError] = useState<unknown>();
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const ticket = e.currentTarget;
+    const password = new FormData(ticket).get('password');
+    try {
+      await api('POST', '/password-resets/use', { token: location.hash.slice(1), password });
+      await tearOff(ticket);
+      location.assign('/app/');
+    } catch (err) {
+      setError(err);
+      tearHalf(ticket);
+    }
+  }
+
+  return (
+    <form className="ticket" onSubmit={submit}>
+      <div className="ticket-body">
+        <h1>{t('resetPassword.title')}</h1>
+        <label className="field">
+          <span className="micro">{t('account.newPassword')}</span>
+          <input name="password" type="password" autoComplete="new-password" required />
+        </label>
+        {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+      </div>
+      <div className="tear">
+        <button type="submit" className="primary">
+          {t('resetPassword.submit')}
         </button>
       </div>
     </form>

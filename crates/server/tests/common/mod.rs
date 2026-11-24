@@ -150,6 +150,48 @@ async fn try_build(
     Ok(app)
 }
 
+/// App with random Generated Codes that sends email to the returned fake mailer.
+pub async fn app_with_email() -> (TestApp, Mailbox) {
+    let mailbox = Mailbox::default();
+    let mailer = mailbox.mailer();
+    let app = app_with(|s| crablink_server::Settings {
+        mailer: Some(mailer),
+        ..s
+    })
+    .await;
+    (app, mailbox)
+}
+
+/// A fake mailer's outbox: every email the app sent, oldest first.
+#[derive(Clone, Default)]
+pub struct Mailbox(Arc<Mutex<Vec<crablink_server::Email>>>);
+
+impl Mailbox {
+    /// The fake mailer, to put in `Settings::mailer`, that keeps every email here.
+    pub fn mailer(&self) -> crablink_server::Mailer {
+        let sent = self.0.clone();
+        Arc::new(move |email| sent.lock().unwrap().push(email))
+    }
+
+    /// Every email sent to `address`, oldest first.
+    pub fn to(&self, address: &str) -> Vec<crablink_server::Email> {
+        let sent = self.0.lock().unwrap();
+        sent.iter().filter(|e| e.to == address).cloned().collect()
+    }
+
+    /// The link (an absolute URL on `BASE_URL`) in the last email to `address`.
+    pub fn link_to(&self, address: &str) -> String {
+        let email = self.to(address).pop();
+        let email = email.unwrap_or_else(|| panic!("no email to {address}"));
+        let link = email
+            .body
+            .split_whitespace()
+            .find(|w| w.starts_with(BASE_URL));
+        link.unwrap_or_else(|| panic!("no link in {email:?}"))
+            .to_string()
+    }
+}
+
 /// A signed-in User with their personal Workspace and an API Key of it.
 #[derive(Default, Clone)]
 pub struct Account {

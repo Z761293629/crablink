@@ -3,10 +3,71 @@
 //! `CRABLINK_E2E_ADMIN_EMAIL` and `CRABLINK_E2E_ADMIN_PASSWORD`, then runs the real
 //! `crablink-server` binary (built beforehand) on it with this process's environment,
 //! plus the fake Identity Provider of the tests set up as Identity Provider `fake`.
+//! With `CRABLINK_E2E_MAIL_DIR` set, the server sends email to an SMTP sink here that
+//! writes each one, raw, into that directory, for tests to follow the links in them.
 //! On SIGTERM or Ctrl-C it stops the server, then Postgres and its data.
 
+use std::path::PathBuf;
+
 use postgresql_embedded::{PostgreSQL, SettingsBuilder, VersionReq};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::signal::unix::{SignalKind, signal};
+
+/// Accepts every email over SMTP and writes it to `dir` as `<connection>-<n>.eml`.
+async fn smtp_sink(listener: TcpListener, dir: PathBuf) {
+    let mut connection = 0;
+    loop {
+        let Ok((stream, _)) = listener.accept().await else {
+            continue;
+        };
+        connection += 1;
+        let dir = dir.clone();
+        tokio::spawn(async move {
+            if let Err(e) = smtp_session(stream, &dir, connection).await {
+                eprintln!("e2e: SMTP sink: {e}");
+            }
+        });
+    }
+}
+
+/// Just enough SMTP for lettre: every command but `DATA` and `QUIT` gets a plain OK.
+async fn smtp_session(
+    stream: TcpStream,
+    dir: &std::path::Path,
+    connection: u64,
+) -> std::io::Result<()> {
+    let (read, mut write) = stream.into_split();
+    let mut lines = BufReader::new(read).lines();
+    write.write_all(b"220 e2e SMTP sink\r\n").await?;
+    let mut emails = 0;
+    while let Some(line) = lines.next_line().await? {
+        let reply = match line.get(..4).map(str::to_ascii_uppercase).as_deref() {
+            Some("DATA") => {
+                write.write_all(b"354 end with .\r\n").await?;
+                let mut email = String::new();
+                while let Some(line) = lines.next_line().await? {
+                    if line == "." {
+                        break;
+                    }
+                    // Undo dot-stuffing.
+                    email.push_str(line.strip_prefix('.').unwrap_or(&line));
+                    email.push('\n');
+                }
+                emails += 1;
+                std::fs::write(dir.join(format!("{connection}-{emails}.eml")), email)?;
+                "250 kept"
+            }
+            Some("QUIT") => {
+                write.write_all(b"221 bye\r\n").await?;
+                return Ok(());
+            }
+            _ => "250 ok",
+        };
+        write.write_all(format!("{reply}\r\n").as_bytes()).await?;
+    }
+    Ok(())
+}
 
 #[path = "../tests/common/fake_identity_provider.rs"]
 mod fake_identity_provider;
@@ -41,8 +102,21 @@ async fn main() {
         .parent()
         .unwrap()
         .join("crablink-server");
+    let mut command = tokio::process::Command::new(&server);
+    if let Ok(dir) = std::env::var("CRABLINK_E2E_MAIL_DIR") {
+        let dir = PathBuf::from(dir);
+        // Emails of an earlier run would be found by tests looking for the latest.
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(smtp_sink(listener, dir));
+        command
+            .env("CRABLINK_SMTP_URL", format!("smtp://127.0.0.1:{port}"))
+            .env("CRABLINK_SMTP_FROM", "crablink <links@example.com>");
+    }
     let fake = fake_identity_provider::FakeIdentityProvider::start().await;
-    let mut child = tokio::process::Command::new(&server)
+    let mut child = command
         .env("CRABLINK_DATABASE_URL", &db_url)
         .env("CRABLINK_IDENTITY_PROVIDER_FAKE_NAME", "Fake ID")
         .env("CRABLINK_IDENTITY_PROVIDER_FAKE_ISSUER", &fake.issuer)

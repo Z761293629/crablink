@@ -82,6 +82,33 @@ async fn accepting_an_invite_sets_the_password_and_signs_in() {
 }
 
 #[tokio::test]
+async fn with_email_an_invite_is_emailed_in_the_instance_admins_language() {
+    let (app, mailbox) = app_with_email().await;
+    let admin = instance_admin(&app).await;
+    let body = json!({ "email": "ada@example.com" });
+    let headers = [
+        ("cookie", admin.as_str()),
+        ("origin", ORIGIN),
+        ("accept-language", "zh-CN,en;q=0.8"),
+    ];
+    let res = app
+        .request("POST", "/api/admin/invites", Some(body), &headers)
+        .await;
+
+    // The Instance Admin still gets the link, and the person gets it too.
+    assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
+    let link = mailbox.link_to("ada@example.com");
+    assert_eq!(res.json()["url"], link);
+    assert_eq!(
+        mailbox.to("ada@example.com")[0].subject,
+        "邀请你加入 crabl.ink"
+    );
+    let token = link.split_once('#').unwrap().1;
+    let res = accept(&app, token, "ada's password").await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+}
+
+#[tokio::test]
 async fn an_invite_naming_a_workspace_makes_the_new_user_a_member_of_it() {
     let app = app().await;
     let admin = instance_admin(&app).await;

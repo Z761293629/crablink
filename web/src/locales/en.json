@@ -6,7 +6,18 @@
     "password": "Password",
     "submit": "Sign in",
     "with": "Sign in with {{name}}",
-    "or": "or with your password"
+    "or": "or with your password",
+    "forgot": "Forgot password?"
+  },
+  "forgotPassword": {
+    "title": "Forgot password",
+    "submit": "Email me a reset link",
+    "sent": "If a User has this email, a link to reset its password is on its way. It works once, within an hour.",
+    "back": "Back to sign in"
+  },
+  "resetPassword": {
+    "title": "Reset password",
+    "submit": "Set new password"
   },
   "signOut": "Sign out",
   "workspace": {
@@ -287,6 +298,7 @@
     "invite_not_found": "This invite link doesn't exist.",
     "invite_expired": "This invite link has expired.",
     "invite_used": "This invite link has already been used.",
+    "reset_link_expired": "This reset link has expired or was already used. Ask for a new one.",
     "link_not_found": "That Link doesn't exist.",
     "link_expired": "That Link has expired.",
     "invalid_target": "The Target must be a full http:// or https:// URL that isn't on this instance.",

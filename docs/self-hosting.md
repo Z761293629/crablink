@@ -53,10 +53,25 @@ Safe Browsing 用的是 Lookup API v4，Google 只许非商业用途使用；收
 | 环境变量 | 计数对象 | 说明 |
 |---|---|---|
 | `CRABLINK_RATE_LIMIT_SIGN_IN` | 访客 IP | 密码登录的尝试次数，无论成败 |
+| `CRABLINK_RATE_LIMIT_PASSWORD_RESET` | 访客 IP | “忘记密码”请求重置链接的次数，无论有没有这个 User |
 | `CRABLINK_RATE_LIMIT_LINKS` | Workspace | 新建的 Link 数，API、Web UI、CLI 和 CSV 导入（每行算一个）都算 |
 | `CRABLINK_RATE_LIMIT_REPORTS` | 访客 IP | 举报 Short URL 的次数（`/report` 页和 `POST /api/reports`） |
 
 超出限额得到 429（`rate_limited`）和 `Retry-After`；跳转从不限流。访客 IP 按 `CRABLINK_TRUST_PROXY` 取，所以反向代理之后务必设它，否则所有访客共用代理的地址。计数只在进程内存里，重启即清零，也从不写进数据库；跑多个 server 实例时每个实例各算各的。
+
+### 邮件
+
+设了 `CRABLINK_SMTP_URL` 和 `CRABLINK_SMTP_FROM`（两者要一起设，只设一个或格式不对就以退出码 2 退出），实例就通过这台 SMTP 服务器发邮件：
+
+- 新建的邀请会发到对方邮箱，Instance Admin 仍能看到并复制链接；
+- 登录页出现“忘记密码”：User 输入 email 收到重置链接（1 小时内有效、只能用一次），设新密码后其他 session 全部结束。无论有没有这个 User，页面回答都一样。
+
+邮件用触发它的 Web UI 当时的语言（英文或简体中文）。发送在后台进行，失败只记日志。不设则不发任何邮件：邀请链接和 Instance Admin 重置的密码照旧由 Instance Admin 自己转交，登录页没有“忘记密码”。
+
+| 环境变量 | 说明 |
+|---|---|
+| `CRABLINK_SMTP_URL` | SMTP 服务器，含账号密码：`smtps://user:password@smtp.example.com`（465 端口，直接 TLS）或 `smtp://user:password@smtp.example.com:587?tls=required`（STARTTLS）；账号密码里的特殊字符要百分号编码 |
+| `CRABLINK_SMTP_FROM` | 发件人，如 `crablink <links@example.com>` 或 `links@example.com` |
 
 ## 生产部署（HTTPS）
 
@@ -111,7 +126,7 @@ User 可以经 Identity Provider（任何 OpenID Connect 提供方，如 Google�
 
 ## 邀请与管理 User
 
-没有公开注册：Instance Admin 在 Web UI 的实例管理页生成邀请链接，发给对方；对方打开链接、设好密码就注册并登录了。也可以用 API 生成，`workspace`（Workspace slug）可省略，给了就让对方以 Member 加入这个 Workspace：
+没有公开注册：Instance Admin 在 Web UI 的实例管理页生成邀请链接，发给对方（实例配了[邮件](#邮件)时会自动发到对方邮箱）；对方打开链接、设好密码就注册并登录了。也可以用 API 生成，`workspace`（Workspace slug）可省略，给了就让对方以 Member 加入这个 Workspace：
 
 ```bash
 curl -c jar -H 'Origin: https://crabl.ink' -H 'Content-Type: application/json' \
@@ -128,7 +143,7 @@ curl -c jar -H 'Content-Type: application/json' \
   -d '{"token":"<token>","password":"…"}' https://crabl.ink/api/invites/accept
 ```
 
-Instance Admin 用 `/api/admin/users` 列出 User、停用 / 启用、设为 Instance Admin 或重置密码（见 [HTTP API](api.md)）；停用或重置密码会立即结束该 User 的所有 session。
+Instance Admin 用 `/api/admin/users` 列出 User、停用 / 启用、设为 Instance Admin 或重置密码（见 [HTTP API](api.md)）；停用或重置密码会立即结束该 User 的所有 session。实例配了邮件时，User 也可以在登录页用“忘记密码”自己重置。
 
 ## 备份与恢复
 

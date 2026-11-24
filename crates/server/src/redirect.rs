@@ -81,12 +81,7 @@ async fn follow(
 /// What a visitor of a Blocked Link sees instead of its Target, which it never names:
 /// Simplified Chinese when the browser's first language is Chinese, like the web UI.
 fn blocked_page(headers: &HeaderMap) -> Response {
-    // ponytail: first listed language only, ignoring q-values; browsers list by preference.
-    let chinese = headers
-        .get(header::ACCEPT_LANGUAGE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.trim_start().to_ascii_lowercase().starts_with("zh"));
-    let (lang, title, text) = if chinese {
+    let (lang, title, text) = if crate::prefers_chinese(headers) {
         (
             "zh-CN",
             "链接已被封禁",
