@@ -47,6 +47,21 @@ fn fake_country(ip: IpAddr) -> Option<String> {
     Some(country.into())
 }
 
+/// The test instance's settings on `base_url`: random Generated Codes, the fake
+/// country lookup, and `clock`.
+fn settings(
+    base_url: &str,
+    clock: crablink_server::Clock,
+    trust_proxy: bool,
+) -> crablink_server::Settings {
+    crablink_server::Settings {
+        trust_proxy,
+        clock,
+        country: Arc::new(fake_country),
+        ..crablink_server::Settings::new(base_url)
+    }
+}
+
 /// App with random Generated Codes.
 pub async fn app() -> TestApp {
     app_with_codes(&[]).await
@@ -77,16 +92,11 @@ async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
     let now = Arc::new(Mutex::new(Utc::now()));
     let clock = now.clone();
     let clock: crablink_server::Clock = Arc::new(move || *clock.lock().unwrap());
-    let router = crablink_server::app(
-        pool.clone(),
-        generator,
-        clock,
-        Arc::new(fake_country),
-        trust_proxy,
-        BASE_URL,
-    )
-    .await
-    .unwrap();
+    let settings = crablink_server::Settings {
+        codes: generator,
+        ..settings(BASE_URL, clock, trust_proxy)
+    };
+    let router = crablink_server::app(pool.clone(), settings).await.unwrap();
     let mut app = TestApp {
         router,
         pool,
@@ -142,19 +152,12 @@ impl TestApp {
     /// The app restarted with `CRABLINK_BASE_URL` set to `base_url`, on the same
     /// database and clock.
     pub async fn restarted_on(&self, base_url: &str) -> TestApp {
-        let codes: crablink_server::CodeGenerator = Arc::new(crablink_server::random_code);
         let now = self.now.clone();
         let clock: crablink_server::Clock = Arc::new(move || *now.lock().unwrap());
-        let router = crablink_server::app(
-            self.pool.clone(),
-            codes,
-            clock,
-            Arc::new(fake_country),
-            self.trust_proxy,
-            base_url,
-        )
-        .await
-        .unwrap();
+        let settings = settings(base_url, clock, self.trust_proxy);
+        let router = crablink_server::app(self.pool.clone(), settings)
+            .await
+            .unwrap();
         TestApp {
             router,
             pool: self.pool.clone(),
