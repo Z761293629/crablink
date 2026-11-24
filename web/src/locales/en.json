@@ -269,6 +269,7 @@
     "link_not_found": "That Link doesn't exist.",
     "link_expired": "That Link has expired.",
     "invalid_target": "The Target must be a full http:// or https:// URL that isn't on this instance.",
+    "target_unsafe": "Google Safe Browsing lists that Target as phishing or malware.",
     "invalid_code": "A Code must be 3-64 characters of A-Z, a-z, 0-9, _ or -.",
     "code_reserved": "That Code is reserved.",
     "code_taken": "That Code is already taken.",

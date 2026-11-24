@@ -11,6 +11,15 @@ use serde_json::json;
 
 const WRONG: &str = "wrong password";
 
+/// `app_with`, changing the settings in place.
+async fn app_where(change: impl FnOnce(&mut crablink_server::Settings)) -> TestApp {
+    app_with(|mut s| {
+        change(&mut s);
+        s
+    })
+    .await
+}
+
 /// `n` per `window`, e.g. `limit("2/1m")`.
 fn limit(spec: &str) -> Option<crablink_server::Limit> {
     Some(spec.parse().unwrap())
@@ -41,7 +50,7 @@ fn assert_rate_limited(res: &Res, seconds: &str) {
 
 #[tokio::test]
 async fn sign_in_is_limited_per_visitor_ip_until_the_window_passes() {
-    let app = app_with(|s| {
+    let app = app_where(|s| {
         s.trust_proxy = true;
         s.rate_limits.sign_in = limit("2/1m");
     })
@@ -67,7 +76,7 @@ async fn sign_in_is_limited_per_visitor_ip_until_the_window_passes() {
 
 #[tokio::test]
 async fn without_a_trusted_proxy_a_forged_x_forwarded_for_doesnt_dodge_the_limit() {
-    let app = app_with(|s| s.rate_limits.sign_in = limit("1/1h")).await;
+    let app = app_where(|s| s.rate_limits.sign_in = limit("1/1h")).await;
     let res = sign_in_from(&app, WRONG, &[("x-forwarded-for", NZ_IP)]).await;
     assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{}", res.text);
 
@@ -77,7 +86,7 @@ async fn without_a_trusted_proxy_a_forged_x_forwarded_for_doesnt_dodge_the_limit
 
 #[tokio::test]
 async fn link_creation_is_limited_per_workspace_until_the_window_passes() {
-    let app = app_with(|s| s.rate_limits.links = limit("2/1h")).await;
+    let app = app_where(|s| s.rate_limits.links = limit("2/1h")).await;
     app.create(json!({ "target": "https://example.com/1" }))
         .await;
     app.advance(TimeDelta::minutes(30));
@@ -115,7 +124,7 @@ async fn link_creation_is_limited_per_workspace_until_the_window_passes() {
 
 #[tokio::test]
 async fn a_csv_import_counts_each_row_against_the_link_limit() {
-    let app = app_with(|s| s.rate_limits.links = limit("2/1h")).await;
+    let app = app_where(|s| s.rate_limits.links = limit("2/1h")).await;
     let csv = "Code,Target\none,https://example.com/1\ntwo,https://example.com/2\nthree,https://example.com/3\n";
     let req = Request::post(format!("/api/workspaces/{}/links.csv", app.owner.slug))
         .header(header::HOST, HOST)
@@ -142,7 +151,7 @@ async fn a_csv_import_counts_each_row_against_the_link_limit() {
 
 #[tokio::test]
 async fn redirects_are_never_limited() {
-    let app = app_with(|s| {
+    let app = app_where(|s| {
         s.rate_limits.sign_in = limit("1/1h");
         s.rate_limits.links = limit("1/1h");
     })

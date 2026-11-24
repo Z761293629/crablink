@@ -69,21 +69,27 @@ pub async fn app() -> TestApp {
 
 /// App with random Generated Codes that trusts `X-Forwarded-For` from its proxy.
 pub async fn app_behind_proxy() -> TestApp {
-    app_with(|s| s.trust_proxy = true).await
+    build(&[], true, |s| s).await
 }
 
 /// App whose Code generator yields `codes` in order, then random Codes.
 pub async fn app_with_codes(codes: &[&str]) -> TestApp {
-    build(codes, |_| {}).await
+    build(codes, false, |s| s).await
 }
 
-/// App with random Generated Codes whose test settings `configure` changes, e.g.
-/// to turn on a switch.
-pub async fn app_with(configure: impl FnOnce(&mut crablink_server::Settings)) -> TestApp {
-    build(&[], configure).await
+/// App with random Generated Codes whose test settings are then changed by `change`,
+/// e.g. to inject a fake service.
+pub async fn app_with(
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> TestApp {
+    build(&[], false, change).await
 }
 
-async fn build(codes: &[&str], configure: impl FnOnce(&mut crablink_server::Settings)) -> TestApp {
+async fn build(
+    codes: &[&str],
+    trust_proxy: bool,
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> TestApp {
     let pool = crablink_server::connect(&pg::database_url().await)
         .await
         .unwrap();
@@ -98,11 +104,12 @@ async fn build(codes: &[&str], configure: impl FnOnce(&mut crablink_server::Sett
     let now = Arc::new(Mutex::new(Utc::now()));
     let clock = now.clone();
     let clock: crablink_server::Clock = Arc::new(move || *clock.lock().unwrap());
-    let mut settings = crablink_server::Settings {
+    let settings = crablink_server::Settings {
         codes: generator,
-        ..settings(BASE_URL, clock, false)
+        ..settings(BASE_URL, clock, trust_proxy)
     };
-    configure(&mut settings);
+    let settings = change(settings);
+    // `restarted_on` keeps a trust `change` turned on.
     let trust_proxy = settings.trust_proxy;
     let router = crablink_server::app(pool.clone(), settings).await.unwrap();
     let mut app = TestApp {

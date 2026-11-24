@@ -147,6 +147,19 @@ fn validate_target(target: &str, default_host: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// Refuses a Target the injected check calls malicious; a failed check lets it through,
+/// so an outage at Safe Browsing never stops Link creation. Call after the cheap checks.
+async fn check_target(s: &AppState, target: &str) -> Result<(), ApiError> {
+    match (s.target_check)(target.to_owned()).await {
+        Ok(true) => Err(ApiError::TargetUnsafe),
+        Ok(false) => Ok(()),
+        Err(e) => {
+            eprintln!("Safe Browsing check failed, letting the Target through: {e}");
+            Ok(())
+        }
+    }
+}
+
 /// Custom Codes that would shadow the service's own routes (compared case-insensitively).
 const RESERVED_CODES: &[&str] = &["api", "admin", "app", "health"];
 
@@ -196,6 +209,7 @@ async fn insert_link(
     let domain_id = crate::domains::usable(&s.pool, workspace_id, domain)
         .await?
         .ok_or(ApiError::DomainNotApproved)?;
+    check_target(s, &req.target).await?;
     let now = (s.clock)();
     let mut tx = s.pool.begin().await?;
     // Insert and let the unique constraint reject a taken Code; never check first (ADR-0003).
@@ -468,6 +482,9 @@ pub(crate) async fn update_link(
     }
     let tags = req.tags.as_deref().map(tag_names).transpose()?;
     let id = link_id(&s, workspace_id, q.domain.as_deref(), &code).await?;
+    if let Some(target) = &req.target {
+        check_target(&s, target).await?;
+    }
     let mut tx = s.pool.begin().await?;
     // Still live: it may have been deleted since `link_id` found it.
     let updated = sqlx::query(
