@@ -86,9 +86,18 @@ async fn serve() {
         }
     };
 
+    let reserved_codes = std::env::var("CRABLINK_RESERVED_CODES")
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(String::from)
+        .collect();
+
     let pool = open_database(&db_url).await;
     let settings = crablink_server::Settings {
         trust_proxy,
+        reserved_codes,
         country,
         ..crablink_server::Settings::new(base_url)
     };

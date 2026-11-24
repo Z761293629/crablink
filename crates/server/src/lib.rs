@@ -1,6 +1,7 @@
 //! crablink-server as a library: `app` builds the full HTTP app, and is the
 //! seam both `main` and the tests use.
 
+use std::collections::HashSet;
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -65,6 +66,8 @@ pub struct Settings {
     pub base_url: String,
     /// `CRABLINK_TRUST_PROXY`: whether the visitor's IP is the first `X-Forwarded-For` entry.
     pub trust_proxy: bool,
+    /// `CRABLINK_RESERVED_CODES`: the Reserved Codes, compared case-sensitively.
+    pub reserved_codes: HashSet<String>,
     pub codes: CodeGenerator,
     pub clock: Clock,
     pub country: CountryLookup,
@@ -77,6 +80,7 @@ impl Settings {
         Settings {
             base_url: base_url.into(),
             trust_proxy: false,
+            reserved_codes: HashSet::new(),
             codes: Arc::new(random_code),
             clock: Arc::new(Utc::now),
             country: Arc::new(|_| None),
@@ -92,6 +96,8 @@ struct AppState {
     country: CountryLookup,
     /// Whether the visitor's IP is the first `X-Forwarded-For` entry rather than the socket's.
     trust_proxy: bool,
+    /// Codes nobody can take as a Custom Code on the Default Domain.
+    reserved_codes: Arc<HashSet<String>>,
     /// The scheme of Short URLs: `CRABLINK_BASE_URL`'s.
     scheme: Arc<str>,
     /// The Default Domain: its host, and port if any.
@@ -126,6 +132,7 @@ pub async fn app(
     let Settings {
         base_url,
         trust_proxy,
+        reserved_codes,
         codes,
         clock,
         country,
@@ -146,6 +153,7 @@ pub async fn app(
         clock,
         country,
         trust_proxy,
+        reserved_codes: Arc::new(reserved_codes),
         scheme: url.scheme().into(),
         default_domain: default_domain.into(),
         default_host: default_host.into(),

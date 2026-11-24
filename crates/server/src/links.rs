@@ -191,6 +191,12 @@ async fn insert_link(
     }
     let tags = tag_names(&req.tags)?;
     let domain = s.domain_or_default(req.domain.as_deref());
+    if let Some(code) = &req.code
+        && s.reserved_codes.contains(code)
+        && domain.eq_ignore_ascii_case(&s.default_domain)
+    {
+        return Err(ApiError::CodeReserved(code.clone()));
+    }
     let domain_id = crate::domains::usable(&s.pool, workspace_id, domain)
         .await?
         .ok_or(ApiError::DomainNotApproved)?;
@@ -199,13 +205,18 @@ async fn insert_link(
     // Insert and let the unique constraint reject a taken Code; never check first (ADR-0003).
     let mut id = None;
     for _ in 0..MAX_CODE_ATTEMPTS {
+        let code = req.code.clone().unwrap_or_else(|| (s.codes)());
+        // A Generated Code is never a Reserved Code, on any Domain.
+        if req.code.is_none() && s.reserved_codes.contains(&code) {
+            continue;
+        }
         id = sqlx::query_scalar::<_, i64>(
             "INSERT INTO links \
              (code, target, created_at, updated_at, expires_at, domain_id, workspace_id) \
              VALUES ($1, $2, $3, $4, $5, $6, $7) \
              ON CONFLICT (domain_id, code) DO NOTHING RETURNING id",
         )
-        .bind(req.code.clone().unwrap_or_else(|| (s.codes)()))
+        .bind(code)
         .bind(&req.target)
         .bind(now)
         .bind(now)

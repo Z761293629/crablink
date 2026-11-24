@@ -6,7 +6,7 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 |---|---|---|
 | `GET` | `/{code}` | 按 `Host` 找 Domain 再 302 跳转；未知或未批准的 Domain、不存在的 Code 404；已删除或已过期 410 |
 | `GET` | `/internal/domain-allowed?domain=` | 无需凭据，供 Caddy 询问：Default Domain 和已批准的 Domain 200，其余 404 |
-| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain?, tags? }`；`domain` 不可用 400（`domain_not_approved`）；返回的 Link 带 `domain`、`short_url` 和 `tags` |
+| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain?, tags? }`；`domain` 不可用 400（`domain_not_approved`）；`code` 是路由用词（`api`、`admin`、`app`、`health`，不分大小写），或在 Default Domain 上是 Reserved Code（`CRABLINK_RESERVED_CODES`），400（`code_reserved`）；返回的 Link 带 `domain`、`short_url` 和 `tags` |
 | `GET` | `/api/workspaces/{ws}/links?tag=&q=` | 列表（所有 Domain），新的在前，游标分页；`tag` 按 Tag 过滤，`q` 搜 Code 或 Target（不区分大小写） |
 | `GET` | `/api/workspaces/{ws}/links.csv` | 导出 CSV：Code、Domain、Target、Expiry、Tags（逗号分隔）、Click Count |
 | `POST` | `/api/workspaces/{ws}/links.csv` | 导入同格式的 CSV，逐行建 Link（不改已有 Link，空 Code 用 Generated Code，忽略 Click Count）；返回每行的 `short_url` 或 `skipped: { kind, error }` |

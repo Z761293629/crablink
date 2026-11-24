@@ -77,7 +77,25 @@ pub async fn app_with_codes(codes: &[&str]) -> TestApp {
     build(codes, false).await
 }
 
+/// App whose Code generator yields `codes` in order, with `reserved` as its Reserved Codes.
+pub async fn app_with_reserved_codes(codes: &[&str], reserved: &[&str]) -> TestApp {
+    build_with(codes, false, |s| crablink_server::Settings {
+        reserved_codes: reserved.iter().map(|c| c.to_string()).collect(),
+        ..s
+    })
+    .await
+}
+
 async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
+    build_with(codes, trust_proxy, |s| s).await
+}
+
+/// Builds the test app, letting `with` override its settings.
+async fn build_with(
+    codes: &[&str],
+    trust_proxy: bool,
+    with: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> TestApp {
     let pool = crablink_server::connect(&pg::database_url().await)
         .await
         .unwrap();
@@ -92,10 +110,10 @@ async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
     let now = Arc::new(Mutex::new(Utc::now()));
     let clock = now.clone();
     let clock: crablink_server::Clock = Arc::new(move || *clock.lock().unwrap());
-    let settings = crablink_server::Settings {
+    let settings = with(crablink_server::Settings {
         codes: generator,
         ..settings(BASE_URL, clock, trust_proxy)
-    };
+    });
     let router = crablink_server::app(pool.clone(), settings).await.unwrap();
     let mut app = TestApp {
         router,
