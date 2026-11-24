@@ -12,6 +12,10 @@ _Avoid_: Short link, URL, mapping, redirect
 The identifier in the path of a Short URL, e.g. `aZ3k9` in `crabl.ink/aZ3k9`. Either a **Generated Code** (chosen by the service) or a **Custom Code** (chosen by whoever creates the Link). Case-sensitive, unique within its Domain, and never reused on that Domain once taken, even after its Link is deleted.
 _Avoid_: Slug (that names a Workspace), key, alias, hash, short id
 
+**Reserved Code**:
+A Code the instance keeps off-limits as a Custom Code on the Default Domain, such as a well-known brand name, so nobody can take it first.
+_Avoid_: Blocked code, banned word, blacklist
+
 **Target**:
 The URL a Link sends visitors to.
 _Avoid_: Destination, long URL, original URL
@@ -31,6 +35,10 @@ _Avoid_: TTL, deadline
 **Deleted Link**:
 A Link that has been removed, or whose Workspace was deleted, leaving it with no Workspace. It no longer redirects, but still holds its Code on its Domain so that Short URL can never point anywhere else.
 _Avoid_: Removed, archived
+
+**Blocked Link**:
+A Link an Instance Admin has stopped for abuse. Visitors see why instead of being redirected, and its Workspace still sees it but can no longer change it; only an Instance Admin can unblock it. Its Workspace can still delete it, which makes it a Deleted Link.
+_Avoid_: Disabled, suspended, banned
 
 **Click**:
 One redirect of a human visitor through a Link, with when it happened and where it came from (Referrer, country, device, browser). Bots and link-preview fetchers are redirected but never make a Click.
@@ -83,6 +91,10 @@ _Avoid_: Invitation, sign-up link, registration
 **Session**:
 A User's sign-in in a browser, lasting until they sign out or it expires, unless a password change or their being disabled ends it first.
 _Avoid_: Login, cookie, token
+
+**Identity Provider**:
+A service outside the instance that Users can sign in through instead of a password, e.g. Google or a company's Keycloak. An Instance Admin sets up which ones the instance trusts.
+_Avoid_: IdP, SSO provider, OIDC provider, auth provider, connector
 
 **API Key**:
 A secret that lets a program manage one Workspace's Links. Belongs to the Workspace, not to the User who made it.
