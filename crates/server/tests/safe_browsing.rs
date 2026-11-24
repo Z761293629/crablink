@@ -102,3 +102,19 @@ async fn without_a_check_no_target_is_refused() {
     let app = app().await;
     app.create(json!({ "target": MALICIOUS })).await;
 }
+
+#[tokio::test]
+async fn a_blocked_link_says_it_is_blocked_before_its_new_target_is_checked() {
+    let app = app_checking().await;
+    app.create(json!({ "target": "https://example.com/fine", "code": "fine" }))
+        .await;
+    let admin = app.instance_admin().await;
+    let body = json!({ "short_url": "https://crabl.ink/fine" });
+    app.as_user("POST", "/api/admin/blocked-links", Some(body), &admin)
+        .await;
+    let res = app
+        .api("PATCH", "/links/fine", Some(json!({ "target": MALICIOUS })))
+        .await;
+    assert_eq!(res.status, StatusCode::FORBIDDEN, "{}", res.text);
+    assert_eq!(res.json()["kind"], "link_blocked", "{}", res.text);
+}

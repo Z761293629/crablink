@@ -41,6 +41,16 @@ export interface Link {
   click_count: number;
   /** Sorted. */
   tags: string[];
+  /** A Blocked Link: stopped for abuse by an Instance Admin, it can only be deleted. */
+  blocked: boolean;
+}
+
+/** A Blocked Link as an Instance Admin sees it. */
+export interface BlockedLink {
+  short_url: string;
+  target: string;
+  workspace_slug: string;
+  blocked_at: string;
 }
 
 export interface LinkPage {

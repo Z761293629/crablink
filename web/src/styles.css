@@ -1089,7 +1089,8 @@ td.mono {
 }
 
 .stamp.rejected,
-.stamp.expired {
+.stamp.expired,
+.stamp.blocked {
   color: var(--danger);
 }
 
@@ -2652,6 +2653,18 @@ table.gate .dns .micro {
   margin: 3.75rem 0 0;
 }
 
+/* Instance Admin's coupons (block a Link, invite a User), stacked beside the boards. */
+.desk > .coupons {
+  display: grid;
+  gap: 2rem;
+  margin: 3.75rem 0 0;
+}
+
+.coupons > .ticket {
+  max-width: none;
+  margin: 0;
+}
+
 .desk .board-head {
   margin-bottom: 1.5rem;
 }
@@ -2666,7 +2679,8 @@ table.gate .dns .micro {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .desk > .ticket {
+  .desk > .ticket,
+  .desk > .coupons {
     position: static;
     width: 100%;
     max-width: 30rem;

@@ -4,17 +4,17 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/{code}` | 按 `Host` 找 Domain 再 302 跳转；未知或未批准的 Domain、不存在的 Code 404；已删除或已过期 410 |
+| `GET` | `/{code}` | 按 `Host` 找 Domain 再 302 跳转；未知或未批准的 Domain、不存在的 Code 404；已删除或已过期 410；Blocked Link 403，返回按 `Accept-Language` 选语言（英文或简体中文）的封禁说明页，不跳转、不记 Click |
 | `GET` | `/internal/domain-allowed?domain=` | 无需凭据，供 Caddy 询问：Default Domain 和已批准的 Domain 200，其余 404 |
-| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain?, tags? }`；`domain` 不可用 400（`domain_not_approved`）；`code` 是路由用词（`api`、`admin`、`app`、`health`，不分大小写），或在 Default Domain 上是 Reserved Code（`CRABLINK_RESERVED_CODES`），400（`code_reserved`）；设了 Safe Browsing 时 Target 被认定为恶意 400（`target_unsafe`）；返回的 Link 带 `domain`、`short_url` 和 `tags` |
+| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain?, tags? }`；`domain` 不可用 400（`domain_not_approved`）；`code` 是路由用词（`api`、`admin`、`app`、`health`，不分大小写），或在 Default Domain 上是 Reserved Code（`CRABLINK_RESERVED_CODES`），400（`code_reserved`）；设了 Safe Browsing 时 Target 被认定为恶意 400（`target_unsafe`）；返回的 Link 带 `domain`、`short_url`、`tags` 和 `blocked`（是否为 Blocked Link） |
 | `GET` | `/api/workspaces/{ws}/links?tag=&q=` | 列表（所有 Domain），新的在前，游标分页；`tag` 按 Tag 过滤，`q` 搜 Code 或 Target（不区分大小写） |
 | `GET` | `/api/workspaces/{ws}/links.csv` | 导出 CSV：Code、Domain、Target、Expiry、Tags（逗号分隔）、Click Count |
 | `POST` | `/api/workspaces/{ws}/links.csv` | 导入同格式的 CSV，逐行建 Link（不改已有 Link，空 Code 用 Generated Code，忽略 Click Count）；返回每行的 `short_url` 或 `skipped: { kind, error }` |
 | `GET` | `/api/workspaces/{ws}/tags` | Workspace 里有 Link 在用的 Tag |
 | `GET` | `/api/workspaces/{ws}/links/{code}?domain=` | 查看单个 Link |
-| `PATCH` | `/api/workspaces/{ws}/links/{code}?domain=` | 修改 `target` / `expires_at` / `tags`（整体替换）；新 Target 同样过 Safe Browsing 检查（`target_unsafe`） |
-| `DELETE` | `/api/workspaces/{ws}/links/{code}?domain=` | 删除（不可恢复） |
-| `GET` | `/api/workspaces/{ws}/links/{code}/qr?format=svg\|png&domain=` | Short URL 的 QR 码，默认 SVG；已过期 410（`link_expired`） |
+| `PATCH` | `/api/workspaces/{ws}/links/{code}?domain=` | 修改 `target` / `expires_at` / `tags`（整体替换）；Blocked Link 403（`link_blocked`）；新 Target 同样过 Safe Browsing 检查（`target_unsafe`） |
+| `DELETE` | `/api/workspaces/{ws}/links/{code}?domain=` | 删除（不可恢复）；Blocked Link 也可删除，变为 Deleted Link |
+| `GET` | `/api/workspaces/{ws}/links/{code}/qr?format=svg\|png&domain=` | Short URL 的 QR 码，默认 SVG；已过期 410（`link_expired`），Blocked Link 403（`link_blocked`） |
 | `GET` | `/api/workspaces/{ws}/links/{code}/clicks?from=&to=&interval=hour\|day&domain=` | `[from, to)` 内的 Click：`series` 按 UTC 小时 / 天分桶（默认天，空桶也列出，最多 1000 个），`referrers` / `countries` / `devices` / `browsers` 为 `[{ value, count }]`，多的在前，未知为 `null` |
 | `GET` | `/api/workspaces/{ws}/clicks?from=&to=&interval=hour\|day` | 整个 Workspace 的 Click（含已删除 Link 的）按桶统计，以及区间内 Click 最多的 10 个 Link：`top_links: [{ code, domain, short_url, count }]` |
 | `GET` | `/api/workspaces/{ws}/domains` | 列出 Default Domain 和本 Workspace 的自定义 Domain：`[{ domain, status, default }]`，`status` 为 `pending` / `approved` / `rejected` |
@@ -41,6 +41,9 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `GET` | `/api/admin/users` | Instance Admin 列出 User：`[{ id, email, instance_admin, disabled }]` |
 | `PATCH` | `/api/admin/users/{id}` | Instance Admin 改 `disabled` / `instance_admin`；会让实例没有启用的 Instance Admin 时 409（`last_instance_admin`）；停用即结束其 session |
 | `POST` | `/api/admin/users/{id}/password` | Instance Admin 重置为随机密码：`{ password }` 只返回这一次，并结束其 session |
+| `GET` | `/api/admin/blocked-links` | Instance Admin 列出 Blocked Link（不含已删除的），最近封禁的在前：`[{ short_url, target, workspace_slug, blocked_at }]` |
+| `POST` | `/api/admin/blocked-links` | Instance Admin 按 Short URL 封禁 Link：`{ short_url }`（`https://crabl.ink/aZ3k9` 或 `crabl.ink/aZ3k9`），立即停止跳转；没有该 Link 或已删除 404（`link_not_found`） |
+| `DELETE` | `/api/admin/blocked-links?short_url=` | Instance Admin 解除封禁，立即恢复跳转；该 Short URL 没有 Blocked Link 404（`link_not_found`） |
 
 Member 只能管理 Link；成员、API Key 和 Workspace 设置只归 Owner，Member 或 API Key 去做得到 403（`forbidden`）。`/api/admin` 只接受 Instance Admin 的 session，其他凭据 403。最后一个 Owner 不能退出、被移除或降级，得到 409（`last_owner`）。
 

@@ -99,7 +99,10 @@
       "device": "Top device",
       "empty": "No Clicks yet. Share the Short URL or put up its QR code, and Clicks show up here."
     },
-    "routeTo": "To"
+    "routeTo": "To",
+    "blocked": "Blocked",
+    "qrBlocked": "A Blocked Link has no QR code.",
+    "blockedHint": "An Instance Admin blocked this Link for abuse: visitors see why instead of being redirected. It can only be deleted."
   },
   "nav": {
     "links": "Links",
@@ -208,6 +211,15 @@
       "confirmRevoke": "Revoke {{email}}'s Instance Admin rights?",
       "confirmRevokeAction": "Revoke Instance Admin",
       "you": "you"
+    },
+    "blocked": {
+      "title": "Blocked Links",
+      "empty": "No Blocked Links.",
+      "unblock": "Unblock",
+      "blockTitle": "Block a Link",
+      "block": "Block Link",
+      "confirmBlock": "Block {{url}}? It stops redirecting at once, and its Workspace can no longer change it.",
+      "confirmBlockAction": "Block Link"
     }
   },
   "members": {
@@ -284,7 +296,8 @@
     "domain_not_found": "That Domain doesn’t exist.",
     "domain_not_approved": "Use the Default Domain or one of this Workspace’s approved Domains.",
     "rate_limited": "Too many requests. Try again later.",
-    "rate_limited_for": "Too many requests. Try again in {{wait}}."
+    "rate_limited_for": "Too many requests. Try again in {{wait}}.",
+    "link_blocked": "That Link was blocked for abuse by an Instance Admin: it can only be deleted."
   },
   "cancel": "Cancel",
   "retry": "Try again",

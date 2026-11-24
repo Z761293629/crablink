@@ -449,14 +449,16 @@ impl App {
                 self.redetect = true;
             }
             (Mode::List, KeyCode::Char('?')) => self.mode = Mode::Help,
-            (Mode::List, KeyCode::Char('e')) => {
-                if let Some(form) = self.selected().map(Form::edit) {
-                    self.mode = Mode::Form(form);
-                }
-            }
+            (Mode::List, KeyCode::Char('e')) => match self.selected() {
+                Some(l) if l.blocked => self.error = Some(crate::blocked_message(l)),
+                Some(l) => self.mode = Mode::Form(Form::edit(l)),
+                None => {}
+            },
             (Mode::List, KeyCode::Char('d')) if has_selection => self.mode = Mode::Delete,
-            // An expired Link's Short URL no longer redirects: its QR code would only mislead.
+            // A Blocked or expired Link's Short URL no longer redirects: its QR code would
+            // only mislead.
             (Mode::List, KeyCode::Char('v')) => match self.selected() {
+                Some(l) if l.blocked => self.error = Some(crate::blocked_message(l)),
                 Some(l) if l.is_expired(Utc::now()) => {
                     self.error = Some(format!("Link {} has expired: no QR code", l.code));
                 }

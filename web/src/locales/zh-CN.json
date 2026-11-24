@@ -99,7 +99,10 @@
       "device": "主要设备",
       "empty": "还没有点击。分享短网址或贴出二维码后，点击会显示在这里。"
     },
-    "routeTo": "前往"
+    "routeTo": "前往",
+    "blocked": "已封禁",
+    "qrBlocked": "已封禁的链接没有二维码。",
+    "blockedHint": "实例管理员因滥用封禁了此链接：访问者会看到封禁说明，不会被跳转。它只能被删除。"
   },
   "nav": {
     "links": "链接",
@@ -208,6 +211,15 @@
       "confirmRevoke": "取消 {{email}} 的实例管理员权限？",
       "confirmRevokeAction": "取消实例管理员",
       "you": "你"
+    },
+    "blocked": {
+      "title": "已封禁的链接",
+      "empty": "没有已封禁的链接。",
+      "unblock": "解除封禁",
+      "blockTitle": "封禁链接",
+      "block": "封禁链接",
+      "confirmBlock": "封禁 {{url}}？它会立即停止跳转，其工作区也无法再修改它。",
+      "confirmBlockAction": "封禁链接"
     }
   },
   "members": {
@@ -284,7 +296,8 @@
     "domain_not_found": "该域名不存在。",
     "domain_not_approved": "请使用默认域名或本工作区已批准的域名。",
     "rate_limited": "请求太多，请稍后再试。",
-    "rate_limited_for": "请求太多，请{{wait}}后再试。"
+    "rate_limited_for": "请求太多，请{{wait}}后再试。",
+    "link_blocked": "该链接已被实例管理员因滥用封禁，只能删除。"
   },
   "cancel": "取消",
   "retry": "重试",
