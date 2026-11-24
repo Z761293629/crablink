@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, type BlockedLink, type DomainStatus, type ManagedDomain, type ManagedUser } from './api';
+import { api, type BlockedLink, type DomainStatus, type ManagedDomain, type ManagedUser, type Report } from './api';
 import { errorMessage } from './i18n';
 import { useConfirm } from './ui';
 
@@ -9,24 +9,27 @@ const fetchAll = () =>
     api<ManagedUser[]>('GET', '/admin/users'),
     api<ManagedDomain[]>('GET', '/admin/domains'),
     api<BlockedLink[]>('GET', '/admin/blocked-links'),
+    api<Report[]>('GET', '/admin/reports'),
   ]);
 
-/** Instance administration: Users, invites, custom Domains and Blocked Links. The API refuses anyone but an Instance Admin. */
+/** Instance administration: reports, Users, invites, custom Domains and Blocked Links. The API refuses anyone but an Instance Admin. */
 export function InstanceAdmin({ me }: { /** The signed-in User's email. */ me: string }) {
   const { t } = useTranslation();
   const [dialog, ask] = useConfirm();
   const [users, setUsers] = useState<ManagedUser[]>();
   const [domains, setDomains] = useState<ManagedDomain[]>();
   const [blocked, setBlocked] = useState<BlockedLink[]>();
+  const [reports, setReports] = useState<Report[]>();
   // A just reset password, shown once next to its User.
   const [reset, setReset] = useState<{ id: number; password: string }>();
   const [invite, setInvite] = useState<string>();
   const [error, setError] = useState<unknown>();
 
-  function show([u, d, b]: Awaited<ReturnType<typeof fetchAll>>) {
+  function show([u, d, b, r]: Awaited<ReturnType<typeof fetchAll>>) {
     setUsers(u);
     setDomains(d);
     setBlocked(b);
+    setReports(r);
   }
 
   const load = async () => show(await fetchAll());
@@ -53,7 +56,7 @@ export function InstanceAdmin({ me }: { /** The signed-in User's email. */ me: s
     act(() => api('PATCH', `/admin/domains/${encodeURIComponent(domain)}`, { status }));
 
   // Taking something away is asked first: a User signed out, rights revoked, an approved Domain's Short URLs dead.
-  const disable = async (u: ManagedUser) =>
+  const disable = async (u: { id: number; email: string }) =>
     (await ask(t('admin.users.confirmDisable', { email: u.email }), t('admin.users.confirmDisableAction'))) &&
     updateUser(u.id, { disabled: true });
   const revoke = async (u: ManagedUser) =>
@@ -67,16 +70,22 @@ export function InstanceAdmin({ me }: { /** The signed-in User's email. */ me: s
   const unblock = (b: BlockedLink) =>
     act(() => api('DELETE', `/admin/blocked-links?short_url=${encodeURIComponent(b.short_url)}`));
 
-  async function block(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const shortUrl = (new FormData(form).get('short_url') as string).trim();
+  // Blocking also closes the Link's open reports.
+  async function block(shortUrl: string, then?: () => void) {
     if (!(await ask(t('admin.blocked.confirmBlock', { url: shortUrl }), t('admin.blocked.confirmBlockAction')))) return;
     await act(async () => {
       await api('POST', '/admin/blocked-links', { short_url: shortUrl });
-      form.reset();
+      then?.();
     });
   }
+
+  function blockFromForm(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    return block((new FormData(form).get('short_url') as string).trim(), () => form.reset());
+  }
+
+  const dismiss = (r: Report) => act(() => api('DELETE', `/admin/reports/${r.id}`));
 
   async function createInvite(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -98,6 +107,69 @@ export function InstanceAdmin({ me }: { /** The signed-in User's email. */ me: s
           <h1>{t('admin.title')}</h1>
         </div>
         {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+
+        <section className="board-sec" aria-labelledby="reports-title">
+          <div className="board-title">
+            <h2 id="reports-title">{t('admin.reports.title')}</h2>
+            <span className="board-domain">{reports?.length}</span>
+          </div>
+          {reports?.length === 0 ? (
+            <p className="empty">{t('admin.reports.empty')}</p>
+          ) : (
+            <div className="table">
+              <table className="gate" aria-labelledby="reports-title">
+                <thead>
+                  <tr>
+                    <th>{t('links.shortUrl')}</th>
+                    <th>{t('links.target')}</th>
+                    <th>{t('admin.reports.reason')}</th>
+                    <th>{t('admin.domains.workspace')}</th>
+                    <th>
+                      <span className="vh">{t('links.actions')}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reports?.map((r) => (
+                    <tr key={r.id}>
+                      <td className="mono primary">{r.short_url.replace(/^https?:\/\//, '')}</td>
+                      <td className="mono">{r.target}</td>
+                      <td className="reason">{r.reason}</td>
+                      <td>
+                        <span className="mono">{r.workspace_slug}</span>
+                        <ul className="report-users" aria-label={t('admin.reports.users')}>
+                          {r.workspace_users.map((u) => (
+                            <li key={u.id}>
+                              <span className="mono">{u.email}</span>{' '}
+                              <span className="micro">{t(`roles.${u.role}`)}</span>{' '}
+                              {u.disabled ? (
+                                <span className="state rejected">{t('admin.users.disabled')}</span>
+                              ) : (
+                                u.email !== me && (
+                                  <button className="small" onClick={() => disable(u)}>
+                                    {t('admin.users.disable')}
+                                  </button>
+                                )
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                      <td className="actions">
+                        <button className="small danger" onClick={() => block(r.short_url)}>
+                          {t('admin.blocked.block')}
+                        </button>
+                        <button className="small" onClick={() => dismiss(r)}>
+                          {t('admin.reports.dismiss')}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
         <section className="board-sec" aria-labelledby="users-title">
           <div className="board-title">
@@ -259,7 +331,7 @@ export function InstanceAdmin({ me }: { /** The signed-in User's email. */ me: s
       </div>
 
       <div className="coupons">
-        <form className="pass ticket" aria-labelledby="block-title" onSubmit={block}>
+        <form className="pass ticket" aria-labelledby="block-title" onSubmit={blockFromForm}>
           <div className="ticket-body">
             <h2 id="block-title">{t('admin.blocked.blockTitle')}</h2>
             <label className="field">

@@ -350,6 +350,40 @@ pub struct BlockedLink {
     pub blocked_at: DateTime<Utc>,
 }
 
+/// Body of `POST /api/reports`: a visitor reporting a Short URL, e.g. for phishing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateReport {
+    /// e.g. `https://crabl.ink/aZ3k9` or `crabl.ink/aZ3k9`.
+    pub short_url: String,
+    pub reason: String,
+}
+
+/// An open report as an Instance Admin sees it, from `GET /api/admin/reports`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Report {
+    /// Addresses the report in `DELETE /api/admin/reports/{id}`, which dismisses it.
+    pub id: i64,
+    pub short_url: String,
+    pub target: String,
+    /// The Workspace slug of the Link's Workspace.
+    pub workspace_slug: String,
+    pub reason: String,
+    pub reported_at: DateTime<Utc>,
+    /// The Owners and Members of the Link's Workspace, by email: Links don't record
+    /// who created them, so these are whom an Instance Admin may disable.
+    pub workspace_users: Vec<ReportedUser>,
+}
+
+/// An Owner or Member of a reported Link's Workspace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportedUser {
+    /// Addresses the User in `/api/admin/users/{id}`.
+    pub id: i64,
+    pub email: String,
+    pub role: Role,
+    pub disabled: bool,
+}
+
 /// What `Debug` shows instead of a password, token or secret, so none reaches a log.
 const REDACTED: &str = "<redacted>";
 

@@ -54,6 +54,7 @@ Safe Browsing 用的是 Lookup API v4，Google 只许非商业用途使用；收
 |---|---|---|
 | `CRABLINK_RATE_LIMIT_SIGN_IN` | 访客 IP | 密码登录的尝试次数，无论成败 |
 | `CRABLINK_RATE_LIMIT_LINKS` | Workspace | 新建的 Link 数，API、Web UI、CLI 和 CSV 导入（每行算一个）都算 |
+| `CRABLINK_RATE_LIMIT_REPORTS` | 访客 IP | 举报 Short URL 的次数（`/report` 页和 `POST /api/reports`） |
 
 超出限额得到 429（`rate_limited`）和 `Retry-After`；跳转从不限流。访客 IP 按 `CRABLINK_TRUST_PROXY` 取，所以反向代理之后务必设它，否则所有访客共用代理的地址。计数只在进程内存里，重启即清零，也从不写进数据库；跑多个 server 实例时每个实例各算各的。
 

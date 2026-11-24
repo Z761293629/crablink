@@ -224,6 +224,13 @@
       "block": "Block Link",
       "confirmBlock": "Block {{url}}? It stops redirecting at once, and its Workspace can no longer change it.",
       "confirmBlockAction": "Block Link"
+    },
+    "reports": {
+      "title": "Reports",
+      "empty": "No open reports.",
+      "reason": "Reason",
+      "users": "Owners and Members",
+      "dismiss": "Dismiss"
     }
   },
   "members": {
@@ -309,5 +316,13 @@
   },
   "cancel": "Cancel",
   "retry": "Try again",
-  "close": "Close"
+  "close": "Close",
+  "report": {
+    "title": "Report a Short URL",
+    "intro": "Seen a Short URL used for phishing, malware or abuse? Tell an Instance Admin.",
+    "reason": "Reason",
+    "reasonHint": "What is wrong with it?",
+    "submit": "Send report",
+    "sent": "Thank you. An Instance Admin will look at it."
+  }
 }

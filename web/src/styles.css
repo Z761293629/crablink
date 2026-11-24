@@ -298,7 +298,8 @@ button.small,
 }
 
 input,
-select {
+select,
+textarea {
   height: 2.5rem;
   min-width: 0;
   padding: 0 0.75rem;
@@ -309,19 +310,22 @@ select {
   border-radius: var(--radius);
 }
 
-input::placeholder {
+input::placeholder,
+textarea::placeholder {
   color: var(--muted);
   opacity: 1;
 }
 
 input:hover,
-select:hover {
+select:hover,
+textarea:hover {
   border-color: var(--text);
 }
 
 /* The ring lies over the field's own border: one line, no change to the box, nothing past the column. */
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: -1px;
 }
@@ -340,6 +344,13 @@ input[type='datetime-local'],
 input.mono {
   font-family: var(--font-mono);
   font-size: 0.875rem;
+}
+
+textarea {
+  height: 6rem;
+  padding: 0.625rem 0.75rem;
+  line-height: 1.4;
+  resize: vertical;
 }
 
 input[readonly] {
@@ -2412,6 +2423,29 @@ table.gate td.primary {
 
 table.gate td.actions {
   white-space: nowrap;
+}
+
+/* A report's reason, in the visitor's words: wraps, never stretches the board. */
+table.gate td.reason {
+  min-width: 12rem;
+  overflow-wrap: anywhere;
+}
+
+/* A reported Link's Owners and Members, each with a way to disable them. */
+.report-users {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-users li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  overflow-wrap: anywhere;
 }
 
 /* A status in the board's mono column, with a lamp in its colour: Default Domain, Pending, Approved,
