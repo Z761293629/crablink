@@ -7,7 +7,9 @@
     "submit": "登录",
     "with": "通过 {{name}} 登录",
     "or": "或使用密码登录",
-    "forgot": "忘记密码？"
+    "forgot": "忘记密码？",
+    "noUser": "第一次来？",
+    "signUp": "注册"
   },
   "forgotPassword": {
     "title": "忘记密码",
@@ -18,6 +20,20 @@
   "resetPassword": {
     "title": "重置密码",
     "submit": "设置新密码"
+  },
+  "verifyEmail": {
+    "title": "验证邮箱",
+    "submit": "验证邮箱",
+    "banner": "验证邮箱后才能创建 Link 和 API Key：请打开我们发到 {{email}} 的链接。",
+    "resend": "重新发送验证邮件",
+    "resent": "已发送。链接只能使用一次，24 小时内有效。"
+  },
+  "signUp": {
+    "title": "注册",
+    "submit": "注册",
+    "agreeBoth": "注册即表示你同意<terms>服务条款</terms>和<privacy>隐私政策</privacy>。",
+    "agreeTerms": "注册即表示你同意<terms>服务条款</terms>。",
+    "agreePrivacy": "注册即表示你同意<privacy>隐私政策</privacy>。"
   },
   "signOut": "退出登录",
   "workspace": {
@@ -330,7 +346,9 @@
     "identity_provider_email_unverified": "你的登录服务尚未验证你的邮箱，因此无法在此登录。",
     "invite_needed": "这里还没有使用你邮箱的用户：请向实例管理员索取邀请。",
     "user_disabled": "你的用户已被停用。",
-    "fresh_sign_in_needed": "请退出后通过你的登录服务重新登录，并在 5 分钟内删除账户。"
+    "fresh_sign_in_needed": "请退出后通过你的登录服务重新登录，并在 5 分钟内删除账户。",
+    "verification_link_expired": "此验证链接已过期或已被使用，请重新获取。",
+    "email_not_verified": "请先验证邮箱：打开我们发给你的邮件里的链接。"
   },
   "cancel": "取消",
   "retry": "重试",

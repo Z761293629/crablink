@@ -43,6 +43,10 @@ pub enum ApiError {
     InviteUsed,
     #[error("password reset link has expired or was used: ask for a new one")]
     ResetLinkExpired,
+    #[error("email verification link has expired or was used: ask for a new one")]
+    VerificationLinkExpired,
+    #[error("verify your email first: follow the link emailed to you, or ask for a new one")]
+    EmailNotVerified,
     /// A Code with no live Link (missing or deleted).
     #[error("link not found")]
     LinkNotFound,
@@ -120,6 +124,8 @@ impl ApiError {
             Self::InviteExpired => ErrorKind::InviteExpired,
             Self::InviteUsed => ErrorKind::InviteUsed,
             Self::ResetLinkExpired => ErrorKind::ResetLinkExpired,
+            Self::VerificationLinkExpired => ErrorKind::VerificationLinkExpired,
+            Self::EmailNotVerified => ErrorKind::EmailNotVerified,
             Self::LinkNotFound => ErrorKind::LinkNotFound,
             Self::LinkExpired => ErrorKind::LinkExpired,
             Self::LinkBlocked => ErrorKind::LinkBlocked,
@@ -161,15 +167,18 @@ impl ApiError {
             | Self::IdentityProviderEmailUnverified
             | Self::InviteNeeded
             | Self::UserDisabled
-            | Self::FreshSignInNeeded => StatusCode::FORBIDDEN,
+            | Self::FreshSignInNeeded
+            | Self::EmailNotVerified => StatusCode::FORBIDDEN,
             Self::NotFound
             | Self::LinkNotFound
             | Self::InviteNotFound
             | Self::UserNotFound
             | Self::DomainNotFound => StatusCode::NOT_FOUND,
-            Self::LinkExpired | Self::InviteExpired | Self::InviteUsed | Self::ResetLinkExpired => {
-                StatusCode::GONE
-            }
+            Self::LinkExpired
+            | Self::InviteExpired
+            | Self::InviteUsed
+            | Self::ResetLinkExpired
+            | Self::VerificationLinkExpired => StatusCode::GONE,
             Self::BadRequest(_)
             | Self::InvalidTarget(_)
             | Self::TargetUnsafe

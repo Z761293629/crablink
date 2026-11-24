@@ -29,6 +29,7 @@ mod rate_limit;
 mod redirect;
 mod reports;
 mod safe_browsing;
+mod sign_up;
 mod users;
 mod web;
 mod workspaces;
@@ -102,6 +103,13 @@ pub struct Settings {
     /// `CRABLINK_SMTP_URL`: how the instance sends email, if it does. Without it,
     /// Invites aren't emailed and Users can't reset a forgotten password themselves.
     pub mailer: Option<Mailer>,
+    /// `CRABLINK_OPEN_SIGN_UP`: whether anyone can sign up with an email and a
+    /// password, and any Identity Provider creates Users. Needs `mailer`.
+    pub open_sign_up: bool,
+    /// `CRABLINK_TERMS_URL`: the terms of service the sign-up form links.
+    pub terms_url: Option<String>,
+    /// `CRABLINK_PRIVACY_URL`: the privacy policy the sign-up form links.
+    pub privacy_url: Option<String>,
 }
 
 impl Settings {
@@ -119,6 +127,9 @@ impl Settings {
             country: Arc::new(|_| None),
             target_check: Arc::new(|_| Box::pin(async { Ok(false) })),
             mailer: None,
+            open_sign_up: false,
+            terms_url: None,
+            privacy_url: None,
         }
     }
 }
@@ -131,6 +142,8 @@ struct AppState {
     country: CountryLookup,
     target_check: TargetCheck,
     mailer: Option<Mailer>,
+    /// What `GET /api/instance` answers; `sign_up` is whether sign-up is open.
+    instance: Arc<crablink_api::Instance>,
     /// Whether the visitor's IP is the first `X-Forwarded-For` entry rather than the socket's.
     trust_proxy: bool,
     limiters: Arc<rate_limit::Limiters>,
@@ -174,10 +187,8 @@ fn prefers_chinese(headers: &HeaderMap) -> bool {
 }
 
 /// `GET /api/instance`: what the instance offers before sign-in.
-async fn instance(State(s): State<AppState>) -> Json<crablink_api::Instance> {
-    Json(crablink_api::Instance {
-        password_reset: s.mailer.is_some(),
-    })
+async fn instance_info(State(s): State<AppState>) -> Json<crablink_api::Instance> {
+    Json((*s.instance).clone())
 }
 
 /// Builds the full HTTP app, first creating the Default Domain from
@@ -196,7 +207,23 @@ pub async fn app(pool: PgPool, settings: Settings) -> Result<Router, String> {
         country,
         target_check,
         mailer,
+        open_sign_up,
+        terms_url,
+        privacy_url,
     } = settings;
+    if open_sign_up && mailer.is_none() {
+        return Err(
+            "CRABLINK_OPEN_SIGN_UP needs email to verify Users' emails: \
+                    set CRABLINK_SMTP_URL and CRABLINK_SMTP_FROM"
+                .into(),
+        );
+    }
+    let instance = Arc::new(crablink_api::Instance {
+        password_reset: mailer.is_some(),
+        sign_up: open_sign_up,
+        terms_url,
+        privacy_url,
+    });
     let domain_problem = |e: &dyn std::fmt::Display| {
         format!("cannot set up the Default Domain from {base_url}: {e}")
     };
@@ -231,6 +258,7 @@ pub async fn app(pool: PgPool, settings: Settings) -> Result<Router, String> {
         country,
         target_check,
         mailer,
+        instance,
         trust_proxy,
         limiters: Arc::new(rate_limit::Limiters::new(rate_limits)),
         reserved_codes: Arc::new(reserved_codes),
@@ -289,9 +317,12 @@ pub async fn app(pool: PgPool, settings: Settings) -> Result<Router, String> {
         .route("/identity-providers", get(identity_providers::list))
         .route("/me", get(me).delete(delete_account))
         .route("/me/password", post(change_password))
-        .route("/instance", get(instance))
+        .route("/instance", get(instance_info))
         .route("/password-resets", post(password_reset::forgot_password))
         .route("/password-resets/use", post(password_reset::reset_password))
+        .route("/sign-ups", post(sign_up::sign_up))
+        .route("/email-verifications", post(sign_up::resend))
+        .route("/email-verifications/use", post(sign_up::verify))
         .fallback(api_fallback);
     Ok(Router::new()
         .nest("/api", api)

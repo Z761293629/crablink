@@ -24,6 +24,30 @@ fn rate_limit(name: &str) -> Option<crablink_server::Limit> {
     }))
 }
 
+/// Env var `name` as `true` or `false`; `false` when unset.
+fn flag(name: &str) -> bool {
+    match std::env::var(name).as_deref() {
+        Err(_) | Ok("false") => false,
+        Ok("true") => true,
+        Ok(_) => {
+            eprintln!("crablink-server: {name} must be true or false");
+            exit(2);
+        }
+    }
+}
+
+/// An `http(s)` URL from env var `name`; `None` when unset or empty.
+fn page_url(name: &str) -> Option<String> {
+    let value = std::env::var(name).ok().filter(|v| !v.trim().is_empty())?;
+    match url::Url::parse(value.trim()) {
+        Ok(url) if ["http", "https"].contains(&url.scheme()) => Some(url.into()),
+        _ => {
+            eprintln!("crablink-server: {name} must be an http(s) URL");
+            exit(2);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -99,14 +123,7 @@ async fn serve() {
         );
     }
 
-    let trust_proxy = match std::env::var("CRABLINK_TRUST_PROXY").as_deref() {
-        Err(_) | Ok("false") => false,
-        Ok("true") => true,
-        Ok(_) => {
-            eprintln!("crablink-server: CRABLINK_TRUST_PROXY must be true or false");
-            exit(2);
-        }
-    };
+    let trust_proxy = flag("CRABLINK_TRUST_PROXY");
     let country: crablink_server::CountryLookup = match std::env::var("CRABLINK_COUNTRY_DB") {
         Ok(path) => crablink_server::dbip_country_lookup(&path).unwrap_or_else(|e| {
             eprintln!("crablink-server: cannot read the country database {path}: {e}");
@@ -120,6 +137,7 @@ async fn serve() {
 
     let rate_limits = crablink_server::RateLimits {
         sign_in: rate_limit("CRABLINK_RATE_LIMIT_SIGN_IN"),
+        sign_up: rate_limit("CRABLINK_RATE_LIMIT_SIGN_UP"),
         password_reset: rate_limit("CRABLINK_RATE_LIMIT_PASSWORD_RESET"),
         links: rate_limit("CRABLINK_RATE_LIMIT_LINKS"),
         reports: rate_limit("CRABLINK_RATE_LIMIT_REPORTS"),
@@ -147,6 +165,9 @@ async fn serve() {
         reserved_codes,
         identity_providers,
         country,
+        open_sign_up: flag("CRABLINK_OPEN_SIGN_UP"),
+        terms_url: page_url("CRABLINK_TERMS_URL"),
+        privacy_url: page_url("CRABLINK_PRIVACY_URL"),
         ..crablink_server::Settings::new(base_url)
     };
     match std::env::var("CRABLINK_SAFE_BROWSING_KEY") {

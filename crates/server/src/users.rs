@@ -45,6 +45,7 @@ pub async fn create_user(
         email,
         Some(&hash),
         instance_admin,
+        true,
     )
     .await
     .map(drop)
@@ -52,20 +53,24 @@ pub async fn create_user(
 
 /// Inserts a User whose password hashes to `password_hash` (from `hash_password`,
 /// done beforehand so no lock is held meanwhile), or with no password, who signs
-/// in only through Identity Providers; returns their id.
+/// in only through Identity Providers; returns their id. Only open sign-up creates
+/// a User whose email isn't `email_verified`.
 pub(crate) async fn insert_user(
     conn: &mut PgConnection,
     email: &str,
     password_hash: Option<&str>,
     instance_admin: bool,
+    email_verified: bool,
 ) -> Result<i64, ApiError> {
     let email = valid_email(email)?;
     let res = sqlx::query_scalar(
-        "INSERT INTO users (email, password_hash, instance_admin) VALUES ($1, $2, $3) RETURNING id",
+        "INSERT INTO users (email, password_hash, instance_admin, email_verified_at) \
+         VALUES ($1, $2, $3, CASE WHEN $4 THEN now() END) RETURNING id",
     )
     .bind(email)
     .bind(password_hash)
     .bind(instance_admin)
+    .bind(email_verified)
     .fetch_one(conn)
     .await;
     match res {
@@ -145,7 +150,7 @@ pub(crate) async fn set_password(
 }
 
 /// Ends every session of User `id` but `keep` (a session's token hash).
-async fn end_sessions(
+pub(crate) async fn end_sessions(
     conn: &mut PgConnection,
     id: i64,
     keep: Option<&[u8]>,
@@ -228,6 +233,7 @@ struct SignInRow {
     email: String,
     instance_admin: bool,
     password_hash: Option<String>,
+    email_verified: bool,
 }
 
 /// `POST /api/session`: signs in, setting the session cookie; returns the User.
@@ -242,7 +248,8 @@ pub(crate) async fn sign_in(
     s.limiters.sign_in.hit(ip, (s.clock)())?;
     let Json(req) = body?;
     let row: Option<SignInRow> = sqlx::query_as(
-        "SELECT id, email, instance_admin, password_hash FROM users \
+        "SELECT id, email, instance_admin, password_hash, \
+         email_verified_at IS NOT NULL AS email_verified FROM users \
          WHERE lower(email) = lower($1) AND NOT disabled",
     )
     .bind(req.email.trim())
@@ -258,6 +265,7 @@ pub(crate) async fn sign_in(
         email: row.email,
         instance_admin: row.instance_admin,
         has_password: true,
+        email_verified: row.email_verified,
     };
     let res = start_session(&s, &mut tx, row.id, user).await?;
     tx.commit().await?;
@@ -465,8 +473,9 @@ impl FromRequestParts<AppState> for Session {
             return Err(ApiError::OriginMismatch);
         }
         let token_hash = token_hash(token);
-        let (user_id, email, instance_admin, has_password) = sqlx::query_as(
-            "SELECT u.id, u.email, u.instance_admin, u.password_hash IS NOT NULL FROM sessions s \
+        let (user_id, email, instance_admin, has_password, email_verified) = sqlx::query_as(
+            "SELECT u.id, u.email, u.instance_admin, u.password_hash IS NOT NULL, \
+             u.email_verified_at IS NOT NULL FROM sessions s \
              JOIN users u ON u.id = s.user_id \
              WHERE s.token_hash = $1 AND s.expires_at > $2 AND NOT u.disabled",
         )
@@ -482,6 +491,7 @@ impl FromRequestParts<AppState> for Session {
                 email,
                 instance_admin,
                 has_password,
+                email_verified,
             },
         })
     }

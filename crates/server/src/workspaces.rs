@@ -60,6 +60,17 @@ pub(crate) struct OwnerAccess {
 }
 
 impl Caller {
+    /// Refuses a User who signed up and hasn't verified their email: they can't
+    /// create Links or API Keys yet.
+    pub(crate) fn email_verified(&self) -> Result<(), ApiError> {
+        match self {
+            Caller::User(session) if !session.user.email_verified => {
+                Err(ApiError::EmailNotVerified)
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// Workspace `slug`, if this is a member's session or one of its API Keys. Any
     /// other Workspace, existing or not, is 403.
     pub(crate) async fn workspace(&self, s: &AppState, slug: &str) -> Result<Access, ApiError> {

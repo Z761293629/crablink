@@ -7,7 +7,9 @@
     "submit": "Sign in",
     "with": "Sign in with {{name}}",
     "or": "or with your password",
-    "forgot": "Forgot password?"
+    "forgot": "Forgot password?",
+    "noUser": "New here?",
+    "signUp": "Sign up"
   },
   "forgotPassword": {
     "title": "Forgot password",
@@ -18,6 +20,20 @@
   "resetPassword": {
     "title": "Reset password",
     "submit": "Set new password"
+  },
+  "verifyEmail": {
+    "title": "Verify your email",
+    "submit": "Verify email",
+    "banner": "Verify your email to create Links and API Keys: open the link we emailed to {{email}}.",
+    "resend": "Email me the link again",
+    "resent": "Sent. It works once, within 24 hours."
+  },
+  "signUp": {
+    "title": "Sign up",
+    "submit": "Sign up",
+    "agreeBoth": "By signing up you agree to the <terms>terms of service</terms> and the <privacy>privacy policy</privacy>.",
+    "agreeTerms": "By signing up you agree to the <terms>terms of service</terms>.",
+    "agreePrivacy": "By signing up you agree to the <privacy>privacy policy</privacy>."
   },
   "signOut": "Sign out",
   "workspace": {
@@ -330,7 +346,9 @@
     "identity_provider_email_unverified": "Your sign-in service hasn’t verified your email, so it can’t sign you in here.",
     "invite_needed": "No one here has your email yet: ask an Instance Admin for an Invite.",
     "user_disabled": "Your User is disabled.",
-    "fresh_sign_in_needed": "Sign out and sign in again through your sign-in service, then delete your account within 5 minutes."
+    "fresh_sign_in_needed": "Sign out and sign in again through your sign-in service, then delete your account within 5 minutes.",
+    "verification_link_expired": "This verification link has expired or was already used. Ask for a new one.",
+    "email_not_verified": "Verify your email first: open the link we emailed you."
   },
   "cancel": "Cancel",
   "retry": "Try again",

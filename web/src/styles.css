@@ -924,6 +924,25 @@ main.flush {
   }
 }
 
+/* An unverified email: a strip under the band, until the emailed link is followed. */
+.verify-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem 1rem;
+  padding: 0.625rem 1rem;
+  font: 500 0.875rem/1.4 var(--font-sans);
+  color: var(--text);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  border-left: 4px solid var(--warn);
+}
+
+.verify-banner p {
+  margin: 0;
+}
+
 .page-head {
   display: flex;
   flex-wrap: wrap;

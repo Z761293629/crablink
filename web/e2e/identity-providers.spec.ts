@@ -23,17 +23,18 @@ test('a User signs in through an Identity Provider', async ({ page, user }) => {
   await expect(page).toHaveURL(/\/app\/$/);
 });
 
-test('someone with no User is told to ask for an Invite', async ({ page }, testInfo) => {
+// Without open sign-up, someone with no User off the allowed email domains is told to
+// ask for an Invite instead (tests/identity_providers.rs).
+test('with open sign-up, someone with no User gets one through an Identity Provider', async ({ page }, testInfo) => {
+  const email = newEmail(testInfo.workerIndex);
   await page.goto('/app/');
   await page.getByRole('link', { name: 'Sign in with Fake ID' }).click();
-  await page.getByLabel('Email').fill(newEmail(testInfo.workerIndex));
+  await page.getByLabel('Email').fill(email);
   await page.getByRole('button', { name: 'Continue' }).click();
 
-  await expect(page.getByRole('alert')).toHaveText(
-    'No one here has your email yet: ask an Instance Admin for an Invite.',
-  );
-  // The password form is still there.
-  await expect(page.getByLabel('Password')).toBeVisible();
+  await expect(switcher(page)).toContainText(email);
+  // The Identity Provider verified the email.
+  await expect(page.getByRole('complementary', { name: 'Verify your email' })).toHaveCount(0);
 });
 
 test('someone on an allowed email domain gets a User without a password', async ({ page, browser }, testInfo) => {

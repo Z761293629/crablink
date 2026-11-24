@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AcceptInvite, Account, ForgotPassword, ResetPassword } from './Account';
+import { AcceptInvite, Account, ForgotPassword, ResetPassword, SignUp, VerifyBanner, VerifyEmail } from './Account';
 import { api, ApiError, type IdentityProvider, type Instance, type Membership, type User } from './api';
 import { Clicks } from './Clicks';
 import { Domains } from './Domains';
@@ -100,6 +100,8 @@ export function App() {
   else if (page === 'report') main = <ReportShortUrl />;
   else if (page === 'reset-password') main = <ResetPassword />;
   else if (page === 'forgot-password') main = <ForgotPassword />;
+  else if (page === 'sign-up') main = <SignUp />;
+  else if (page === 'verify-email') main = <VerifyEmail />;
   else if (user === undefined) main = null;
   else if (!user) main = <SignIn onSignedIn={signedInAs} />;
   else if (error !== undefined)
@@ -167,6 +169,7 @@ export function App() {
           )}
         </div>
       </header>
+      {user && !user.email_verified && <VerifyBanner email={user.email} />}
       <main className={board ? 'flush' : undefined}>
         {inSettings && (
           <a className="back to-settings" href="/app/settings">
@@ -458,6 +461,11 @@ function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
         {instance?.password_reset && (
           <p>
             <a href="/app/forgot-password">{t('signIn.forgot')}</a>
+          </p>
+        )}
+        {instance?.sign_up && (
+          <p>
+            {t('signIn.noUser')} <a href="/app/sign-up">{t('signIn.signUp')}</a>
           </p>
         )}
       </div>

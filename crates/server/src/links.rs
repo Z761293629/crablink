@@ -189,6 +189,7 @@ pub(crate) async fn create_link(
     req: Result<Json<crablink_api::CreateLink>, JsonRejection>,
 ) -> Result<(StatusCode, Json<crablink_api::Link>), ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    caller.email_verified()?;
     let Json(req) = req?;
     let link = insert_link(&s, workspace_id, req).await?;
     Ok((StatusCode::CREATED, Json(link)))
@@ -343,6 +344,7 @@ pub(crate) async fn import_links(
     body: String,
 ) -> Result<Json<Vec<crablink_api::ImportedRow>>, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    caller.email_verified()?;
     let mut reader = csv::Reader::from_reader(body.as_bytes());
     let headers = reader
         .headers()

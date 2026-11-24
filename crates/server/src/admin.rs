@@ -126,7 +126,7 @@ pub(crate) async fn accept_invite(
     if expired {
         return Err(ApiError::InviteExpired);
     }
-    let id = users::insert_user(&mut tx, &email, Some(&hash), false).await?;
+    let id = users::insert_user(&mut tx, &email, Some(&hash), false, true).await?;
     if let Some(workspace_id) = workspace_id {
         sqlx::query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, $3)")
             .bind(id)
@@ -144,6 +144,7 @@ pub(crate) async fn accept_invite(
         email,
         instance_admin: false,
         has_password: true,
+        email_verified: true,
     };
     let res = users::start_session(&s, &mut tx, id, user).await?;
     tx.commit().await?;

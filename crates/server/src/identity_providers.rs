@@ -314,7 +314,8 @@ impl Discovered {
 /// Starts a Session for the User `identity` at `provider` belongs to. An identity
 /// no User has yet is added to the User with its email, ignoring case, if the
 /// Identity Provider verified that email; with no such User, one without a
-/// password is created if the email is on the allowed email domains.
+/// password is created if sign-up is open or the email is on the allowed email
+/// domains. Either way, the email counts as verified.
 async fn start_session(
     s: &AppState,
     provider: &Discovered,
@@ -345,13 +346,26 @@ async fn start_session(
             .await?;
             let user = match user {
                 Some(user) => user,
-                None if provider.allows(&email) => {
-                    let id = users::insert_user(&mut tx, &email, None, false).await?;
+                None if s.instance.sign_up || provider.allows(&email) => {
+                    let id = users::insert_user(&mut tx, &email, None, false, true).await?;
                     (id, email.trim().to_owned(), false)
                 }
                 None => return Err(ApiError::InviteNeeded),
             };
             if !user.2 {
+                // Whoever signed up with this email never showed it was theirs: their
+                // password and sessions go, so they can't share the email's owner's User.
+                let squatted = sqlx::query(
+                    "UPDATE users SET email_verified_at = $2, password_hash = NULL \
+                     WHERE id = $1 AND email_verified_at IS NULL",
+                )
+                .bind(user.0)
+                .bind((s.clock)())
+                .execute(&mut *tx)
+                .await?;
+                if squatted.rows_affected() == 1 {
+                    users::end_sessions(&mut tx, user.0, None).await?;
+                }
                 sqlx::query(
                     "INSERT INTO identities (issuer, subject, user_id) VALUES ($1, $2, $3) \
                      ON CONFLICT DO NOTHING",

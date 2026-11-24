@@ -1,9 +1,10 @@
-// A User's own account: changing their password, deleting the account, resetting
-// a forgotten password by email, and choosing one when accepting an invite.
+// A User's own account: signing up and verifying the email, changing their password,
+// deleting the account, resetting a forgotten password by email, and choosing one
+// when accepting an invite.
 
-import { useState, type FormEvent } from 'react';
-import { useTranslation } from 'react-i18next';
-import { api } from './api';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+import { api, type Instance } from './api';
 import { errorMessage } from './i18n';
 import { tearHalf, tearOff, useConfirm } from './ui';
 
@@ -188,6 +189,134 @@ export function ResetPassword() {
         </button>
       </div>
     </form>
+  );
+}
+
+/** `/app/sign-up`: anyone signs up with an email and a password, on an instance with open sign-up. */
+export function SignUp() {
+  const { t } = useTranslation();
+  const [error, setError] = useState<unknown>();
+  const [instance, setInstance] = useState<Instance>();
+
+  useEffect(() => {
+    // Without it, the form still signs up; it just links no terms.
+    api<Instance>('GET', '/instance').then(setInstance, () => {});
+  }, []);
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const ticket = e.currentTarget;
+    const form = new FormData(ticket);
+    try {
+      await api('POST', '/sign-ups', { email: form.get('email'), password: form.get('password') });
+      await tearOff(ticket);
+      location.assign('/app/');
+    } catch (err) {
+      setError(err);
+      tearHalf(ticket);
+    }
+  }
+
+  const { terms_url: terms, privacy_url: privacy } = instance ?? {};
+  const agree = terms && privacy ? 'agreeBoth' : terms ? 'agreeTerms' : privacy ? 'agreePrivacy' : undefined;
+  return (
+    <form className="ticket" onSubmit={submit}>
+      <div className="ticket-body">
+        <h1>{t('signUp.title')}</h1>
+        <label className="field">
+          <span className="micro">{t('signIn.email')}</span>
+          <input name="email" type="email" autoComplete="username" required />
+        </label>
+        <label className="field">
+          <span className="micro">{t('signIn.password')}</span>
+          <input name="password" type="password" autoComplete="new-password" minLength={8} required />
+        </label>
+        {agree && (
+          <p>
+            <Trans
+              i18nKey={`signUp.${agree}`}
+              components={{
+                terms: <a href={terms ?? undefined} target="_blank" rel="noreferrer" />,
+                privacy: <a href={privacy ?? undefined} target="_blank" rel="noreferrer" />,
+              }}
+            />
+          </p>
+        )}
+        {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+        <p>
+          <a href="/app/">{t('forgotPassword.back')}</a>
+        </p>
+      </div>
+      <div className="tear">
+        <button type="submit" className="primary">
+          {t('signUp.submit')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** `/app/verify-email#<token>`: the emailed link; following it lets the User create Links and API Keys. */
+export function VerifyEmail() {
+  const { t } = useTranslation();
+  const [error, setError] = useState<unknown>();
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const ticket = e.currentTarget;
+    try {
+      await api('POST', '/email-verifications/use', { token: location.hash.slice(1) });
+      await tearOff(ticket);
+      location.assign('/app/');
+    } catch (err) {
+      setError(err);
+      tearHalf(ticket);
+    }
+  }
+
+  return (
+    <form className="ticket" onSubmit={submit}>
+      <div className="ticket-body">
+        <h1>{t('verifyEmail.title')}</h1>
+        {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+      </div>
+      <div className="tear">
+        <button type="submit" className="primary">
+          {t('verifyEmail.submit')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** Across the top while the signed-in User's email isn't verified: why they can't create yet, and the link again. */
+export function VerifyBanner({ email }: { email: string }) {
+  const { t } = useTranslation();
+  const [result, setResult] = useState<unknown>();
+
+  async function resend() {
+    try {
+      await api('POST', '/email-verifications');
+      setResult('sent');
+    } catch (err) {
+      setResult(err);
+    }
+  }
+
+  return (
+    <aside className="verify-banner" aria-label={t('verifyEmail.title')}>
+      <p>{t('verifyEmail.banner', { email })}</p>
+      {result === 'sent' ? (
+        <p role="status">{t('verifyEmail.resent')}</p>
+      ) : (
+        <>
+          {result !== undefined && <p role="alert">{errorMessage(t, result)}</p>}
+          <button type="button" onClick={resend}>
+            {t('verifyEmail.resend')}
+          </button>
+        </>
+      )}
+    </aside>
   );
 }
 

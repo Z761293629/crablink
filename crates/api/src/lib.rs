@@ -164,6 +164,11 @@ pub struct User {
     /// Servers before 0.7.0 don't say, and every User of theirs has one.
     #[serde(default = "yes")]
     pub has_password: bool,
+    /// False for a User who signed up and hasn't followed the emailed verification
+    /// link yet: they can't create Links or API Keys. Servers before 0.8.0 don't say,
+    /// and every User of theirs counts as verified.
+    #[serde(default = "yes")]
+    pub email_verified: bool,
 }
 
 fn yes() -> bool {
@@ -328,6 +333,31 @@ pub struct Instance {
     /// Whether Users can reset a forgotten password by email (the instance sends email).
     #[serde(default)]
     pub password_reset: bool,
+    /// Whether anyone can sign up with an email and a password (`POST /api/sign-ups`).
+    #[serde(default)]
+    pub sign_up: bool,
+    /// The terms of service the sign-up form links, if the instance has any.
+    #[serde(default)]
+    pub terms_url: Option<String>,
+    /// The privacy policy the sign-up form links, if the instance has any.
+    #[serde(default)]
+    pub privacy_url: Option<String>,
+}
+
+/// Body of `POST /api/sign-ups`; the response is the new, signed-in `User`, whose
+/// email isn't verified yet.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SignUp {
+    pub email: String,
+    /// At least 8 characters.
+    pub password: String,
+}
+
+/// Body of `POST /api/email-verifications/use`.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct VerifyEmail {
+    /// The verification link's fragment.
+    pub token: String,
 }
 
 /// A User as an Instance Admin sees them, from `GET /api/admin/users`.
@@ -541,6 +571,11 @@ pub enum ErrorKind {
     /// A password reset link that is unknown, expired, or used (using one of a User's
     /// reset links uses them all): ask for a new link.
     ResetLinkExpired,
+    /// An email verification link that is unknown, expired, or used: ask for a new one.
+    VerificationLinkExpired,
+    /// Creating a Link or an API Key as a User who signed up and hasn't verified
+    /// their email yet.
+    EmailNotVerified,
     /// No live Link has this Code.
     LinkNotFound,
     /// The Link's Expiry has passed, and only a live Link will do (e.g. its QR code).

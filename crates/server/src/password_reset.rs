@@ -111,10 +111,19 @@ pub(crate) async fn reset_password(
         .execute(&mut *tx)
         .await?;
     users::set_password(&mut tx, id, hash, None).await?;
+    // The link reached them by email, so the email is theirs.
+    sqlx::query(
+        "UPDATE users SET email_verified_at = COALESCE(email_verified_at, $2) WHERE id = $1",
+    )
+    .bind(id)
+    .bind((s.clock)())
+    .execute(&mut *tx)
+    .await?;
     let user = User {
         email,
         instance_admin,
         has_password: true,
+        email_verified: true,
     };
     let res = users::start_session(&s, &mut tx, id, user).await?;
     tx.commit().await?;

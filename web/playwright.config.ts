@@ -38,6 +38,9 @@ export default defineConfig({
       CRABLINK_E2E_ADMIN_EMAIL: instanceAdmin.email,
       CRABLINK_E2E_ADMIN_PASSWORD: instanceAdmin.password,
       CRABLINK_E2E_MAIL_DIR: mailDir,
+      CRABLINK_OPEN_SIGN_UP: 'true',
+      CRABLINK_TERMS_URL: `${baseURL}/terms`,
+      CRABLINK_PRIVACY_URL: `${baseURL}/privacy`,
     },
   },
 });

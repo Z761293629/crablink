@@ -5,6 +5,8 @@ export interface User {
   instance_admin: boolean;
   /** False for a User an Identity Provider created, who signs in only through one. */
   has_password: boolean;
+  /** False for a User who signed up and hasn't verified their email: they can't create Links or API Keys yet. */
+  email_verified: boolean;
 }
 
 /** An Identity Provider the sign-in page offers; signing in through it starts at `/auth/{id}`. */
@@ -122,6 +124,11 @@ export interface WorkspaceClicks {
 export interface Instance {
   /** Whether Users can reset a forgotten password by email. */
   password_reset: boolean;
+  /** Whether anyone can sign up with an email and a password. */
+  sign_up: boolean;
+  /** The terms of service and privacy policy the sign-up form links, if any. */
+  terms_url: string | null;
+  privacy_url: string | null;
 }
 
 export interface ManagedUser {

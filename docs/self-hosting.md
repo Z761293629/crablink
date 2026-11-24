@@ -40,6 +40,8 @@ Web UI 在构建时打进 server 二进制（Docker 镜像和 Release 已包含�
 | `CRABLINK_RESERVED_CODES` | 否 | 空 | 逗号分隔的 Reserved Code，如 `google,paypal`：在 Default Domain 上谁都不能用它们做 Custom Code（400 `code_reserved`），区分大小写，Generated Code 也不会生成它们；自定义 Domain 不受影响 |
 | `CRABLINK_COUNTRY_DB` | 否 | 镜像里已设好 | Click 查国家用的 DB-IP Lite country 数据库（`.mmdb`）；镜像构建时自带当月版本。不设则 Click 不记国家，设了却读不了就退出 |
 | `CRABLINK_IDENTITY_PROVIDER_<ID>_NAME` 等 | 否 | — | 设置一个 Identity Provider，见下方 [Identity Provider](#identity-provider) |
+| `CRABLINK_OPEN_SIGN_UP` | 否 | `false` | `true` 时开放注册，见下方[开放注册](#开放注册)；需要[邮件](#邮件)，没设 SMTP 就拒绝启动 |
+| `CRABLINK_TERMS_URL`、`CRABLINK_PRIVACY_URL` | 否 | — | 服务条款和隐私政策的 `http(s)` 地址；设了的话注册页写上“注册即表示你同意……”并链接过去。不是 `http(s)` URL 就以退出码 2 退出 |
 | `CRABLINK_SAFE_BROWSING_KEY` | 否 | — | Google Safe Browsing API key；设了就在创建 Link（API、Web UI、CLI、CSV 导入）和修改 Target 时查 Target，已知的钓鱼、恶意软件网址以 400（`target_unsafe`）拒绝。Google 出错或 2 秒内没回应时照常放行。不设则不做任何检查 |
 
 Click 只记时间、Referrer 的 host、国家、设备类型和浏览器，从不存 IP 和完整 User-Agent（[ADR-0006](adr/0006-clicks-store-no-ip.md)）；爬虫和链接预览（Slack 等）照常跳转，但不算 Click。国家数据来自 [IP Geolocation by DB-IP](https://db-ip.com)（CC BY 4.0）。
@@ -53,6 +55,7 @@ Safe Browsing 用的是 Lookup API v4，Google 只许非商业用途使用；收
 | 环境变量 | 计数对象 | 说明 |
 |---|---|---|
 | `CRABLINK_RATE_LIMIT_SIGN_IN` | 访客 IP | 密码登录的尝试次数，无论成败 |
+| `CRABLINK_RATE_LIMIT_SIGN_UP` | 访客 IP | 注册次数，加上重发验证邮件的次数 |
 | `CRABLINK_RATE_LIMIT_PASSWORD_RESET` | 访客 IP | “忘记密码”请求重置链接的次数，无论有没有这个 User |
 | `CRABLINK_RATE_LIMIT_LINKS` | Workspace | 新建的 Link 数，API、Web UI、CLI 和 CSV 导入（每行算一个）都算 |
 | `CRABLINK_RATE_LIMIT_REPORTS` | 访客 IP | 举报 Short URL 的次数（`/report` 页和 `POST /api/reports`） |
@@ -72,6 +75,16 @@ Safe Browsing 用的是 Lookup API v4，Google 只许非商业用途使用；收
 |---|---|
 | `CRABLINK_SMTP_URL` | SMTP 服务器，含账号密码：`smtps://user:password@smtp.example.com`（465 端口，直接 TLS）或 `smtp://user:password@smtp.example.com:587?tls=required`（STARTTLS）；账号密码里的特殊字符要百分号编码 |
 | `CRABLINK_SMTP_FROM` | 发件人，如 `crablink <links@example.com>` 或 `links@example.com` |
+
+### 开放注册
+
+默认只能经邀请（或 Identity Provider 的允许域名）成为 User。设 `CRABLINK_OPEN_SIGN_UP=true` 后：
+
+- 登录页出现“注册”：任何人用 email 和密码注册，立即得到 User 和个人 Workspace 并登录，同时收到验证邮件（24 小时内有效、只能用一次）。
+- 邮箱验证之前可以登录和浏览，但不能创建 Link 和 API Key；Web UI 顶部有一条提示，可以重发验证邮件。
+- 任何 Identity Provider 都能为还没有 User 的 email 建 User，不论域名。Identity Provider 验证过的 email 算已验证；有人先用这个 email 注册却没验证时，经 Identity Provider 登录会验证它，并删掉注册时设的密码、结束其所有 session，以免先注册的人占住别人的 email。
+
+经邀请、由 Instance Admin 或经 Identity Provider 创建的 User，以及开放注册之前就有的所有 User，都算已验证。用 `CRABLINK_RATE_LIMIT_SIGN_UP` 限制注册频率。
 
 ## 生产部署（HTTPS）
 

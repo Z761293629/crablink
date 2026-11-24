@@ -55,6 +55,9 @@ impl FromStr for Limit {
 pub struct RateLimits {
     /// `CRABLINK_RATE_LIMIT_SIGN_IN`: sign-in attempts per visitor IP.
     pub sign_in: Option<Limit>,
+    /// `CRABLINK_RATE_LIMIT_SIGN_UP`: sign-ups, and asks for the verification email
+    /// again, per visitor IP.
+    pub sign_up: Option<Limit>,
     /// `CRABLINK_RATE_LIMIT_PASSWORD_RESET`: password reset requests per visitor IP.
     pub password_reset: Option<Limit>,
     /// `CRABLINK_RATE_LIMIT_LINKS`: Links created per Workspace, by any means.
@@ -69,6 +72,7 @@ pub struct RateLimits {
 pub(crate) struct Limiters {
     /// Requests with no known IP (served without `ConnectInfo`) share one count.
     pub sign_in: Limiter<Option<IpAddr>>,
+    pub sign_up: Limiter<Option<IpAddr>>,
     pub password_reset: Limiter<Option<IpAddr>>,
     pub links: Limiter<i64>,
     pub reports: Limiter<Option<IpAddr>>,
@@ -78,6 +82,7 @@ impl Limiters {
     pub fn new(limits: RateLimits) -> Self {
         Limiters {
             sign_in: Limiter::new(limits.sign_in),
+            sign_up: Limiter::new(limits.sign_up),
             password_reset: Limiter::new(limits.password_reset),
             links: Limiter::new(limits.links),
             reports: Limiter::new(limits.reports),

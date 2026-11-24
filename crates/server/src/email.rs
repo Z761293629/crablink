@@ -1,4 +1,4 @@
-//! Email: what the instance sends (Invites, password reset links), in English or
+//! Email: what the instance sends (Invites, password reset and verification links), in English or
 //! Simplified Chinese, and the production mailer, which sends it over SMTP.
 
 use std::sync::Arc;
@@ -76,6 +76,35 @@ pub(crate) fn invite(chinese: bool, domain: &str, to: &str, url: &str) -> Email 
             format!(
                 "You're invited to the short-link service {domain}. To choose your password, open:\n\n\
                  {url}\n\nThe link works once and expires in 7 days.\n"
+            ),
+        )
+    };
+    Email {
+        to: to.into(),
+        subject,
+        body,
+    }
+}
+
+/// The email asking `to` to verify their email on the instance on `domain` through
+/// verification link `url`.
+pub(crate) fn verification(chinese: bool, domain: &str, to: &str, url: &str) -> Email {
+    let (subject, body) = if chinese {
+        (
+            format!("验证你在 {domain} 的邮箱"),
+            format!(
+                "你用这个邮箱注册了短链接服务 {domain}。打开下面的链接验证邮箱，之后就能创建 Link \
+                 和 API Key：\n\n{url}\n\n此链接只能使用一次，24 小时后失效。如果不是你本人注册的，\
+                 请忽略此邮件。\n"
+            ),
+        )
+    } else {
+        (
+            format!("Verify your email on {domain}"),
+            format!(
+                "You signed up to the short-link service {domain} with this email. To verify \
+                 it, and then create Links and API Keys, open:\n\n{url}\n\nThe link works \
+                 once and expires in 24 hours. If you didn't sign up, ignore this email.\n"
             ),
         )
     };

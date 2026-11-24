@@ -60,6 +60,7 @@ pub(crate) async fn create_api_key(
     body: Result<Json<CreateApiKey>, JsonRejection>,
 ) -> Result<(StatusCode, Json<NewApiKey>), ApiError> {
     let owner = caller.owner_of(&s, &slug).await?;
+    caller.email_verified()?;
     let Json(req) = body?;
     let name = valid_name(&req.name)?;
     let secret = format!("{SECRET_PREFIX}{}", random_token());
