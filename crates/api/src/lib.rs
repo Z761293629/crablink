@@ -426,9 +426,13 @@ pub enum ErrorKind {
     /// A Target that isn't an absolute `http(s)` URL of at most 2048 characters, or
     /// that points at the service's own host; `error` says which.
     InvalidTarget,
+    /// A Target that Google Safe Browsing knows to be malicious (phishing, malware,
+    /// unwanted software), on an instance that checks Targets.
+    TargetUnsafe,
     /// A Custom Code that isn't `[A-Za-z0-9_-]{3,64}`.
     InvalidCode,
-    /// A Custom Code that would shadow one of the service's own routes.
+    /// A Custom Code that would shadow one of the service's own routes, or a
+    /// Reserved Code asked for on the Default Domain.
     CodeReserved,
     /// The Code is taken on its Domain, possibly by a Deleted Link.
     CodeTaken,

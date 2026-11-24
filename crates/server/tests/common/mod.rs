@@ -73,36 +73,50 @@ pub async fn app() -> TestApp {
 
 /// App with random Generated Codes that trusts `X-Forwarded-For` from its proxy.
 pub async fn app_behind_proxy() -> TestApp {
-    build(&[], true).await
+    build(&[], true, |s| s).await
 }
 
 /// App whose Code generator yields `codes` in order, then random Codes.
 pub async fn app_with_codes(codes: &[&str]) -> TestApp {
-    build(codes, false).await
+    build(codes, false, |s| s).await
 }
 
-/// App with random Generated Codes and the test settings as `configure` changes them.
+/// App whose Code generator yields `codes` in order, with `reserved` as its Reserved Codes.
+pub async fn app_with_reserved_codes(codes: &[&str], reserved: &[&str]) -> TestApp {
+    build(codes, false, |s| crablink_server::Settings {
+        reserved_codes: reserved.iter().map(|c| c.to_string()).collect(),
+        ..s
+    })
+    .await
+}
+
+/// App with random Generated Codes whose test settings are then changed by `change`,
+/// e.g. to inject a fake service.
 pub async fn app_with(
-    configure: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
 ) -> TestApp {
-    try_app_with(configure).await.unwrap()
+    build(&[], false, change).await
 }
 
 /// `app_with`, or the error the app builder refuses to start with.
 pub async fn try_app_with(
-    configure: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
 ) -> Result<TestApp, String> {
-    try_build(&[], false, configure).await
+    try_build(&[], false, change).await
 }
 
-async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
-    try_build(codes, trust_proxy, |s| s).await.unwrap()
+async fn build(
+    codes: &[&str],
+    trust_proxy: bool,
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> TestApp {
+    try_build(codes, trust_proxy, change).await.unwrap()
 }
 
 async fn try_build(
     codes: &[&str],
     trust_proxy: bool,
-    configure: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
 ) -> Result<TestApp, String> {
     let pool = crablink_server::connect(&pg::database_url().await)
         .await
@@ -118,13 +132,11 @@ async fn try_build(
     let now = Arc::new(Mutex::new(Utc::now()));
     let clock = now.clone();
     let clock: crablink_server::Clock = Arc::new(move || *clock.lock().unwrap());
-    let settings = configure(crablink_server::Settings {
+    let settings = change(crablink_server::Settings {
         codes: generator,
         ..settings(BASE_URL, clock, trust_proxy)
     });
-    let router = crablink_server::app(pool.clone(), settings)
-        .await
-        .map_err(|e| e.to_string())?;
+    let router = crablink_server::app(pool.clone(), settings).await?;
     let mut app = TestApp {
         router,
         pool,

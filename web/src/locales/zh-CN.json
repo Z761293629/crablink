@@ -271,6 +271,7 @@
     "link_not_found": "该链接不存在。",
     "link_expired": "该链接已过期。",
     "invalid_target": "目标网址必须是完整的 http:// 或 https:// 网址，且不能指向本实例。",
+    "target_unsafe": "Google 安全浏览将该目标网址列为钓鱼或恶意软件网址。",
     "invalid_code": "短码须为 3-64 个字符，只能包含 A-Z、a-z、0-9、_ 或 -。",
     "code_reserved": "该短码为保留字。",
     "code_taken": "该短码已被占用。",

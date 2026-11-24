@@ -1,7 +1,10 @@
 //! crablink-server as a library: `app` builds the full HTTP app, and is the
 //! seam both `main` and the tests use.
 
+use std::collections::HashSet;
+use std::future::Future;
 use std::net::IpAddr;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::Router;
@@ -20,6 +23,7 @@ mod identity_providers;
 mod links;
 mod members;
 mod redirect;
+mod safe_browsing;
 mod users;
 mod web;
 mod workspaces;
@@ -29,6 +33,7 @@ pub use db::connect;
 pub use error::ApiError;
 pub use identity_providers::IdentityProvider;
 pub use links::random_code;
+pub use safe_browsing::google_safe_browsing;
 pub use users::{create_user, set_user_disabled};
 
 use admin::{accept_invite, create_invite, list_users, reset_password, update_user};
@@ -58,6 +63,12 @@ pub type Clock = Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>;
 /// can place visitors; production reads the bundled DB-IP Lite database.
 pub type CountryLookup = Arc<dyn Fn(IpAddr) -> Option<String> + Send + Sync>;
 
+/// Whether a Target is known to be malicious: `Ok(true)` refuses it, and an `Err`
+/// (Safe Browsing down, a timeout) lets it through. Injected so tests can fake it;
+/// production asks Google Safe Browsing when `CRABLINK_SAFE_BROWSING_KEY` is set.
+pub type TargetCheck =
+    Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = Result<bool, String>> + Send>> + Send + Sync>;
+
 /// Everything `app` takes besides the database: the instance switches and the
 /// injected services. Start from `Settings::new` and override fields with struct
 /// update syntax, so a new field only touches the callers that set it.
@@ -67,24 +78,29 @@ pub struct Settings {
     pub base_url: String,
     /// `CRABLINK_TRUST_PROXY`: whether the visitor's IP is the first `X-Forwarded-For` entry.
     pub trust_proxy: bool,
+    /// `CRABLINK_RESERVED_CODES`: the Reserved Codes, compared case-sensitively.
+    pub reserved_codes: HashSet<String>,
     /// The Identity Providers Users can sign in through; discovered when `app` starts.
     pub identity_providers: Vec<IdentityProvider>,
     pub codes: CodeGenerator,
     pub clock: Clock,
     pub country: CountryLookup,
+    pub target_check: TargetCheck,
 }
 
 impl Settings {
     /// An instance on `base_url` with every switch off, random Generated Codes,
-    /// the real clock and no country lookup.
+    /// the real clock, no country lookup and no Target check.
     pub fn new(base_url: impl Into<String>) -> Self {
         Settings {
             base_url: base_url.into(),
             trust_proxy: false,
+            reserved_codes: HashSet::new(),
             identity_providers: Vec::new(),
             codes: Arc::new(random_code),
             clock: Arc::new(Utc::now),
             country: Arc::new(|_| None),
+            target_check: Arc::new(|_| Box::pin(async { Ok(false) })),
         }
     }
 }
@@ -95,8 +111,11 @@ struct AppState {
     codes: CodeGenerator,
     clock: Clock,
     country: CountryLookup,
+    target_check: TargetCheck,
     /// Whether the visitor's IP is the first `X-Forwarded-For` entry rather than the socket's.
     trust_proxy: bool,
+    /// Codes nobody can take as a Custom Code on the Default Domain.
+    reserved_codes: Arc<HashSet<String>>,
     /// The scheme of Short URLs: `CRABLINK_BASE_URL`'s.
     scheme: Arc<str>,
     /// The Default Domain: its host, and port if any.
@@ -132,10 +151,12 @@ pub async fn app(pool: PgPool, settings: Settings) -> Result<Router, String> {
     let Settings {
         base_url,
         trust_proxy,
+        reserved_codes,
         identity_providers,
         codes,
         clock,
         country,
+        target_check,
     } = settings;
     let domain_problem = |e: &dyn std::fmt::Display| {
         format!("cannot set up the Default Domain from {base_url}: {e}")
@@ -169,7 +190,9 @@ pub async fn app(pool: PgPool, settings: Settings) -> Result<Router, String> {
         codes,
         clock,
         country,
+        target_check,
         trust_proxy,
+        reserved_codes: Arc::new(reserved_codes),
         scheme: url.scheme().into(),
         default_domain: default_domain.into(),
         default_host: default_host.into(),
