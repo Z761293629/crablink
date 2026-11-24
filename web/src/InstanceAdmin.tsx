@@ -1,34 +1,38 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, type DomainStatus, type ManagedDomain, type ManagedUser } from './api';
+import { api, type BlockedLink, type DomainStatus, type ManagedDomain, type ManagedUser } from './api';
 import { errorMessage } from './i18n';
 import { useConfirm } from './ui';
 
 const fetchAll = () =>
-  Promise.all([api<ManagedUser[]>('GET', '/admin/users'), api<ManagedDomain[]>('GET', '/admin/domains')]);
+  Promise.all([
+    api<ManagedUser[]>('GET', '/admin/users'),
+    api<ManagedDomain[]>('GET', '/admin/domains'),
+    api<BlockedLink[]>('GET', '/admin/blocked-links'),
+  ]);
 
-/** Instance administration: Users, invites and custom Domains. The API refuses anyone but an Instance Admin. */
+/** Instance administration: Users, invites, custom Domains and Blocked Links. The API refuses anyone but an Instance Admin. */
 export function InstanceAdmin({ me }: { /** The signed-in User's email. */ me: string }) {
   const { t } = useTranslation();
   const [dialog, ask] = useConfirm();
   const [users, setUsers] = useState<ManagedUser[]>();
   const [domains, setDomains] = useState<ManagedDomain[]>();
+  const [blocked, setBlocked] = useState<BlockedLink[]>();
   // A just reset password, shown once next to its User.
   const [reset, setReset] = useState<{ id: number; password: string }>();
   const [invite, setInvite] = useState<string>();
   const [error, setError] = useState<unknown>();
 
-  async function load() {
-    const [u, d] = await fetchAll();
+  function show([u, d, b]: Awaited<ReturnType<typeof fetchAll>>) {
     setUsers(u);
     setDomains(d);
+    setBlocked(b);
   }
 
+  const load = async () => show(await fetchAll());
+
   useEffect(() => {
-    fetchAll().then(([u, d]) => {
-      setUsers(u);
-      setDomains(d);
-    }, setError);
+    fetchAll().then(show, setError);
   }, []);
 
   // Runs an action, then reloads; shows its error, if any.
@@ -59,6 +63,20 @@ export function InstanceAdmin({ me }: { /** The signed-in User's email. */ me: s
     (d.status !== 'approved' ||
       (await ask(t('admin.domains.confirmReject', { domain: d.domain }), t('admin.domains.confirmRejectAction')))) &&
     setStatus(d.domain, 'rejected');
+
+  const unblock = (b: BlockedLink) =>
+    act(() => api('DELETE', `/admin/blocked-links?short_url=${encodeURIComponent(b.short_url)}`));
+
+  async function block(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const shortUrl = (new FormData(form).get('short_url') as string).trim();
+    if (!(await ask(t('admin.blocked.confirmBlock', { url: shortUrl }), t('admin.blocked.confirmBlockAction')))) return;
+    await act(async () => {
+      await api('POST', '/admin/blocked-links', { short_url: shortUrl });
+      form.reset();
+    });
+  }
 
   async function createInvite(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -192,32 +210,88 @@ export function InstanceAdmin({ me }: { /** The signed-in User's email. */ me: s
             </div>
           )}
         </section>
+
+        <section className="board-sec" aria-labelledby="blocked-title">
+          <div className="board-title">
+            <h2 id="blocked-title">{t('admin.blocked.title')}</h2>
+            <span className="board-domain">{blocked?.length}</span>
+          </div>
+          {blocked?.length === 0 ? (
+            <p className="empty">{t('admin.blocked.empty')}</p>
+          ) : (
+            <div className="table">
+              <table className="gate" aria-labelledby="blocked-title">
+                <thead>
+                  <tr>
+                    <th>{t('links.shortUrl')}</th>
+                    <th>{t('links.target')}</th>
+                    <th>{t('admin.domains.workspace')}</th>
+                    <th>
+                      <span className="vh">{t('links.actions')}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {blocked?.map((b) => (
+                    <tr key={b.short_url}>
+                      <td className="mono primary">{b.short_url.replace(/^https?:\/\//, '')}</td>
+                      <td className="mono">{b.target}</td>
+                      <td className="mono">{b.workspace_slug}</td>
+                      <td className="actions">
+                        <button className="small" onClick={() => unblock(b)}>
+                          {t('admin.blocked.unblock')}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
 
-      <form className="pass ticket" aria-labelledby="invite-title" onSubmit={createInvite}>
-        <div className="ticket-body">
-          <h2 id="invite-title">{t('admin.invite.title')}</h2>
-          <label className="field">
-            <span className="micro">{t('admin.invite.email')}</span>
-            <input name="email" type="email" required />
-          </label>
-          <label className="field">
-            <span className="micro">{t('admin.invite.workspace')}</span>
-            <input name="workspace" className="mono" placeholder={t('admin.invite.workspaceHint')} />
-          </label>
-        </div>
-        <div className="tear">
-          <button type="submit" className="primary">
-            {t('admin.invite.create')}
-          </button>
-          {invite && (
+      <div className="coupons">
+        <form className="pass ticket" aria-labelledby="block-title" onSubmit={block}>
+          <div className="ticket-body">
+            <h2 id="block-title">{t('admin.blocked.blockTitle')}</h2>
             <label className="field">
-              <span className="micro">{t('admin.invite.link')}</span>
-              <input name="invite" readOnly value={invite} onFocus={(e) => e.target.select()} />
+              <span className="micro">{t('links.shortUrl')}</span>
+              <input name="short_url" className="mono" placeholder="crabl.ink/aZ3k9" required />
             </label>
-          )}
-        </div>
-      </form>
+          </div>
+          <div className="tear">
+            <button type="submit" className="danger">
+              {t('admin.blocked.block')}
+            </button>
+          </div>
+        </form>
+
+        <form className="pass ticket" aria-labelledby="invite-title" onSubmit={createInvite}>
+          <div className="ticket-body">
+            <h2 id="invite-title">{t('admin.invite.title')}</h2>
+            <label className="field">
+              <span className="micro">{t('admin.invite.email')}</span>
+              <input name="email" type="email" required />
+            </label>
+            <label className="field">
+              <span className="micro">{t('admin.invite.workspace')}</span>
+              <input name="workspace" className="mono" placeholder={t('admin.invite.workspaceHint')} />
+            </label>
+          </div>
+          <div className="tear">
+            <button type="submit" className="primary">
+              {t('admin.invite.create')}
+            </button>
+            {invite && (
+              <label className="field">
+                <span className="micro">{t('admin.invite.link')}</span>
+                <input name="invite" readOnly value={invite} onFocus={(e) => e.target.select()} />
+              </label>
+            )}
+          </div>
+        </form>
+      </div>
       {dialog}
     </div>
   );

@@ -29,7 +29,10 @@ pub use error::ApiError;
 pub use links::random_code;
 pub use users::{create_user, set_user_disabled};
 
-use admin::{accept_invite, create_invite, list_users, reset_password, update_user};
+use admin::{
+    accept_invite, block_link, create_invite, list_blocked_links, list_users, reset_password,
+    unblock_link, update_user,
+};
 use api_keys::{create_api_key, list_api_keys, revoke_api_key};
 use domains::{
     add_domain, domain_allowed, list_domains, list_managed_domains, remove_domain,
@@ -145,7 +148,13 @@ pub async fn app(
         .route("/domains/{domain}", patch(update_managed_domain))
         .route("/users", get(list_users))
         .route("/users/{id}", patch(update_user))
-        .route("/users/{id}/password", post(reset_password));
+        .route("/users/{id}/password", post(reset_password))
+        .route(
+            "/blocked-links",
+            get(list_blocked_links)
+                .post(block_link)
+                .delete(unblock_link),
+        );
     let api = Router::new()
         .nest("/workspaces/{slug}", workspace)
         .nest("/admin", admin)

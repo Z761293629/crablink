@@ -138,6 +138,17 @@ impl TestServer {
             .unwrap();
     }
 
+    /// Blocks the Link with `code` on the Default Domain as an Instance Admin.
+    pub fn block(&self, code: &str) {
+        let url = &self.url;
+        browser()
+            .post(format!("{url}/api/admin/blocked-links"))
+            .header("Cookie", &sign_in(url, INSTANCE_ADMIN))
+            .header("Origin", url)
+            .send_json(serde_json::json!({ "short_url": format!("{url}/{code}") }))
+            .unwrap();
+    }
+
     /// The CLI's authenticated API client for this server.
     pub fn api(&self) -> Api {
         Creds {

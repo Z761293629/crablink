@@ -116,6 +116,10 @@ pub struct Link {
     /// Its Tags' names, sorted.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Whether it is a Blocked Link: an Instance Admin stopped it for abuse, so it no
+    /// longer redirects and can't be changed, only deleted. `false` from older servers.
+    #[serde(default)]
+    pub blocked: bool,
 }
 
 impl Link {
@@ -304,6 +308,24 @@ pub struct NewPassword {
     pub password: String,
 }
 
+/// Body of `POST /api/admin/blocked-links`, and query of `DELETE` on it: the Link to
+/// block or unblock.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockLink {
+    /// e.g. `https://crabl.ink/aZ3k9` or `crabl.ink/aZ3k9`.
+    pub short_url: String,
+}
+
+/// A Blocked Link as an Instance Admin sees it, from `GET /api/admin/blocked-links`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockedLink {
+    pub short_url: String,
+    pub target: String,
+    /// The Workspace slug of its Workspace.
+    pub workspace_slug: String,
+    pub blocked_at: DateTime<Utc>,
+}
+
 /// What `Debug` shows instead of a password, token or secret, so none reaches a log.
 const REDACTED: &str = "<redacted>";
 
@@ -412,6 +434,9 @@ pub enum ErrorKind {
     LinkNotFound,
     /// The Link's Expiry has passed, and only a live Link will do (e.g. its QR code).
     LinkExpired,
+    /// The Link is a Blocked Link: its Target, Tags and Expiry can't change, and it has
+    /// no QR code. Only deleting it is allowed.
+    LinkBlocked,
     /// Malformed body or query.
     BadRequest,
     /// A Target that isn't an absolute `http(s)` URL of at most 2048 characters, or
@@ -693,6 +718,7 @@ mod tests {
             expires_at,
             click_count: 0,
             tags: Vec::new(),
+            blocked: false,
         };
         let second = chrono::TimeDelta::seconds(1);
         assert!(!link(None).is_expired(t));

@@ -2,14 +2,15 @@
 //! accepting an invite, which needs no credential.
 
 use axum::Json;
-use axum::extract::rejection::JsonRejection;
-use axum::extract::{FromRequestParts, Path, State};
+use axum::extract::rejection::{JsonRejection, QueryRejection};
+use axum::extract::{FromRequestParts, Path, Query, State};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::Response;
-use chrono::TimeDelta;
+use chrono::{DateTime, TimeDelta, Utc};
 use crablink_api::{
-    AcceptInvite, CreateInvite, ManagedUser, NewInvite, NewPassword, Role, UpdateUser, User,
+    AcceptInvite, BlockLink, BlockedLink, CreateInvite, ManagedUser, NewInvite, NewPassword, Role,
+    UpdateUser, User,
 };
 
 use crate::AppState;
@@ -222,4 +223,113 @@ pub(crate) async fn reset_password(
     users::set_password(&mut tx, id, hash, None).await?;
     tx.commit().await?;
     Ok(Json(NewPassword { password }))
+}
+
+/// The Domain host and Code of a Short URL such as `https://crabl.ink/aZ3k9` or
+/// `crabl.ink/aZ3k9`.
+fn parse_short_url(short_url: &str) -> Result<(&str, &str), ApiError> {
+    let s = short_url.trim();
+    let s = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+        .unwrap_or(s);
+    match s.split_once('/') {
+        Some((host, code))
+            if !host.is_empty() && !code.is_empty() && !code.contains(['/', '?', '#']) =>
+        {
+            Ok((host, code))
+        }
+        _ => Err(ApiError::BadRequest(
+            "short_url must look like https://crabl.ink/aZ3k9".into(),
+        )),
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct BlockedRow {
+    host: String,
+    code: String,
+    target: String,
+    slug: String,
+    blocked_at: DateTime<Utc>,
+}
+
+impl BlockedRow {
+    fn into_dto(self, scheme: &str) -> BlockedLink {
+        BlockedLink {
+            short_url: format!("{scheme}://{}/{}", self.host, self.code),
+            target: self.target,
+            workspace_slug: self.slug,
+            blocked_at: self.blocked_at,
+        }
+    }
+}
+
+/// `GET /api/admin/blocked-links`: every Blocked Link that isn't a Deleted Link,
+/// most recently blocked first.
+pub(crate) async fn list_blocked_links(
+    State(s): State<AppState>,
+    _: InstanceAdmin,
+) -> Result<Json<Vec<BlockedLink>>, ApiError> {
+    let rows: Vec<BlockedRow> = sqlx::query_as(
+        "SELECT d.host, l.code, l.target, w.slug, l.blocked_at \
+         FROM links l JOIN domains d ON d.id = l.domain_id \
+         JOIN workspaces w ON w.id = l.workspace_id \
+         WHERE l.blocked_at IS NOT NULL AND l.deleted_at IS NULL \
+         ORDER BY l.blocked_at DESC, l.id DESC",
+    )
+    .fetch_all(&s.pool)
+    .await?;
+    Ok(Json(
+        rows.into_iter().map(|r| r.into_dto(&s.scheme)).collect(),
+    ))
+}
+
+/// `POST /api/admin/blocked-links`: blocks the live Link of a Short URL at once.
+/// Blocking a Blocked Link keeps when it was first blocked.
+pub(crate) async fn block_link(
+    State(s): State<AppState>,
+    _: InstanceAdmin,
+    body: Result<Json<BlockLink>, JsonRejection>,
+) -> Result<(StatusCode, Json<BlockedLink>), ApiError> {
+    let Json(req) = body?;
+    let (host, code) = parse_short_url(&req.short_url)?;
+    let row: BlockedRow = sqlx::query_as(
+        "UPDATE links l SET blocked_at = COALESCE(l.blocked_at, $3) \
+         FROM domains d, workspaces w \
+         WHERE d.id = l.domain_id AND w.id = l.workspace_id \
+         AND d.host = lower($1) AND l.code = $2 AND l.deleted_at IS NULL \
+         RETURNING d.host, l.code, l.target, w.slug, l.blocked_at",
+    )
+    .bind(host)
+    .bind(code)
+    .bind((s.clock)())
+    .fetch_optional(&s.pool)
+    .await?
+    .ok_or(ApiError::LinkNotFound)?;
+    Ok((StatusCode::CREATED, Json(row.into_dto(&s.scheme))))
+}
+
+/// `DELETE /api/admin/blocked-links?short_url=`: unblocks a Blocked Link, which
+/// redirects again at once; 404 if the Short URL has no Blocked Link.
+pub(crate) async fn unblock_link(
+    State(s): State<AppState>,
+    _: InstanceAdmin,
+    query: Result<Query<BlockLink>, QueryRejection>,
+) -> Result<StatusCode, ApiError> {
+    let Query(req) = query?;
+    let (host, code) = parse_short_url(&req.short_url)?;
+    let done = sqlx::query(
+        "UPDATE links l SET blocked_at = NULL FROM domains d \
+         WHERE d.id = l.domain_id AND d.host = lower($1) AND l.code = $2 \
+         AND l.deleted_at IS NULL AND l.blocked_at IS NOT NULL",
+    )
+    .bind(host)
+    .bind(code)
+    .execute(&s.pool)
+    .await?;
+    if done.rows_affected() == 0 {
+        return Err(ApiError::LinkNotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
 }

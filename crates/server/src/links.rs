@@ -36,6 +36,7 @@ struct LinkRow {
     click_count: i64,
     domain: String,
     tags: Vec<String>,
+    blocked: bool,
 }
 
 impl LinkRow {
@@ -51,6 +52,7 @@ impl LinkRow {
             expires_at: self.expires_at,
             click_count: self.click_count,
             tags: self.tags,
+            blocked: self.blocked,
         }
     }
 }
@@ -61,7 +63,7 @@ macro_rules! link_columns {
     () => {
         "l.code, l.target, l.created_at, l.updated_at, l.expires_at, l.click_count, \
          d.host AS domain, ARRAY(SELECT t.name FROM link_tags lt JOIN tags t ON t.id = lt.tag_id \
-         WHERE lt.link_id = l.id ORDER BY t.name) AS tags"
+         WHERE lt.link_id = l.id ORDER BY t.name) AS tags, l.blocked_at IS NOT NULL AS blocked"
     };
 }
 
@@ -427,6 +429,9 @@ pub(crate) async fn link_qr(
     let Query(q) = query?;
     let link = fetch_link(&s, workspace_id, q.domain.as_deref(), &code).await?;
     // Its Short URL no longer redirects, so a QR code of it would only mislead.
+    if link.blocked {
+        return Err(ApiError::LinkBlocked);
+    }
     if link.is_expired((s.clock)()) {
         return Err(ApiError::LinkExpired);
     }
@@ -467,21 +472,24 @@ pub(crate) async fn update_link(
     let tags = req.tags.as_deref().map(tag_names).transpose()?;
     let id = link_id(&s, workspace_id, q.domain.as_deref(), &code).await?;
     let mut tx = s.pool.begin().await?;
-    // Still live: it may have been deleted since `link_id` found it.
-    let updated = sqlx::query(
+    // Still live and not blocked: it may have changed since `link_id` found it.
+    let blocked: Option<bool> = sqlx::query_scalar(
         "UPDATE links SET target = COALESCE($1, target), \
          expires_at = CASE WHEN $2 THEN $3 ELSE expires_at END, updated_at = $4 \
-         WHERE id = $5 AND deleted_at IS NULL",
+         WHERE id = $5 AND deleted_at IS NULL RETURNING blocked_at IS NOT NULL",
     )
     .bind(&req.target)
     .bind(req.expires_at.is_some())
     .bind(req.expires_at.flatten())
     .bind((s.clock)())
     .bind(id)
-    .execute(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
-    if updated.rows_affected() == 0 {
-        return Err(ApiError::LinkNotFound);
+    match blocked {
+        None => return Err(ApiError::LinkNotFound),
+        // Dropping `tx` rolls the change back.
+        Some(true) => return Err(ApiError::LinkBlocked),
+        Some(false) => {}
     }
     if let Some(tags) = &tags {
         set_tags(&mut tx, workspace_id, id, tags).await?;

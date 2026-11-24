@@ -47,6 +47,8 @@ pub enum ApiError {
     /// A Link whose Expiry has passed, where only a live one will do.
     #[error("link has expired")]
     LinkExpired,
+    #[error("link was blocked for abuse by an Instance Admin: it can only be deleted")]
+    LinkBlocked,
     #[error("{0}")]
     BadRequest(String),
     #[error("{0}")]
@@ -99,6 +101,7 @@ impl ApiError {
             Self::InviteUsed => ErrorKind::InviteUsed,
             Self::LinkNotFound => ErrorKind::LinkNotFound,
             Self::LinkExpired => ErrorKind::LinkExpired,
+            Self::LinkBlocked => ErrorKind::LinkBlocked,
             Self::BadRequest(_) => ErrorKind::BadRequest,
             Self::InvalidTarget(_) => ErrorKind::InvalidTarget,
             Self::InvalidCode => ErrorKind::InvalidCode,
@@ -122,7 +125,9 @@ impl ApiError {
             Self::InvalidApiKey | Self::NotSignedIn | Self::InvalidCredentials => {
                 StatusCode::UNAUTHORIZED
             }
-            Self::Forbidden | Self::OriginMismatch | Self::WrongPassword => StatusCode::FORBIDDEN,
+            Self::Forbidden | Self::OriginMismatch | Self::WrongPassword | Self::LinkBlocked => {
+                StatusCode::FORBIDDEN
+            }
             Self::NotFound
             | Self::LinkNotFound
             | Self::InviteNotFound
