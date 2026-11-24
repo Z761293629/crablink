@@ -216,7 +216,8 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
 
   function changed(old: Link, link: Link) {
     beforeChange(link.short_url);
-    setLinks(links!.map((l) => (l === old ? link : l)));
+    // The board as it is now: a filter changed while saving must not bring back the old page.
+    setLinks((ls) => ls!.map((l) => (l === old ? link : l)));
     mark(link.short_url, 'updated');
     setEditing(undefined);
     showToast(
