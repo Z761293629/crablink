@@ -5,8 +5,9 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/{code}` | 按 `Host` 找 Domain 再 302 跳转；未知或未批准的 Domain、不存在的 Code 404；已删除或已过期 410；Blocked Link 403，返回按 `Accept-Language` 选语言（英文或简体中文）的封禁说明页，不跳转、不记 Click |
+| `GET` | `/report?short_url=` | 303 到 web UI 的举报页 `/app/report`，带上原查询串；无需登录 |
 | `GET` | `/internal/domain-allowed?domain=` | 无需凭据，供 Caddy 询问：Default Domain 和已批准的 Domain 200，其余 404 |
-| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain?, tags? }`；`domain` 不可用 400（`domain_not_approved`）；`code` 是路由用词（`api`、`admin`、`app`、`health`，不分大小写），或在 Default Domain 上是 Reserved Code（`CRABLINK_RESERVED_CODES`），400（`code_reserved`）；设了 Safe Browsing 时 Target 被认定为恶意 400（`target_unsafe`）；返回的 Link 带 `domain`、`short_url`、`tags` 和 `blocked`（是否为 Blocked Link） |
+| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain?, tags? }`；`domain` 不可用 400（`domain_not_approved`）；`code` 是路由用词（`api`、`admin`、`app`、`health`、`report`，不分大小写），或在 Default Domain 上是 Reserved Code（`CRABLINK_RESERVED_CODES`），400（`code_reserved`）；设了 Safe Browsing 时 Target 被认定为恶意 400（`target_unsafe`）；返回的 Link 带 `domain`、`short_url`、`tags` 和 `blocked`（是否为 Blocked Link） |
 | `GET` | `/api/workspaces/{ws}/links?tag=&q=` | 列表（所有 Domain），新的在前，游标分页；`tag` 按 Tag 过滤，`q` 搜 Code 或 Target（不区分大小写） |
 | `GET` | `/api/workspaces/{ws}/links.csv` | 导出 CSV：Code、Domain、Target、Expiry、Tags（逗号分隔）、Click Count |
 | `POST` | `/api/workspaces/{ws}/links.csv` | 导入同格式的 CSV，逐行建 Link（不改已有 Link，空 Code 用 Generated Code，忽略 Click Count）；返回每行的 `short_url` 或 `skipped: { kind, error }` |
@@ -41,12 +42,15 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `GET` | `/api/admin/users` | Instance Admin 列出 User：`[{ id, email, instance_admin, disabled }]` |
 | `PATCH` | `/api/admin/users/{id}` | Instance Admin 改 `disabled` / `instance_admin`；会让实例没有启用的 Instance Admin 时 409（`last_instance_admin`）；停用即结束其 session |
 | `POST` | `/api/admin/users/{id}/password` | Instance Admin 重置为随机密码：`{ password }` 只返回这一次，并结束其 session |
+| `POST` | `/api/reports` | 无需凭据，任何访客举报 Short URL：`{ short_url, reason }`，204；`reason` 去掉首尾空白后须为 1 到 1000 个字符，否则 400（`bad_request`）；不是本实例未删除的 Link 404（`link_not_found`）；按访客 IP 限流。不记录访客 IP |
+| `GET` | `/api/admin/reports` | Instance Admin 列出待处理的举报（Link 已删除的不列），先举报的在前：`[{ id, short_url, target, workspace_slug, reason, reported_at, workspace_users: [{ id, email, role, disabled }] }]`；`workspace_users` 是该 Link 所在 Workspace 的 Owner 和 Member，可用 `PATCH /api/admin/users/{id}` 停用 |
+| `DELETE` | `/api/admin/reports/{id}` | Instance Admin 忽略一条举报，Link 不变；没有该待处理举报 404（`not_found`） |
 | `GET` | `/api/admin/blocked-links` | Instance Admin 列出 Blocked Link（不含已删除的），最近封禁的在前：`[{ short_url, target, workspace_slug, blocked_at }]` |
-| `POST` | `/api/admin/blocked-links` | Instance Admin 按 Short URL 封禁 Link：`{ short_url }`（`https://crabl.ink/aZ3k9` 或 `crabl.ink/aZ3k9`），立即停止跳转；没有该 Link 或已删除 404（`link_not_found`） |
+| `POST` | `/api/admin/blocked-links` | Instance Admin 按 Short URL 封禁 Link：`{ short_url }`（`https://crabl.ink/aZ3k9` 或 `crabl.ink/aZ3k9`），立即停止跳转，并关闭它所有待处理的举报（之后解除封禁也不会重新打开）；没有该 Link 或已删除 404（`link_not_found`） |
 | `DELETE` | `/api/admin/blocked-links?short_url=` | Instance Admin 解除封禁，立即恢复跳转；该 Short URL 没有 Blocked Link 404（`link_not_found`） |
 
 Member 只能管理 Link；成员、API Key 和 Workspace 设置只归 Owner，Member 或 API Key 去做得到 403（`forbidden`）。`/api/admin` 只接受 Instance Admin 的 session，其他凭据 403。最后一个 Owner 不能退出、被移除或降级，得到 409（`last_owner`）。
 
 程序用 `Authorization: Bearer <API Key>`；API Key 属于 Workspace，创建它的人离开后照样可用。带 session cookie 的写请求必须带与 Host 一致的 `Origin`。未知或已吊销的 Bearer 值（包括 0.2 / 0.3 的 token）得到 401，提示用 API Key 重新登录。
 
-实例开了限流（`CRABLINK_RATE_LIMIT_*`，见[自建部署](self-hosting.md#限流)）时，超出限额的请求得到 429（`rate_limited`），`Retry-After` 头给出要等的秒数。登录按访客 IP 计数；建 Link 按 Workspace 计数，每个 Link 算一次，CSV 导入逐行计数，超出的行以 `rate_limited` 跳过。跳转从不限流。
+实例开了限流（`CRABLINK_RATE_LIMIT_*`，见[自建部署](self-hosting.md#限流)）时，超出限额的请求得到 429（`rate_limited`），`Retry-After` 头给出要等的秒数。登录和举报按访客 IP 计数；建 Link 按 Workspace 计数，每个 Link 算一次，CSV 导入逐行计数，超出的行以 `rate_limited` 跳过。跳转从不限流。

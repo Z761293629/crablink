@@ -57,6 +57,8 @@ pub struct RateLimits {
     pub sign_in: Option<Limit>,
     /// `CRABLINK_RATE_LIMIT_LINKS`: Links created per Workspace, by any means.
     pub links: Option<Limit>,
+    /// `CRABLINK_RATE_LIMIT_REPORTS`: reports of Short URLs per visitor IP.
+    pub reports: Option<Limit>,
 }
 
 /// One limiter per `RateLimits` field. A new limit adds a field to both, set from
@@ -66,6 +68,7 @@ pub(crate) struct Limiters {
     /// Requests with no known IP (served without `ConnectInfo`) share one count.
     pub sign_in: Limiter<Option<IpAddr>>,
     pub links: Limiter<i64>,
+    pub reports: Limiter<Option<IpAddr>>,
 }
 
 impl Limiters {
@@ -73,6 +76,7 @@ impl Limiters {
         Limiters {
             sign_in: Limiter::new(limits.sign_in),
             links: Limiter::new(limits.links),
+            reports: Limiter::new(limits.reports),
         }
     }
 }

@@ -227,7 +227,7 @@ pub(crate) async fn reset_password(
 
 /// The Domain host and Code of a Short URL such as `https://crabl.ink/aZ3k9` or
 /// `crabl.ink/aZ3k9`.
-fn parse_short_url(short_url: &str) -> Result<(&str, &str), ApiError> {
+pub(crate) fn parse_short_url(short_url: &str) -> Result<(&str, &str), ApiError> {
     let s = short_url.trim();
     let s = s
         .strip_prefix("https://")
@@ -286,7 +286,8 @@ pub(crate) async fn list_blocked_links(
 }
 
 /// `POST /api/admin/blocked-links`: blocks the live Link of a Short URL at once.
-/// Blocking a Blocked Link keeps when it was first blocked.
+/// Blocking a Blocked Link keeps when it was first blocked. Closes the Link's open
+/// reports, which stay closed if it is unblocked.
 pub(crate) async fn block_link(
     State(s): State<AppState>,
     _: InstanceAdmin,
@@ -295,11 +296,16 @@ pub(crate) async fn block_link(
     let Json(req) = body?;
     let (host, code) = parse_short_url(&req.short_url)?;
     let row: BlockedRow = sqlx::query_as(
-        "UPDATE links l SET blocked_at = COALESCE(l.blocked_at, $3) \
-         FROM domains d, workspaces w \
-         WHERE d.id = l.domain_id AND w.id = l.workspace_id \
-         AND d.host = lower($1) AND l.code = $2 AND l.deleted_at IS NULL \
-         RETURNING d.host, l.code, l.target, w.slug, l.blocked_at",
+        "WITH blocked AS ( \
+           UPDATE links l SET blocked_at = COALESCE(l.blocked_at, $3) \
+           FROM domains d, workspaces w \
+           WHERE d.id = l.domain_id AND w.id = l.workspace_id \
+           AND d.host = lower($1) AND l.code = $2 AND l.deleted_at IS NULL \
+           RETURNING l.id, d.host, l.code, l.target, w.slug, l.blocked_at), \
+         closed AS ( \
+           UPDATE reports SET closed_at = $3 \
+           WHERE link_id IN (SELECT id FROM blocked) AND closed_at IS NULL) \
+         SELECT host, code, target, slug, blocked_at FROM blocked",
     )
     .bind(host)
     .bind(code)

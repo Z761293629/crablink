@@ -98,6 +98,7 @@ async fn serve() {
     let rate_limits = crablink_server::RateLimits {
         sign_in: rate_limit("CRABLINK_RATE_LIMIT_SIGN_IN"),
         links: rate_limit("CRABLINK_RATE_LIMIT_LINKS"),
+        reports: rate_limit("CRABLINK_RATE_LIMIT_REPORTS"),
     };
 
     let reserved_codes = std::env::var("CRABLINK_RESERVED_CODES")

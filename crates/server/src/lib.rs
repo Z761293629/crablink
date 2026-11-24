@@ -23,6 +23,7 @@ mod links;
 mod members;
 mod rate_limit;
 mod redirect;
+mod reports;
 mod safe_browsing;
 mod users;
 mod web;
@@ -51,6 +52,7 @@ use links::{
 };
 use members::{add_member, list_workspace_users, remove_workspace_user, update_workspace_user};
 use redirect::redirect;
+use reports::{create_report, dismiss_report, list_reports};
 use users::{change_password, me, sign_in, sign_out};
 use workspaces::{
     api_fallback, create_workspace, delete_workspace, list_workspaces, rename_workspace,
@@ -211,6 +213,8 @@ pub async fn app(
         .route("/users", get(list_users))
         .route("/users/{id}", patch(update_user))
         .route("/users/{id}/password", post(reset_password))
+        .route("/reports", get(list_reports))
+        .route("/reports/{id}", delete(dismiss_report))
         .route(
             "/blocked-links",
             get(list_blocked_links)
@@ -221,6 +225,7 @@ pub async fn app(
         .nest("/workspaces/{slug}", workspace)
         .nest("/admin", admin)
         .route("/invites/accept", post(accept_invite))
+        .route("/reports", post(create_report))
         .route("/workspaces", get(list_workspaces).post(create_workspace))
         .route(
             "/workspaces/{slug}",
@@ -235,6 +240,14 @@ pub async fn app(
         .route("/health", get(|| async { "ok" }))
         .route("/internal/domain-allowed", get(domain_allowed))
         .nest_service("/app", get(web::serve))
+        // The public report form lives in the web UI; keeps `?short_url=`.
+        .route(
+            "/report",
+            get(|uri: Uri| async move {
+                let query = uri.query().map(|q| format!("?{q}")).unwrap_or_default();
+                axum::response::Redirect::to(&format!("/app/report{query}"))
+            }),
+        )
         .route("/{code}", get(redirect))
         .fallback(|| async { (StatusCode::NOT_FOUND, "not found") })
         .with_state(state))

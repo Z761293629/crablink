@@ -53,6 +53,17 @@ export interface BlockedLink {
   blocked_at: string;
 }
 
+/** An open report of a Short URL, with the Owners and Members of its Link's Workspace. */
+export interface Report {
+  id: number;
+  short_url: string;
+  target: string;
+  workspace_slug: string;
+  reason: string;
+  reported_at: string;
+  workspace_users: { id: number; email: string; role: Membership['role']; disabled: boolean }[];
+}
+
 export interface LinkPage {
   links: Link[];
   next_cursor: string | null;

@@ -220,6 +220,13 @@
       "block": "封禁链接",
       "confirmBlock": "封禁 {{url}}？它会立即停止跳转，其工作区也无法再修改它。",
       "confirmBlockAction": "封禁链接"
+    },
+    "reports": {
+      "title": "举报",
+      "empty": "没有待处理的举报。",
+      "reason": "原因",
+      "users": "所有者和成员",
+      "dismiss": "忽略"
     }
   },
   "members": {
@@ -301,5 +308,13 @@
   },
   "cancel": "取消",
   "retry": "重试",
-  "close": "关闭"
+  "close": "关闭",
+  "report": {
+    "title": "举报短网址",
+    "intro": "发现有短网址被用于钓鱼、恶意软件或滥用？告诉实例管理员。",
+    "reason": "原因",
+    "reasonHint": "它有什么问题？",
+    "submit": "提交举报",
+    "sent": "谢谢。实例管理员会处理。"
+  }
 }

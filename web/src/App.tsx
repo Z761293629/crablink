@@ -6,6 +6,7 @@ import { Clicks } from './Clicks';
 import { Domains } from './Domains';
 import { InstanceAdmin } from './InstanceAdmin';
 import { Links } from './Links';
+import { ReportShortUrl } from './Report';
 import { errorMessage, languages, setLanguage } from './i18n';
 import { Chevron, interceptLinks, navigate, PageError, tearHalf, tearOff, useLocationKey, usePopover } from './ui';
 import { ManageWorkspace } from './Workspace';
@@ -92,6 +93,7 @@ export function App() {
   let main;
   let board = false;
   if (page === 'invite') main = <AcceptInvite />;
+  else if (page === 'report') main = <ReportShortUrl />;
   else if (user === undefined) main = null;
   else if (!user) main = <SignIn onSignedIn={signedInAs} />;
   else if (error !== undefined)
