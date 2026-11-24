@@ -11,20 +11,24 @@ use axum::Json;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
-use axum::http::{Method, StatusCode, header};
+use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use chrono::TimeDelta;
-use crablink_api::{ChangePassword, Me, SignIn, User, Workspace};
+use chrono::{DateTime, TimeDelta, Utc};
+use crablink_api::{ChangePassword, DeleteMe, Me, Role, SignIn, User, Workspace};
 use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, PgPool};
 
 use crate::AppState;
 use crate::error::ApiError;
+use crate::rate_limit::VisitorIp;
 use crate::workspaces::{self, Caller};
 
 const COOKIE: &str = "crablink_session";
 const SESSION_TTL: TimeDelta = TimeDelta::days(30);
 const MIN_PASSWORD_LEN: usize = 8;
+/// How recently a User without a password must have signed in through an Identity
+/// Provider to delete themself.
+const FRESH_SIGN_IN: TimeDelta = TimeDelta::minutes(5);
 
 /// Creates a User who signs in with `email` and `password`, as an Instance Admin
 /// when `instance_admin`. This is what `crablink-server admin create` runs.
@@ -36,26 +40,37 @@ pub async fn create_user(
 ) -> Result<(), ApiError> {
     valid_email(email)?;
     let hash = hash_password(password).await?;
-    insert_user(&mut *pool.acquire().await?, email, &hash, instance_admin)
-        .await
-        .map(drop)
+    insert_user(
+        &mut *pool.acquire().await?,
+        email,
+        Some(&hash),
+        instance_admin,
+        true,
+    )
+    .await
+    .map(drop)
 }
 
 /// Inserts a User whose password hashes to `password_hash` (from `hash_password`,
-/// done beforehand so no lock is held meanwhile); returns their id.
+/// done beforehand so no lock is held meanwhile), or with no password, who signs
+/// in only through Identity Providers; returns their id. Only open sign-up creates
+/// a User whose email isn't `email_verified`.
 pub(crate) async fn insert_user(
     conn: &mut PgConnection,
     email: &str,
-    password_hash: &str,
+    password_hash: Option<&str>,
     instance_admin: bool,
+    email_verified: bool,
 ) -> Result<i64, ApiError> {
     let email = valid_email(email)?;
     let res = sqlx::query_scalar(
-        "INSERT INTO users (email, password_hash, instance_admin) VALUES ($1, $2, $3) RETURNING id",
+        "INSERT INTO users (email, password_hash, instance_admin, email_verified_at) \
+         VALUES ($1, $2, $3, CASE WHEN $4 THEN now() END) RETURNING id",
     )
     .bind(email)
     .bind(password_hash)
     .bind(instance_admin)
+    .bind(email_verified)
     .fetch_one(conn)
     .await;
     match res {
@@ -135,7 +150,7 @@ pub(crate) async fn set_password(
 }
 
 /// Ends every session of User `id` but `keep` (a session's token hash).
-async fn end_sessions(
+pub(crate) async fn end_sessions(
     conn: &mut PgConnection,
     id: i64,
     keep: Option<&[u8]>,
@@ -217,7 +232,8 @@ struct SignInRow {
     id: i64,
     email: String,
     instance_admin: bool,
-    password_hash: String,
+    password_hash: Option<String>,
+    email_verified: bool,
 }
 
 /// `POST /api/session`: signs in, setting the session cookie; returns the User.
@@ -226,17 +242,21 @@ struct SignInRow {
 pub(crate) async fn sign_in(
     State(s): State<AppState>,
     _: SameOrigin,
+    VisitorIp(ip): VisitorIp,
     body: Result<Json<SignIn>, JsonRejection>,
 ) -> Result<Response, ApiError> {
+    s.limiters.sign_in.hit(ip, (s.clock)())?;
     let Json(req) = body?;
     let row: Option<SignInRow> = sqlx::query_as(
-        "SELECT id, email, instance_admin, password_hash FROM users \
+        "SELECT id, email, instance_admin, password_hash, \
+         email_verified_at IS NOT NULL AS email_verified FROM users \
          WHERE lower(email) = lower($1) AND NOT disabled",
     )
     .bind(req.email.trim())
     .fetch_optional(&s.pool)
     .await?;
-    let hash = row.as_ref().map(|r| r.password_hash.clone());
+    // A User without a password fails here exactly like a wrong password.
+    let hash = row.as_ref().and_then(|r| r.password_hash.clone());
     let (Some(row), true) = (row, verify_password(req.password, hash).await?) else {
         return Err(ApiError::InvalidCredentials);
     };
@@ -244,6 +264,8 @@ pub(crate) async fn sign_in(
     let user = User {
         email: row.email,
         instance_admin: row.instance_admin,
+        has_password: true,
+        email_verified: row.email_verified,
     };
     let res = start_session(&s, &mut tx, row.id, user).await?;
     tx.commit().await?;
@@ -259,12 +281,24 @@ pub(crate) async fn start_session(
     id: i64,
     user: User,
 ) -> Result<Response, ApiError> {
+    let cookie = new_session(s, conn, id, &user.email).await?;
+    Ok(([(header::SET_COOKIE, cookie)], Json(user)).into_response())
+}
+
+/// `start_session` for User `id` with `email`, returning only the `Set-Cookie`
+/// value of the new session.
+pub(crate) async fn new_session(
+    s: &AppState,
+    conn: &mut PgConnection,
+    id: i64,
+    email: &str,
+) -> Result<String, ApiError> {
     let first = sqlx::query("UPDATE users SET signed_in = TRUE WHERE id = $1 AND NOT signed_in")
         .bind(id)
         .execute(&mut *conn)
         .await?;
     if first.rows_affected() == 1 {
-        workspaces::create_personal(conn, id, &user.email).await?;
+        workspaces::create_personal(conn, id, email).await?;
     }
     let token = random_token();
     // ponytail: expired sessions are never swept; add a cleanup if the table grows.
@@ -274,8 +308,7 @@ pub(crate) async fn start_session(
         .bind((s.clock)() + SESSION_TTL)
         .execute(conn)
         .await?;
-    let cookie = session_cookie(&token, SESSION_TTL.num_seconds());
-    Ok(([(header::SET_COOKIE, cookie)], Json(user)).into_response())
+    Ok(session_cookie(&token, SESSION_TTL.num_seconds()))
 }
 
 /// `DELETE /api/session`: signs out, ending the session and clearing the cookie.
@@ -308,18 +341,19 @@ pub(crate) async fn me(State(s): State<AppState>, caller: Caller) -> Result<Json
     }))
 }
 
-/// `POST /api/me/password`: needs the current password; ends the User's other sessions.
+/// `POST /api/me/password`: needs the current password, so a User without one
+/// can't; ends the User's other sessions.
 pub(crate) async fn change_password(
     State(s): State<AppState>,
     session: Session,
     body: Result<Json<ChangePassword>, JsonRejection>,
 ) -> Result<StatusCode, ApiError> {
     let Json(req) = body?;
-    let hash: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1")
+    let hash: Option<String> = sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1")
         .bind(session.user_id)
         .fetch_one(&s.pool)
         .await?;
-    if !verify_password(req.current_password, Some(hash)).await? {
+    if !verify_password(req.current_password, hash).await? {
         return Err(ApiError::WrongPassword);
     }
     let hash = hash_password(&req.new_password).await?;
@@ -327,6 +361,100 @@ pub(crate) async fn change_password(
     set_password(&mut tx, session.user_id, hash, Some(&session.token_hash)).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// `DELETE /api/me`: deletes the signed-in User, confirmed with their password or,
+/// for a User without one, a sign-in through an Identity Provider within
+/// `FRESH_SIGN_IN`.
+/// Every Workspace they are the only member of goes with them, its Links becoming
+/// Deleted Links; they just leave the others.
+pub(crate) async fn delete_me(
+    State(s): State<AppState>,
+    session: Session,
+    body: Result<Json<DeleteMe>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let Json(req) = body?;
+    let (hash, expires_at): (Option<String>, DateTime<Utc>) = sqlx::query_as(
+        "SELECT u.password_hash, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id \
+         WHERE s.token_hash = $1",
+    )
+    .bind(&session.token_hash)
+    .fetch_one(&s.pool)
+    .await?;
+    match hash {
+        Some(hash) => {
+            let password = req.password.unwrap_or_default();
+            if !verify_password(password, Some(hash)).await? {
+                return Err(ApiError::WrongPassword);
+            }
+        }
+        // When this Session started is its expiry less SESSION_TTL, which relies on
+        // two invariants: Sessions never slide (nothing extends `expires_at`), and a
+        // User without a password only gets Sessions through an Identity Provider.
+        // So that start is when they last signed in through one.
+        None if expires_at - SESSION_TTL + FRESH_SIGN_IN < (s.clock)() => {
+            return Err(ApiError::FreshSignInNeeded);
+        }
+        None => {}
+    }
+    let mut tx = s.pool.begin().await?;
+    // Locks every enabled Instance Admin as `admin::update_user` does, so two of
+    // them deleting themselves at once can't both succeed.
+    sqlx::query("SELECT id FROM users WHERE instance_admin AND NOT disabled FOR UPDATE")
+        .execute(&mut *tx)
+        .await?;
+    // Locks the User's Workspaces as `members::change` does, so no Owner leaves or
+    // is demoted meanwhile.
+    sqlx::query(
+        "SELECT 1 FROM workspaces WHERE id IN \
+         (SELECT workspace_id FROM memberships WHERE user_id = $1) FOR UPDATE",
+    )
+    .bind(session.user_id)
+    .execute(&mut *tx)
+    .await?;
+    // Each Workspace of theirs: whether anyone else is in it, and whether it would
+    // be left without an Owner.
+    let theirs: Vec<(i64, bool, bool)> = sqlx::query_as(
+        "SELECT m.workspace_id, \
+         EXISTS (SELECT 1 FROM memberships o WHERE o.workspace_id = m.workspace_id \
+                 AND o.user_id <> $1), \
+         m.role = $2 AND NOT EXISTS (SELECT 1 FROM memberships o \
+                 WHERE o.workspace_id = m.workspace_id AND o.user_id <> $1 AND o.role = $2) \
+         FROM memberships m WHERE m.user_id = $1",
+    )
+    .bind(session.user_id)
+    .bind(workspaces::stored_role(Role::Owner))
+    .fetch_all(&mut *tx)
+    .await?;
+    for (workspace_id, others, last_owner) in theirs {
+        if !others {
+            workspaces::delete(&mut tx, workspace_id, (s.clock)()).await?;
+        } else if last_owner {
+            // Dropping `tx` rolls back the Workspaces already deleted.
+            return Err(ApiError::LastOwner);
+        }
+    }
+    // Takes their sessions, memberships and identities with it.
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(session.user_id)
+        .execute(&mut *tx)
+        .await?;
+    if session.user.instance_admin {
+        let admins_left: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM users WHERE instance_admin AND NOT disabled)",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        if !admins_left {
+            return Err(ApiError::LastInstanceAdmin);
+        }
+    }
+    tx.commit().await?;
+    Ok((
+        StatusCode::NO_CONTENT,
+        [(header::SET_COOKIE, session_cookie("", 0))],
+    )
+        .into_response())
 }
 
 /// A live session of an enabled User, from the session cookie. A state-changing
@@ -341,22 +469,15 @@ impl FromRequestParts<AppState> for Session {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, s: &AppState) -> Result<Self, ApiError> {
-        let token = parts
-            .headers
-            .get_all(header::COOKIE)
-            .iter()
-            .filter_map(|v| v.to_str().ok())
-            .flat_map(|v| v.split(';'))
-            .find_map(|c| c.trim().strip_prefix(COOKIE)?.strip_prefix('='))
-            .filter(|t| !t.is_empty())
-            .ok_or(ApiError::NotSignedIn)?;
+        let token = cookie(&parts.headers, COOKIE).ok_or(ApiError::NotSignedIn)?;
         let safe = matches!(parts.method, Method::GET | Method::HEAD | Method::OPTIONS);
         if !safe && !same_origin(parts) {
             return Err(ApiError::OriginMismatch);
         }
         let token_hash = token_hash(token);
-        let (user_id, email, instance_admin): (i64, String, bool) = sqlx::query_as(
-            "SELECT u.id, u.email, u.instance_admin FROM sessions s \
+        let (user_id, email, instance_admin, has_password, email_verified) = sqlx::query_as(
+            "SELECT u.id, u.email, u.instance_admin, u.password_hash IS NOT NULL, \
+             u.email_verified_at IS NOT NULL FROM sessions s \
              JOIN users u ON u.id = s.user_id \
              WHERE s.token_hash = $1 AND s.expires_at > $2 AND NOT u.disabled",
         )
@@ -371,9 +492,22 @@ impl FromRequestParts<AppState> for Session {
             user: User {
                 email,
                 instance_admin,
+                has_password,
+                email_verified,
             },
         })
     }
+}
+
+/// The non-empty value of the cookie named `name` that the request sends.
+pub(crate) fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(';'))
+        .find_map(|c| c.trim().strip_prefix(name)?.strip_prefix('='))
+        .filter(|v| !v.is_empty())
 }
 
 /// A request whose `Origin` header names the host it was sent to: what a request

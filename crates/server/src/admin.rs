@@ -2,20 +2,24 @@
 //! accepting an invite, which needs no credential.
 
 use axum::Json;
-use axum::extract::rejection::JsonRejection;
-use axum::extract::{FromRequestParts, Path, State};
-use axum::http::StatusCode;
+use axum::extract::rejection::{JsonRejection, QueryRejection};
+use axum::extract::{FromRequestParts, Path, Query, State};
 use axum::http::request::Parts;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use chrono::TimeDelta;
+use chrono::{DateTime, TimeDelta, Utc};
 use crablink_api::{
-    AcceptInvite, CreateInvite, ManagedUser, NewInvite, NewPassword, Role, UpdateUser, User,
+    AcceptInvite, BlockLink, BlockedLink, CreateInvite, ManagedUser, NewInvite, NewPassword, Role,
+    UpdateUser, User,
 };
 
-use crate::AppState;
+use crate::email_tokens;
 use crate::error::ApiError;
+use crate::identity_providers;
+use crate::links::{parse_short_url, short_url};
 use crate::users::{self, SameOrigin};
 use crate::workspaces::{Caller, stored_role};
+use crate::{AppState, email};
 
 const INVITE_TTL: TimeDelta = TimeDelta::days(7);
 
@@ -34,10 +38,12 @@ impl FromRequestParts<AppState> for InstanceAdmin {
 }
 
 /// `POST /api/admin/invites`: an invite link for a new User, optionally into a
-/// Workspace, that works once within `INVITE_TTL`.
+/// Workspace, that works once within `INVITE_TTL`. An instance that sends email
+/// also emails it to them, in the language the request asks for.
 pub(crate) async fn create_invite(
     State(s): State<AppState>,
     _: InstanceAdmin,
+    headers: HeaderMap,
     body: Result<Json<CreateInvite>, JsonRejection>,
 ) -> Result<(StatusCode, Json<NewInvite>), ApiError> {
     let Json(req) = body?;
@@ -71,8 +77,11 @@ pub(crate) async fn create_invite(
     .bind(expires_at)
     .execute(&s.pool)
     .await?;
-    // The token rides in the fragment, which browsers never send to a server.
-    let url = format!("{}://{}/app/invite#{token}", s.scheme, s.default_domain);
+    let url = email_tokens::link(&s, "invite", &token);
+    if let Some(mailer) = &s.mailer {
+        let chinese = crate::prefers_chinese(&headers);
+        mailer(email::invite(chinese, &s.default_domain, email, &url));
+    }
     Ok((StatusCode::CREATED, Json(NewInvite { url, expires_at })))
 }
 
@@ -118,7 +127,7 @@ pub(crate) async fn accept_invite(
     if expired {
         return Err(ApiError::InviteExpired);
     }
-    let id = users::insert_user(&mut tx, &email, &hash, false).await?;
+    let id = users::insert_user(&mut tx, &email, Some(&hash), false, true).await?;
     if let Some(workspace_id) = workspace_id {
         sqlx::query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, $3)")
             .bind(id)
@@ -135,6 +144,8 @@ pub(crate) async fn accept_invite(
     let user = User {
         email,
         instance_admin: false,
+        has_password: true,
+        email_verified: true,
     };
     let res = users::start_session(&s, &mut tx, id, user).await?;
     tx.commit().await?;
@@ -147,20 +158,47 @@ pub(crate) async fn list_users(
     _: InstanceAdmin,
 ) -> Result<Json<Vec<ManagedUser>>, ApiError> {
     // ponytail: no pagination; add a cursor like Links' if instances grow past a few hundred Users.
-    let rows: Vec<(i64, String, bool, bool)> = sqlx::query_as(
-        "SELECT id, email, instance_admin, disabled FROM users ORDER BY lower(email)",
-    )
-    .fetch_all(&s.pool)
-    .await?;
-    Ok(Json(rows.into_iter().map(managed_user).collect()))
+    let rows: Vec<ManagedRow> =
+        sqlx::query_as(concat!(managed_user_select!(), " ORDER BY lower(email)"))
+            .fetch_all(&s.pool)
+            .await?;
+    Ok(Json(rows.into_iter().map(|r| r.into_dto(&s)).collect()))
 }
 
-fn managed_user((id, email, instance_admin, disabled): (i64, String, bool, bool)) -> ManagedUser {
-    ManagedUser {
-        id,
-        email,
-        instance_admin,
-        disabled,
+/// Selects `ManagedRow`s from `users`.
+macro_rules! managed_user_select {
+    () => {
+        "SELECT id, email, instance_admin, disabled, password_hash IS NOT NULL AS has_password, \
+         ARRAY(SELECT issuer FROM identities WHERE user_id = users.id ORDER BY issuer) AS issuers \
+         FROM users"
+    };
+}
+use managed_user_select;
+
+#[derive(sqlx::FromRow)]
+struct ManagedRow {
+    id: i64,
+    email: String,
+    instance_admin: bool,
+    disabled: bool,
+    has_password: bool,
+    issuers: Vec<String>,
+}
+
+impl ManagedRow {
+    fn into_dto(self, s: &AppState) -> ManagedUser {
+        ManagedUser {
+            id: self.id,
+            email: self.email,
+            instance_admin: self.instance_admin,
+            disabled: self.disabled,
+            has_password: self.has_password,
+            identity_providers: self
+                .issuers
+                .into_iter()
+                .map(|issuer| identity_providers::name_of(s, issuer))
+                .collect(),
+        }
     }
 }
 
@@ -190,7 +228,7 @@ pub(crate) async fn update_user(
             .execute(&mut *tx)
             .await?;
     }
-    let row = sqlx::query_as("SELECT id, email, instance_admin, disabled FROM users WHERE id = $1")
+    let row: ManagedRow = sqlx::query_as(concat!(managed_user_select!(), " WHERE id = $1"))
         .bind(id)
         .fetch_optional(&mut *tx)
         .await?
@@ -205,7 +243,7 @@ pub(crate) async fn update_user(
         return Err(ApiError::LastInstanceAdmin);
     }
     tx.commit().await?;
-    Ok(Json(managed_user(row)))
+    Ok(Json(row.into_dto(&s)))
 }
 
 /// `POST /api/admin/users/{id}/password`: gives a User a new random password,
@@ -222,4 +260,99 @@ pub(crate) async fn reset_password(
     users::set_password(&mut tx, id, hash, None).await?;
     tx.commit().await?;
     Ok(Json(NewPassword { password }))
+}
+
+#[derive(sqlx::FromRow)]
+struct BlockedRow {
+    host: String,
+    code: String,
+    target: String,
+    workspace_slug: String,
+    blocked_at: DateTime<Utc>,
+}
+
+impl BlockedRow {
+    fn into_dto(self, scheme: &str) -> BlockedLink {
+        BlockedLink {
+            short_url: short_url(scheme, &self.host, &self.code),
+            target: self.target,
+            workspace_slug: self.workspace_slug,
+            blocked_at: self.blocked_at,
+        }
+    }
+}
+
+/// `GET /api/admin/blocked-links`: every Blocked Link that isn't a Deleted Link,
+/// most recently blocked first.
+pub(crate) async fn list_blocked_links(
+    State(s): State<AppState>,
+    _: InstanceAdmin,
+) -> Result<Json<Vec<BlockedLink>>, ApiError> {
+    let rows: Vec<BlockedRow> = sqlx::query_as(
+        "SELECT d.host, l.code, l.target, w.slug AS workspace_slug, l.blocked_at \
+         FROM links l JOIN domains d ON d.id = l.domain_id \
+         JOIN workspaces w ON w.id = l.workspace_id \
+         WHERE l.blocked_at IS NOT NULL AND l.deleted_at IS NULL \
+         ORDER BY l.blocked_at DESC, l.id DESC",
+    )
+    .fetch_all(&s.pool)
+    .await?;
+    Ok(Json(
+        rows.into_iter().map(|r| r.into_dto(&s.scheme)).collect(),
+    ))
+}
+
+/// `POST /api/admin/blocked-links`: blocks the live Link of a Short URL at once.
+/// Blocking a Blocked Link keeps when it was first blocked. Closes the Link's open
+/// reports, which stay closed if it is unblocked.
+pub(crate) async fn block_link(
+    State(s): State<AppState>,
+    _: InstanceAdmin,
+    body: Result<Json<BlockLink>, JsonRejection>,
+) -> Result<(StatusCode, Json<BlockedLink>), ApiError> {
+    let Json(req) = body?;
+    let (host, code) = parse_short_url(&req.short_url)?;
+    let row: BlockedRow = sqlx::query_as(
+        "WITH blocked AS ( \
+           UPDATE links l SET blocked_at = COALESCE(l.blocked_at, $3) \
+           FROM domains d, workspaces w \
+           WHERE d.id = l.domain_id AND w.id = l.workspace_id \
+           AND d.host = lower($1) AND l.code = $2 AND l.deleted_at IS NULL \
+           RETURNING l.id, d.host, l.code, l.target, w.slug AS workspace_slug, l.blocked_at), \
+         closed AS ( \
+           UPDATE reports SET closed_at = $3 \
+           WHERE link_id IN (SELECT id FROM blocked) AND closed_at IS NULL) \
+         SELECT host, code, target, workspace_slug, blocked_at FROM blocked",
+    )
+    .bind(host)
+    .bind(code)
+    .bind((s.clock)())
+    .fetch_optional(&s.pool)
+    .await?
+    .ok_or(ApiError::LinkNotFound)?;
+    Ok((StatusCode::CREATED, Json(row.into_dto(&s.scheme))))
+}
+
+/// `DELETE /api/admin/blocked-links?short_url=`: unblocks a Blocked Link, which
+/// redirects again at once; 404 if the Short URL has no Blocked Link.
+pub(crate) async fn unblock_link(
+    State(s): State<AppState>,
+    _: InstanceAdmin,
+    query: Result<Query<BlockLink>, QueryRejection>,
+) -> Result<StatusCode, ApiError> {
+    let Query(req) = query?;
+    let (host, code) = parse_short_url(&req.short_url)?;
+    let done = sqlx::query(
+        "UPDATE links l SET blocked_at = NULL FROM domains d \
+         WHERE d.id = l.domain_id AND d.host = lower($1) AND l.code = $2 \
+         AND l.deleted_at IS NULL AND l.blocked_at IS NOT NULL",
+    )
+    .bind(host)
+    .bind(code)
+    .execute(&s.pool)
+    .await?;
+    if done.rows_affected() == 0 {
+        return Err(ApiError::LinkNotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
 }

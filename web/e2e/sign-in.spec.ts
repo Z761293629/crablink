@@ -48,3 +48,20 @@ test('a wrong password is refused', async ({ page, user }) => {
 
   await expect(page.getByRole('alert')).toHaveText('Wrong email or password.');
 });
+
+test('over the sign-in rate limit, the sign-in page says how long to wait', async ({ page, user }) => {
+  // The server's limits are covered by its own tests; e2e runs with none set.
+  await page.route('**/api/session', (route) =>
+    route.fulfill({
+      status: 429,
+      headers: { 'retry-after': '45' },
+      json: { kind: 'rate_limited', error: 'too many requests: try again in 45 seconds' },
+    }),
+  );
+  await page.goto('/app/');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  await expect(page.getByRole('alert')).toHaveText('Too many requests. Try again in 45 seconds.');
+});

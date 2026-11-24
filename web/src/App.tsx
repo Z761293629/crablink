@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AcceptInvite, ChangePassword } from './Account';
-import { api, type Membership, type User } from './api';
+import { AcceptInvite, Account, ForgotPassword, ResetPassword, SignUp, VerifyBanner, VerifyEmail } from './Account';
+import { api, ApiError, type IdentityProvider, type Instance, type Membership, type User } from './api';
 import { Clicks } from './Clicks';
 import { Domains } from './Domains';
 import { InstanceAdmin } from './InstanceAdmin';
 import { Links } from './Links';
+import { ReportShortUrl } from './Report';
 import { errorMessage, languages, setLanguage } from './i18n';
 import { Chevron, interceptLinks, navigate, PageError, tearHalf, tearOff, useLocationKey, usePopover } from './ui';
 import { ManageWorkspace } from './Workspace';
@@ -76,10 +77,14 @@ export function App() {
     return () => document.removeEventListener('click', interceptLinks);
   }, []);
 
-  async function signOut() {
-    await api('DELETE', '/session');
+  function signedOut() {
     setUser(null);
     setWorkspaces(undefined);
+  }
+
+  async function signOut() {
+    await api('DELETE', '/session');
+    signedOut();
   }
 
   function switchTo(next: string) {
@@ -92,6 +97,11 @@ export function App() {
   let main;
   let board = false;
   if (page === 'invite') main = <AcceptInvite />;
+  else if (page === 'report') main = <ReportShortUrl />;
+  else if (page === 'reset-password') main = <ResetPassword />;
+  else if (page === 'forgot-password') main = <ForgotPassword />;
+  else if (page === 'sign-up') main = <SignUp />;
+  else if (page === 'verify-email') main = <VerifyEmail />;
   else if (user === undefined) main = null;
   else if (!user) main = <SignIn onSignedIn={signedInAs} />;
   else if (error !== undefined)
@@ -105,7 +115,16 @@ export function App() {
       />
     );
   else if (page === 'admin' && user.instance_admin) main = <InstanceAdmin me={user.email} />;
-  else if (page === 'account') main = <ChangePassword />;
+  else if (page === 'account')
+    main = (
+      <Account
+        hasPassword={user.has_password}
+        onDeleted={() => {
+          signedOut();
+          navigate('/app/', { replace: true });
+        }}
+      />
+    );
   else if (page === 'settings') main = <Settings user={user} workspace={workspace} onSignOut={signOut} />;
   else if (!workspaces) main = null;
   else if (page === 'workspace')
@@ -150,6 +169,7 @@ export function App() {
           )}
         </div>
       </header>
+      {user && !user.email_verified && <VerifyBanner email={user.email} />}
       <main className={board ? 'flush' : undefined}>
         {inSettings && (
           <a className="back to-settings" href="/app/settings">
@@ -368,9 +388,26 @@ function LanguageToggle() {
 // `pnpm server` creates (web/package.json); builds drop it, as import.meta.env.DEV is false.
 const devAdmin = import.meta.env.DEV ? { email: 'admin@example.com', password: 'e2e admin password' } : undefined;
 
+/** Why a sign-in through an Identity Provider was refused: its callback lands here with `?error={kind}`. */
+function refusal(): ApiError | undefined {
+  const kind = new URLSearchParams(location.search).get('error');
+  return kind ? new ApiError(0, kind, kind) : undefined;
+}
+
 function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
   const { t } = useTranslation();
-  const [error, setError] = useState<unknown>();
+  const [error, setError] = useState<unknown>(refusal);
+  const [providers, setProviders] = useState<IdentityProvider[]>([]);
+  const [instance, setInstance] = useState<Instance>();
+
+  useEffect(() => {
+    // Shown once: a reload or the next sign-in starts clean.
+    if (location.search) history.replaceState(null, '', location.pathname);
+    // Without the list, the password form still works.
+    api<IdentityProvider[]>('GET', '/identity-providers').then(setProviders, () => {});
+    // Without it, the form still signs in; it just offers no "forgot password".
+    api<Instance>('GET', '/instance').then(setInstance, () => {});
+  }, []);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -394,6 +431,18 @@ function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
       className="ticket" onSubmit={submit}>
       <div className="ticket-body">
         <h1>{t('signIn.title')}</h1>
+        {providers.length > 0 && (
+          <>
+            <div className="providers">
+              {providers.map((p) => (
+                <a key={p.id} className="button" href={`/auth/${encodeURIComponent(p.id)}`}>
+                  {t('signIn.with', { name: p.name })}
+                </a>
+              ))}
+            </div>
+            <p className="micro">{t('signIn.or')}</p>
+          </>
+        )}
         <label className="field">
           <span className="micro">{t('signIn.email')}</span>
           <input name="email" type="email" autoComplete="username" defaultValue={devAdmin?.email} required />
@@ -409,6 +458,16 @@ function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
           />
         </label>
         {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+        {instance?.password_reset && (
+          <p>
+            <a href="/app/forgot-password">{t('signIn.forgot')}</a>
+          </p>
+        )}
+        {instance?.sign_up && (
+          <p>
+            {t('signIn.noUser')} <a href="/app/sign-up">{t('signIn.signUp')}</a>
+          </p>
+        )}
       </div>
       <div className="tear">
         <button type="submit" className="primary">

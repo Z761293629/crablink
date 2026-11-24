@@ -9,7 +9,7 @@
 #[path = "../../../server/tests/common/pg.rs"]
 mod pg;
 
-use std::sync::{Arc, mpsc};
+use std::sync::mpsc;
 
 use crablink_api::{CreateLink, Link};
 use crablink_cli::tui::{App, Caps};
@@ -36,6 +36,13 @@ pub struct TestServer {
 /// Starts a server with random Generated Codes and an empty database, signs in as a
 /// new User and issues an API Key of their personal Workspace.
 pub fn server() -> TestServer {
+    server_with(|_| {})
+}
+
+/// `server` whose settings `configure` changes, e.g. to turn on a switch.
+pub fn server_with(
+    configure: impl FnOnce(&mut crablink_server::Settings) + Send + 'static,
+) -> TestServer {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -51,16 +58,9 @@ pub fn server() -> TestServer {
             crablink_server::create_user(&pool, INSTANCE_ADMIN, PASSWORD, true)
                 .await
                 .unwrap();
-            let app = crablink_server::app(
-                pool,
-                Arc::new(crablink_server::random_code),
-                Arc::new(chrono::Utc::now),
-                Arc::new(|_| None),
-                false,
-                &url,
-            )
-            .await
-            .unwrap();
+            let mut settings = crablink_server::Settings::new(&url);
+            configure(&mut settings);
+            let app = crablink_server::app(pool, settings).await.unwrap();
             tx.send(url).unwrap();
             axum::serve(listener, app).await.unwrap();
         });
@@ -135,6 +135,17 @@ impl TestServer {
             .header("Cookie", &sign_in(url, INSTANCE_ADMIN))
             .header("Origin", url)
             .send_json(serde_json::json!({ "status": "approved" }))
+            .unwrap();
+    }
+
+    /// Blocks the Link with `code` on the Default Domain as an Instance Admin.
+    pub fn block(&self, code: &str) {
+        let url = &self.url;
+        browser()
+            .post(format!("{url}/api/admin/blocked-links"))
+            .header("Cookie", &sign_in(url, INSTANCE_ADMIN))
+            .header("Origin", url)
+            .send_json(serde_json::json!({ "short_url": format!("{url}/{code}") }))
             .unwrap();
     }
 

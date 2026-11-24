@@ -26,6 +26,31 @@ pub fn random_code() -> String {
         .collect()
 }
 
+/// The Short URL of Code `code` on Domain `host`.
+pub(crate) fn short_url(scheme: &str, host: &str, code: &str) -> String {
+    format!("{scheme}://{host}/{code}")
+}
+
+/// The Domain host and Code of a Short URL such as `https://crabl.ink/aZ3k9` or
+/// `crabl.ink/aZ3k9`.
+pub(crate) fn parse_short_url(short_url: &str) -> Result<(&str, &str), ApiError> {
+    let s = short_url.trim();
+    let s = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+        .unwrap_or(s);
+    match s.split_once('/') {
+        Some((host, code))
+            if !host.is_empty() && !code.is_empty() && !code.contains(['/', '?', '#']) =>
+        {
+            Ok((host, code))
+        }
+        _ => Err(ApiError::BadRequest(
+            "short_url must look like https://crabl.ink/aZ3k9".into(),
+        )),
+    }
+}
+
 #[derive(sqlx::FromRow)]
 struct LinkRow {
     code: String,
@@ -36,13 +61,14 @@ struct LinkRow {
     click_count: i64,
     domain: String,
     tags: Vec<String>,
+    blocked: bool,
 }
 
 impl LinkRow {
     /// The DTO, its Short URL built from the Link's Domain.
     fn into_dto(self, scheme: &str) -> crablink_api::Link {
         crablink_api::Link {
-            short_url: format!("{scheme}://{}/{}", self.domain, self.code),
+            short_url: short_url(scheme, &self.domain, &self.code),
             domain: self.domain,
             code: self.code,
             target: self.target,
@@ -51,6 +77,7 @@ impl LinkRow {
             expires_at: self.expires_at,
             click_count: self.click_count,
             tags: self.tags,
+            blocked: self.blocked,
         }
     }
 }
@@ -61,7 +88,7 @@ macro_rules! link_columns {
     () => {
         "l.code, l.target, l.created_at, l.updated_at, l.expires_at, l.click_count, \
          d.host AS domain, ARRAY(SELECT t.name FROM link_tags lt JOIN tags t ON t.id = lt.tag_id \
-         WHERE lt.link_id = l.id ORDER BY t.name) AS tags"
+         WHERE lt.link_id = l.id ORDER BY t.name) AS tags, l.blocked_at IS NOT NULL AS blocked"
     };
 }
 
@@ -147,8 +174,24 @@ fn validate_target(target: &str, default_host: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// Refuses a Target the injected check calls malicious; a failed check lets it through,
+/// so an outage at Safe Browsing never stops Link creation. Call after the cheap checks.
+async fn check_target(s: &AppState, target: &str) -> Result<(), ApiError> {
+    match (s.target_check)(target.to_owned()).await {
+        Ok(true) => Err(ApiError::TargetUnsafe),
+        Ok(false) => Ok(()),
+        Err(e) => {
+            eprintln!("Safe Browsing check failed, letting the Target through: {e}");
+            Ok(())
+        }
+    }
+}
+
 /// Custom Codes that would shadow the service's own routes (compared case-insensitively).
 const RESERVED_CODES: &[&str] = &["api", "admin", "app", "health"];
+/// A Custom Code that would shadow the report form, which only the Default Domain
+/// serves (compared case-insensitively).
+pub(crate) const REPORT_CODE: &str = "report";
 
 /// A Custom Code matches `[A-Za-z0-9_-]{3,64}` and is not reserved.
 fn validate_custom_code(code: &str) -> Result<(), ApiError> {
@@ -174,38 +217,53 @@ pub(crate) async fn create_link(
     req: Result<Json<crablink_api::CreateLink>, JsonRejection>,
 ) -> Result<(StatusCode, Json<crablink_api::Link>), ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    caller.email_verified()?;
     let Json(req) = req?;
     let link = insert_link(&s, workspace_id, req).await?;
     Ok((StatusCode::CREATED, Json(link)))
 }
 
-/// Creates a Link in Workspace `workspace_id`; shared by create and CSV import.
+/// Creates a Link in Workspace `workspace_id`; shared by create and CSV import, so
+/// every attempt counts against the Workspace's rate limit.
 async fn insert_link(
     s: &AppState,
     workspace_id: i64,
     req: crablink_api::CreateLink,
 ) -> Result<crablink_api::Link, ApiError> {
+    s.limiters.links.hit(workspace_id, (s.clock)())?;
     validate_target(&req.target, &s.default_host)?;
     if let Some(code) = &req.code {
         validate_custom_code(code)?;
     }
     let tags = tag_names(&req.tags)?;
     let domain = s.domain_or_default(req.domain.as_deref());
+    if let Some(code) = &req.code
+        && domain.eq_ignore_ascii_case(&s.default_domain)
+        && (s.reserved_codes.contains(code) || code.eq_ignore_ascii_case(REPORT_CODE))
+    {
+        return Err(ApiError::CodeReserved(code.clone()));
+    }
     let domain_id = crate::domains::usable(&s.pool, workspace_id, domain)
         .await?
         .ok_or(ApiError::DomainNotApproved)?;
+    check_target(s, &req.target).await?;
     let now = (s.clock)();
     let mut tx = s.pool.begin().await?;
     // Insert and let the unique constraint reject a taken Code; never check first (ADR-0003).
     let mut id = None;
     for _ in 0..MAX_CODE_ATTEMPTS {
+        let code = req.code.clone().unwrap_or_else(|| (s.codes)());
+        // A Generated Code is never a Reserved Code, on any Domain.
+        if req.code.is_none() && s.reserved_codes.contains(&code) {
+            continue;
+        }
         id = sqlx::query_scalar::<_, i64>(
             "INSERT INTO links \
              (code, target, created_at, updated_at, expires_at, domain_id, workspace_id) \
              VALUES ($1, $2, $3, $4, $5, $6, $7) \
              ON CONFLICT (domain_id, code) DO NOTHING RETURNING id",
         )
-        .bind(req.code.clone().unwrap_or_else(|| (s.codes)()))
+        .bind(code)
         .bind(&req.target)
         .bind(now)
         .bind(now)
@@ -314,6 +372,7 @@ pub(crate) async fn import_links(
     body: String,
 ) -> Result<Json<Vec<crablink_api::ImportedRow>>, ApiError> {
     let workspace_id = caller.workspace(&s, &slug).await?.workspace_id;
+    caller.email_verified()?;
     let mut reader = csv::Reader::from_reader(body.as_bytes());
     let headers = reader
         .headers()
@@ -427,6 +486,9 @@ pub(crate) async fn link_qr(
     let Query(q) = query?;
     let link = fetch_link(&s, workspace_id, q.domain.as_deref(), &code).await?;
     // Its Short URL no longer redirects, so a QR code of it would only mislead.
+    if link.blocked {
+        return Err(ApiError::LinkBlocked);
+    }
     if link.is_expired((s.clock)()) {
         return Err(ApiError::LinkExpired);
     }
@@ -466,22 +528,32 @@ pub(crate) async fn update_link(
     }
     let tags = req.tags.as_deref().map(tag_names).transpose()?;
     let id = link_id(&s, workspace_id, q.domain.as_deref(), &code).await?;
+    if let Some(target) = &req.target {
+        // A Blocked Link refuses every change, so say so before asking Safe Browsing.
+        if link_by_id(&mut *s.pool.acquire().await?, id).await?.blocked {
+            return Err(ApiError::LinkBlocked);
+        }
+        check_target(&s, target).await?;
+    }
     let mut tx = s.pool.begin().await?;
-    // Still live: it may have been deleted since `link_id` found it.
-    let updated = sqlx::query(
+    // Still live and not blocked: it may have changed since `link_id` found it.
+    let blocked: Option<bool> = sqlx::query_scalar(
         "UPDATE links SET target = COALESCE($1, target), \
          expires_at = CASE WHEN $2 THEN $3 ELSE expires_at END, updated_at = $4 \
-         WHERE id = $5 AND deleted_at IS NULL",
+         WHERE id = $5 AND deleted_at IS NULL RETURNING blocked_at IS NOT NULL",
     )
     .bind(&req.target)
     .bind(req.expires_at.is_some())
     .bind(req.expires_at.flatten())
     .bind((s.clock)())
     .bind(id)
-    .execute(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
-    if updated.rows_affected() == 0 {
-        return Err(ApiError::LinkNotFound);
+    match blocked {
+        None => return Err(ApiError::LinkNotFound),
+        // Dropping `tx` rolls the change back.
+        Some(true) => return Err(ApiError::LinkBlocked),
+        Some(false) => {}
     }
     if let Some(tags) = &tags {
         set_tags(&mut tx, workspace_id, id, tags).await?;

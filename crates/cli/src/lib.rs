@@ -215,6 +215,9 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
             }
             let link = api.get(&link.code, link.domain.as_deref())?;
             // As the server refuses `-o`: its Short URL no longer redirects.
+            if link.blocked {
+                bail!("{}", blocked_message(&link));
+            }
             if link.is_expired(now) {
                 bail!("Link {} has expired: no QR code", link.code);
             }
@@ -257,9 +260,19 @@ fn edit_body(
     })
 }
 
-/// The Short URL as lists show it: the Link's Domain and Code, e.g. `crabl.ink/aZ3k9`.
+/// The Short URL as lists show it: the Link's Domain and Code, e.g. `crabl.ink/aZ3k9`,
+/// marked `(blocked)` for a Blocked Link.
 pub(crate) fn short_url(l: &Link) -> String {
-    format!("{}/{}", l.domain, l.code)
+    let blocked = if l.blocked { " (blocked)" } else { "" };
+    format!("{}/{}{blocked}", l.domain, l.code)
+}
+
+/// Why a Blocked Link can't be changed or shown as a QR code.
+pub(crate) fn blocked_message(l: &Link) -> String {
+    format!(
+        "Link {} was blocked for abuse by an Instance Admin: it can only be deleted",
+        l.code
+    )
 }
 
 pub(crate) fn timestamp(t: DateTime<Utc>) -> String {
@@ -298,6 +311,9 @@ fn print_link(l: &Link, now: DateTime<Utc>) {
     println!("Code:        {}", l.code);
     println!("Short URL:   {}", l.short_url);
     println!("Target:      {}", l.target);
+    if l.blocked {
+        println!("Blocked:     yes, for abuse by an Instance Admin; it can only be deleted");
+    }
     println!("Expiry:      {}", expiry(l, now));
     println!("Click Count: {}", l.click_count);
     println!("Tags:        {}", l.tags.join(", "));

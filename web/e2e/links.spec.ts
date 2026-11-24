@@ -198,7 +198,8 @@ test('a User tags two Links, filters by one Tag and searches by part of a Target
   await pass.getByRole('button', { name: 'Change Target' }).click();
   await pass.getByLabel('Tags').fill('autumn');
   await pass.getByRole('button', { name: 'Save' }).click();
-  await expect(autumn).toContainText('autumn');
+  // Its Code says "autumn" too, so wait for the Tag itself: the save must land before the board is filtered.
+  await expect(autumn.getByTitle('autumn', { exact: true })).toBeVisible();
 
   const rows = page.getByRole('table').getByRole('row');
   await page.getByLabel('Tag', { exact: true }).selectOption('spring');

@@ -216,7 +216,8 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
 
   function changed(old: Link, link: Link) {
     beforeChange(link.short_url);
-    setLinks(links!.map((l) => (l === old ? link : l)));
+    // The board as it is now: a filter changed while saving must not bring back the old page.
+    setLinks((ls) => ls!.map((l) => (l === old ? link : l)));
     mark(link.short_url, 'updated');
     setEditing(undefined);
     showToast(
@@ -413,7 +414,9 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
               <tbody>
                 {/* Flat, so each row keeps its key and its DOM when others move: nothing remounts or replays. */}
                 {links.flatMap((link) => {
+                  // A Blocked or expired Link's Short URL no longer redirects: the server refuses its QR code.
                   const expired = isExpired(link);
+                  const noQr = expired || link.blocked;
                   // While a New Link is being issued, no pass on the board is open.
                   const isSelected = link === selected && !editor;
                   const how = fresh[link.short_url];
@@ -451,7 +454,9 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
                               <span className="vh">: {link.tags.slice(ROW_TAGS).join(', ')}</span>
                             </span>
                           )}
-                          {expired ? (
+                          {link.blocked ? (
+                            <span className="stamp blocked">{t('links.blocked')}</span>
+                          ) : expired ? (
                             <span className="stamp expired">{t('links.expired')}</span>
                           ) : (
                             link.expires_at && (
@@ -468,7 +473,7 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
                       <td className="c-acts">
                         <span className="row-acts">
                           {!compact && <CopyButton link={link} onCopied={copied} onFailed={copyFailed} />}
-                          {!compact && !expired && (
+                          {!compact && !noQr && (
                             <a
                               className="button small"
                               href={qrHref(slug, link, 'png')}
@@ -484,12 +489,12 @@ export function Links({ slug, pick }: { slug: string; /** The Link in the URL, i
                               ...(compact
                                 ? [
                                     { label: t('links.copy'), onSelect: () => void copy(link, copied, copyFailed) },
-                                    ...(expired
+                                    ...(noQr
                                       ? []
                                       : [{ label: t('links.downloadQr'), onSelect: () => download(qrHref(slug, link, 'png'), `${link.code}.png`) }]),
                                   ]
                                 : []),
-                              { label: t('links.edit'), onSelect: () => edit(link) },
+                              ...(link.blocked ? [] : [{ label: t('links.edit'), onSelect: () => edit(link) }]),
                               { label: t('links.delete'), danger: true, onSelect: () => void remove(link) },
                             ]}
                           />
@@ -881,8 +886,9 @@ function LinkPass({
     }
   }
 
-  // A QR code of an expired Link would only mislead, so the server refuses one.
+  // A QR code of a Blocked or expired Link would only mislead, so the server refuses one.
   const expired = isExpired(link);
+  const noQr = expired || link.blocked;
   const form = `${id}edit`;
   // Short, so a date and time fit one line of a half-width segment.
   const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'short', timeStyle: 'short' });
@@ -979,22 +985,29 @@ function LinkPass({
                     {link.target}
                   </a>
                 </dd>
-                <dd className="change">
-                  <button ref={change} className="small" aria-describedby={`${id}same`} onClick={() => onEditing(true)}>
-                    {t('links.changeTarget')}
-                  </button>
-                  <span id={`${id}same`} className="hint">
-                    {t('links.changeTargetHint')}
-                  </span>
-                </dd>
+                {link.blocked ? (
+                  <dd className="change">
+                    <span className="stamp blocked">{t('links.blocked')}</span>{' '}
+                    <span className="hint">{t('links.blockedHint')}</span>
+                  </dd>
+                ) : (
+                  <dd className="change">
+                    <button ref={change} className="small" aria-describedby={`${id}same`} onClick={() => onEditing(true)}>
+                      {t('links.changeTarget')}
+                    </button>
+                    <span id={`${id}same`} className="hint">
+                      {t('links.changeTargetHint')}
+                    </span>
+                  </dd>
+                )}
               </div>
             </dl>
           </div>
           {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
         </div>
         <div className="stub" ref={stub}>
-          {expired ? (
-            <div className="qr blank">{t('links.qrExpired')}</div>
+          {noQr ? (
+            <div className="qr blank">{t(link.blocked ? 'links.qrBlocked' : 'links.qrExpired')}</div>
           ) : (
             <span className="qr">
               <img src={qrHref(slug, link, 'svg')} alt={t('links.qrAlt', { url: short })} width={124} height={124} />
@@ -1026,7 +1039,7 @@ function LinkPass({
           ) : (
           <div className="acts">
             {/* The QR code for a poster is the pass's main job; PNG prints anywhere, SVG for designers. */}
-            {!expired && (
+            {!noQr && (
               <a className="button primary" href={qrHref(slug, link, 'png')} download={`${link.code}.png`}>
                 {t('links.downloadQr')}
               </a>
@@ -1036,9 +1049,9 @@ function LinkPass({
                 link={link}
                 onCopied={onCopied}
                 onFailed={onCopyFailed}
-                className={expired ? 'primary small' : 'small'}
+                className={noQr ? 'primary small' : 'small'}
               />
-              {!expired && (
+              {!noQr && (
                 <a
                   className="button small"
                   href={qrHref(slug, link, 'svg')}

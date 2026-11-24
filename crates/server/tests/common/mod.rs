@@ -4,7 +4,11 @@
 //! Use from a test file with `mod common;` then `use common::*;`.
 #![allow(dead_code)]
 
+mod fake_identity_provider;
 mod pg;
+
+#[allow(unused_imports)] // Only some test files sign in through an Identity Provider.
+pub use fake_identity_provider::{FakeIdentityProvider, Person, Token};
 
 use std::collections::VecDeque;
 use std::net::{IpAddr, SocketAddr};
@@ -47,6 +51,21 @@ fn fake_country(ip: IpAddr) -> Option<String> {
     Some(country.into())
 }
 
+/// The test instance's settings on `base_url`: random Generated Codes, the fake
+/// country lookup, and `clock`.
+fn settings(
+    base_url: &str,
+    clock: crablink_server::Clock,
+    trust_proxy: bool,
+) -> crablink_server::Settings {
+    crablink_server::Settings {
+        trust_proxy,
+        clock,
+        country: Arc::new(fake_country),
+        ..crablink_server::Settings::new(base_url)
+    }
+}
+
 /// App with random Generated Codes.
 pub async fn app() -> TestApp {
     app_with_codes(&[]).await
@@ -54,15 +73,51 @@ pub async fn app() -> TestApp {
 
 /// App with random Generated Codes that trusts `X-Forwarded-For` from its proxy.
 pub async fn app_behind_proxy() -> TestApp {
-    build(&[], true).await
+    build(&[], true, |s| s).await
 }
 
 /// App whose Code generator yields `codes` in order, then random Codes.
 pub async fn app_with_codes(codes: &[&str]) -> TestApp {
-    build(codes, false).await
+    build(codes, false, |s| s).await
 }
 
-async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
+/// App whose Code generator yields `codes` in order, with `reserved` as its Reserved Codes.
+pub async fn app_with_reserved_codes(codes: &[&str], reserved: &[&str]) -> TestApp {
+    build(codes, false, |s| crablink_server::Settings {
+        reserved_codes: reserved.iter().map(|c| c.to_string()).collect(),
+        ..s
+    })
+    .await
+}
+
+/// App with random Generated Codes whose test settings are then changed by `change`,
+/// e.g. to inject a fake service.
+pub async fn app_with(
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> TestApp {
+    build(&[], false, change).await
+}
+
+/// `app_with`, or the error the app builder refuses to start with.
+pub async fn try_app_with(
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> Result<TestApp, String> {
+    try_build(&[], false, change).await
+}
+
+async fn build(
+    codes: &[&str],
+    trust_proxy: bool,
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> TestApp {
+    try_build(codes, trust_proxy, change).await.unwrap()
+}
+
+async fn try_build(
+    codes: &[&str],
+    trust_proxy: bool,
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> Result<TestApp, String> {
     let pool = crablink_server::connect(&pg::database_url().await)
         .await
         .unwrap();
@@ -77,16 +132,13 @@ async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
     let now = Arc::new(Mutex::new(Utc::now()));
     let clock = now.clone();
     let clock: crablink_server::Clock = Arc::new(move || *clock.lock().unwrap());
-    let router = crablink_server::app(
-        pool.clone(),
-        generator,
-        clock,
-        Arc::new(fake_country),
-        trust_proxy,
-        BASE_URL,
-    )
-    .await
-    .unwrap();
+    let settings = change(crablink_server::Settings {
+        codes: generator,
+        ..settings(BASE_URL, clock, trust_proxy)
+    });
+    // `restarted_on` keeps a trust `change` turned on.
+    let trust_proxy = settings.trust_proxy;
+    let router = crablink_server::app(pool.clone(), settings).await?;
     let mut app = TestApp {
         router,
         pool,
@@ -95,7 +147,49 @@ async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
         owner: Account::default(),
     };
     app.owner = app.account(OWNER).await;
-    app
+    Ok(app)
+}
+
+/// App with random Generated Codes that sends email to the returned fake mailer.
+pub async fn app_with_email() -> (TestApp, Mailbox) {
+    let mailbox = Mailbox::default();
+    let mailer = mailbox.mailer();
+    let app = app_with(|s| crablink_server::Settings {
+        mailer: Some(mailer),
+        ..s
+    })
+    .await;
+    (app, mailbox)
+}
+
+/// A fake mailer's outbox: every email the app sent, oldest first.
+#[derive(Clone, Default)]
+pub struct Mailbox(Arc<Mutex<Vec<crablink_server::Email>>>);
+
+impl Mailbox {
+    /// The fake mailer, to put in `Settings::mailer`, that keeps every email here.
+    pub fn mailer(&self) -> crablink_server::Mailer {
+        let sent = self.0.clone();
+        Arc::new(move |email| sent.lock().unwrap().push(email))
+    }
+
+    /// Every email sent to `address`, oldest first.
+    pub fn to(&self, address: &str) -> Vec<crablink_server::Email> {
+        let sent = self.0.lock().unwrap();
+        sent.iter().filter(|e| e.to == address).cloned().collect()
+    }
+
+    /// The link (an absolute URL on `BASE_URL`) in the last email to `address`.
+    pub fn link_to(&self, address: &str) -> String {
+        let email = self.to(address).pop();
+        let email = email.unwrap_or_else(|| panic!("no email to {address}"));
+        let link = email
+            .body
+            .split_whitespace()
+            .find(|w| w.starts_with(BASE_URL));
+        link.unwrap_or_else(|| panic!("no link in {email:?}"))
+            .to_string()
+    }
 }
 
 /// A signed-in User with their personal Workspace and an API Key of it.
@@ -142,19 +236,12 @@ impl TestApp {
     /// The app restarted with `CRABLINK_BASE_URL` set to `base_url`, on the same
     /// database and clock.
     pub async fn restarted_on(&self, base_url: &str) -> TestApp {
-        let codes: crablink_server::CodeGenerator = Arc::new(crablink_server::random_code);
         let now = self.now.clone();
         let clock: crablink_server::Clock = Arc::new(move || *now.lock().unwrap());
-        let router = crablink_server::app(
-            self.pool.clone(),
-            codes,
-            clock,
-            Arc::new(fake_country),
-            self.trust_proxy,
-            base_url,
-        )
-        .await
-        .unwrap();
+        let settings = settings(base_url, clock, self.trust_proxy);
+        let router = crablink_server::app(self.pool.clone(), settings)
+            .await
+            .unwrap();
         TestApp {
             router,
             pool: self.pool.clone(),
@@ -198,6 +285,25 @@ impl TestApp {
     pub async fn sign_in_res(&self, email: &str, password: &str) -> Res {
         let body = serde_json::json!({ "email": email, "password": password });
         self.request("POST", "/api/session", Some(body), &[("origin", ORIGIN)])
+            .await
+    }
+
+    /// Signs in through Identity Provider `id`, set up as `fake`, where `person`
+    /// approves: starts at `/auth/{id}`, then follows the fake's redirect back with
+    /// the cookie the start set. Returns the callback's response.
+    pub async fn sign_in_through(
+        &self,
+        fake: &FakeIdentityProvider,
+        id: &str,
+        person: Person,
+    ) -> Res {
+        let start = self.get(&format!("/auth/{id}")).await;
+        assert_eq!(start.status, StatusCode::SEE_OTHER, "{}", start.text);
+        let cookie = start.header("set-cookie").split(';').next().unwrap();
+        let back = url::Url::parse(&fake.approve(start.header("location"), person)).unwrap();
+        assert_eq!(back.host_str(), Some(HOST), "{back}");
+        let path = format!("{}?{}", back.path(), back.query().unwrap_or_default());
+        self.request("GET", &path, None, &[("cookie", cookie)])
             .await
     }
 
@@ -394,6 +500,21 @@ impl Res {
 
     pub fn json(&self) -> Value {
         serde_json::from_str(&self.text).unwrap_or_else(|e| panic!("{e}: {}", self.text))
+    }
+
+    /// The `name=value` pair of the cookie named `name` this response sets to a
+    /// non-empty value, if any.
+    pub fn cookie(&self, name: &str) -> Option<String> {
+        self.headers
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|v| v.to_str().ok()?.split(';').next())
+            .find(|pair| {
+                pair.strip_prefix(name)
+                    .and_then(|rest| rest.strip_prefix('='))
+                    .is_some_and(|value| !value.is_empty())
+            })
+            .map(str::to_owned)
     }
 
     pub fn header(&self, name: &str) -> &str {

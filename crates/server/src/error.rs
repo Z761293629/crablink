@@ -2,7 +2,7 @@
 
 use axum::Json;
 use axum::extract::rejection::{JsonRejection, QueryRejection};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use crablink_api::ErrorKind;
 
@@ -41,16 +41,26 @@ pub enum ApiError {
     InviteExpired,
     #[error("invite has already been used")]
     InviteUsed,
+    #[error("password reset link has expired or was used: ask for a new one")]
+    ResetLinkExpired,
+    #[error("email verification link has expired or was used: ask for a new one")]
+    VerificationLinkExpired,
+    #[error("verify your email first: follow the link emailed to you, or ask for a new one")]
+    EmailNotVerified,
     /// A Code with no live Link (missing or deleted).
     #[error("link not found")]
     LinkNotFound,
     /// A Link whose Expiry has passed, where only a live one will do.
     #[error("link has expired")]
     LinkExpired,
+    #[error("link was blocked for abuse by an Instance Admin: it can only be deleted")]
+    LinkBlocked,
     #[error("{0}")]
     BadRequest(String),
     #[error("{0}")]
     InvalidTarget(&'static str),
+    #[error("target is known to be malicious (Google Safe Browsing)")]
+    TargetUnsafe,
     #[error("code must be 3-64 characters of A-Z, a-z, 0-9, _ or -")]
     InvalidCode,
     #[error("code {0:?} is reserved")]
@@ -75,6 +85,20 @@ pub enum ApiError {
     DomainNotFound,
     #[error("domain is neither the Default Domain nor an approved Domain of this Workspace")]
     DomainNotApproved,
+    /// Over a rate limit; retry after this many seconds.
+    #[error("too many requests: try again in {0} seconds")]
+    RateLimited(u64),
+    /// Details are logged, never sent.
+    #[error("signing in through the Identity Provider failed")]
+    IdentityProviderFailed,
+    #[error("the Identity Provider hasn't verified this email")]
+    IdentityProviderEmailUnverified,
+    #[error("no User has this email: ask an Instance Admin for an Invite")]
+    InviteNeeded,
+    #[error("this User is disabled")]
+    UserDisabled,
+    #[error("sign in through your Identity Provider again, then delete your User within 5 minutes")]
+    FreshSignInNeeded,
     #[error("could not generate a free code, try again")]
     CodesExhausted,
     /// Details are logged, never sent.
@@ -83,7 +107,7 @@ pub enum ApiError {
 }
 
 impl ApiError {
-    fn kind(&self) -> ErrorKind {
+    pub(crate) fn kind(&self) -> ErrorKind {
         match self {
             Self::InvalidApiKey | Self::NotSignedIn => ErrorKind::Unauthorized,
             Self::Forbidden => ErrorKind::Forbidden,
@@ -97,10 +121,15 @@ impl ApiError {
             Self::InviteNotFound => ErrorKind::InviteNotFound,
             Self::InviteExpired => ErrorKind::InviteExpired,
             Self::InviteUsed => ErrorKind::InviteUsed,
+            Self::ResetLinkExpired => ErrorKind::ResetLinkExpired,
+            Self::VerificationLinkExpired => ErrorKind::VerificationLinkExpired,
+            Self::EmailNotVerified => ErrorKind::EmailNotVerified,
             Self::LinkNotFound => ErrorKind::LinkNotFound,
             Self::LinkExpired => ErrorKind::LinkExpired,
+            Self::LinkBlocked => ErrorKind::LinkBlocked,
             Self::BadRequest(_) => ErrorKind::BadRequest,
             Self::InvalidTarget(_) => ErrorKind::InvalidTarget,
+            Self::TargetUnsafe => ErrorKind::TargetUnsafe,
             Self::InvalidCode => ErrorKind::InvalidCode,
             Self::CodeReserved(_) => ErrorKind::CodeReserved,
             Self::CodeTaken => ErrorKind::CodeTaken,
@@ -113,24 +142,44 @@ impl ApiError {
             Self::DomainTaken => ErrorKind::DomainTaken,
             Self::DomainNotFound => ErrorKind::DomainNotFound,
             Self::DomainNotApproved => ErrorKind::DomainNotApproved,
+            Self::RateLimited(_) => ErrorKind::RateLimited,
+            Self::IdentityProviderFailed => ErrorKind::IdentityProviderFailed,
+            Self::IdentityProviderEmailUnverified => ErrorKind::IdentityProviderEmailUnverified,
+            Self::InviteNeeded => ErrorKind::InviteNeeded,
+            Self::UserDisabled => ErrorKind::UserDisabled,
+            Self::FreshSignInNeeded => ErrorKind::FreshSignInNeeded,
             Self::CodesExhausted | Self::Internal => ErrorKind::Internal,
         }
     }
 
     pub(crate) fn status(&self) -> StatusCode {
         match self {
-            Self::InvalidApiKey | Self::NotSignedIn | Self::InvalidCredentials => {
-                StatusCode::UNAUTHORIZED
-            }
-            Self::Forbidden | Self::OriginMismatch | Self::WrongPassword => StatusCode::FORBIDDEN,
+            Self::InvalidApiKey
+            | Self::NotSignedIn
+            | Self::InvalidCredentials
+            | Self::IdentityProviderFailed => StatusCode::UNAUTHORIZED,
+            Self::Forbidden
+            | Self::OriginMismatch
+            | Self::WrongPassword
+            | Self::LinkBlocked
+            | Self::IdentityProviderEmailUnverified
+            | Self::InviteNeeded
+            | Self::UserDisabled
+            | Self::FreshSignInNeeded
+            | Self::EmailNotVerified => StatusCode::FORBIDDEN,
             Self::NotFound
             | Self::LinkNotFound
             | Self::InviteNotFound
             | Self::UserNotFound
             | Self::DomainNotFound => StatusCode::NOT_FOUND,
-            Self::LinkExpired | Self::InviteExpired | Self::InviteUsed => StatusCode::GONE,
+            Self::LinkExpired
+            | Self::InviteExpired
+            | Self::InviteUsed
+            | Self::ResetLinkExpired
+            | Self::VerificationLinkExpired => StatusCode::GONE,
             Self::BadRequest(_)
             | Self::InvalidTarget(_)
+            | Self::TargetUnsafe
             | Self::InvalidCode
             | Self::CodeReserved(_)
             | Self::InvalidTag
@@ -144,6 +193,7 @@ impl ApiError {
             | Self::LastOwner
             | Self::LastInstanceAdmin
             | Self::DomainTaken => StatusCode::CONFLICT,
+            Self::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::CodesExhausted | Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -161,7 +211,12 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status(), Json(self.body())).into_response()
+        let mut res = (self.status(), Json(self.body())).into_response();
+        if let Self::RateLimited(seconds) = self {
+            res.headers_mut()
+                .insert(header::RETRY_AFTER, seconds.into());
+        }
+        res
     }
 }
 

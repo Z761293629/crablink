@@ -82,13 +82,7 @@ pub(crate) fn record(
     if BOTS.is_bot(ua) {
         return None;
     }
-    let forwarded = || {
-        text(header::HeaderName::from_static("x-forwarded-for"))
-            .and_then(|v| v.split(',').next())
-            .and_then(|first| first.trim().parse().ok())
-    };
-    // A request that reached us without the proxy adding the header came from the socket.
-    let ip = s.trust_proxy.then(forwarded).flatten().or(socket);
+    let ip = crate::rate_limit::visitor_ip(s, headers, socket);
     // The IP goes no further than this lookup.
     let country = ip.and_then(|ip| (s.country)(ip));
     let referrer_host = text(header::REFERER)
@@ -275,7 +269,7 @@ pub(crate) async fn workspace_clicks(
         top_links: top
             .into_iter()
             .map(|(code, domain, count)| TopLink {
-                short_url: format!("{}://{domain}/{code}", s.scheme),
+                short_url: crate::links::short_url(&s.scheme, &domain, &code),
                 code,
                 domain,
                 count,

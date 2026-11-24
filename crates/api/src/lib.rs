@@ -116,6 +116,10 @@ pub struct Link {
     /// Its Tags' names, sorted.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Whether it is a Blocked Link: an Instance Admin stopped it for abuse, so it no
+    /// longer redirects and can't be changed, only deleted. `false` from older servers.
+    #[serde(default)]
+    pub blocked: bool,
 }
 
 impl Link {
@@ -141,12 +145,43 @@ pub struct ChangePassword {
     pub new_password: String,
 }
 
+/// Body of `DELETE /api/me`: a User deleting themself.
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct DeleteMe {
+    /// The User's password. A User without one leaves it out, and must have signed
+    /// in through an Identity Provider within the last 5 minutes instead.
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
 /// The signed-in User, as returned by sign-in and `GET /api/me`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     /// As the User was created, case included.
     pub email: String,
     pub instance_admin: bool,
+    /// False for a User an Identity Provider created, who signs in only through one.
+    /// Servers before 0.7.0 don't say, and every User of theirs has one.
+    #[serde(default = "yes")]
+    pub has_password: bool,
+    /// False for a User who signed up and hasn't followed the emailed verification
+    /// link yet: they can't create Links or API Keys. Servers before 0.8.0 don't say,
+    /// and every User of theirs counts as verified.
+    #[serde(default = "yes")]
+    pub email_verified: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// An Identity Provider the instance trusts, as `GET /api/identity-providers` lists
+/// it. A browser signs in through it at `/auth/{id}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IdentityProvider {
+    pub id: String,
+    /// What the sign-in page shows: "Sign in with {name}".
+    pub name: String,
 }
 
 /// A Workspace: the owner of Links.
@@ -276,6 +311,55 @@ pub struct AcceptInvite {
     pub password: String,
 }
 
+/// Body of `POST /api/password-resets`: emails a password reset link to the User
+/// with this email, if any. The answer is the same either way.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForgotPassword {
+    pub email: String,
+}
+
+/// Body of `POST /api/password-resets/use`; the response is the signed-in `User`.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ResetPassword {
+    /// The reset link's fragment.
+    pub token: String,
+    /// The new password, at least 8 characters.
+    pub password: String,
+}
+
+/// What the instance offers, from `GET /api/instance`, for pages shown before sign-in.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Instance {
+    /// Whether Users can reset a forgotten password by email (the instance sends email).
+    #[serde(default)]
+    pub password_reset: bool,
+    /// Whether anyone can sign up with an email and a password (`POST /api/sign-ups`).
+    #[serde(default)]
+    pub sign_up: bool,
+    /// The terms of service the sign-up form links, if the instance has any.
+    #[serde(default)]
+    pub terms_url: Option<String>,
+    /// The privacy policy the sign-up form links, if the instance has any.
+    #[serde(default)]
+    pub privacy_url: Option<String>,
+}
+
+/// Body of `POST /api/sign-ups`; the response is the new, signed-in `User`, whose
+/// email isn't verified yet.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SignUp {
+    pub email: String,
+    /// At least 8 characters.
+    pub password: String,
+}
+
+/// Body of `POST /api/email-verifications/use`.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct VerifyEmail {
+    /// The verification link's fragment.
+    pub token: String,
+}
+
 /// A User as an Instance Admin sees them, from `GET /api/admin/users`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManagedUser {
@@ -285,6 +369,13 @@ pub struct ManagedUser {
     pub instance_admin: bool,
     /// A disabled User can't sign in and has no sessions.
     pub disabled: bool,
+    /// False for a User an Identity Provider created, who signs in only through one.
+    #[serde(default = "yes")]
+    pub has_password: bool,
+    /// The names of the Identity Providers the User has signed in through, or their
+    /// issuer URLs once no longer set up.
+    #[serde(default)]
+    pub identity_providers: Vec<String>,
 }
 
 /// Body of `PATCH /api/admin/users/{id}`. An absent field is left unchanged; an
@@ -304,6 +395,58 @@ pub struct NewPassword {
     pub password: String,
 }
 
+/// Body of `POST /api/admin/blocked-links`, and query of `DELETE` on it: the Link to
+/// block or unblock.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockLink {
+    /// e.g. `https://crabl.ink/aZ3k9` or `crabl.ink/aZ3k9`.
+    pub short_url: String,
+}
+
+/// A Blocked Link as an Instance Admin sees it, from `GET /api/admin/blocked-links`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockedLink {
+    pub short_url: String,
+    pub target: String,
+    /// The Workspace slug of its Workspace.
+    pub workspace_slug: String,
+    pub blocked_at: DateTime<Utc>,
+}
+
+/// Body of `POST /api/reports`: a visitor reporting a Short URL, e.g. for phishing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateReport {
+    /// e.g. `https://crabl.ink/aZ3k9` or `crabl.ink/aZ3k9`.
+    pub short_url: String,
+    pub reason: String,
+}
+
+/// An open report as an Instance Admin sees it, from `GET /api/admin/reports`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Report {
+    /// Addresses the report in `DELETE /api/admin/reports/{id}`, which dismisses it.
+    pub id: i64,
+    pub short_url: String,
+    pub target: String,
+    /// The Workspace slug of the Link's Workspace.
+    pub workspace_slug: String,
+    pub reason: String,
+    pub reported_at: DateTime<Utc>,
+    /// The Owners and Members of the Link's Workspace, by email: Links don't record
+    /// who created them, so these are whom an Instance Admin may disable.
+    pub workspace_users: Vec<ReportedUser>,
+}
+
+/// An Owner or Member of a reported Link's Workspace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportedUser {
+    /// Addresses the User in `/api/admin/users/{id}`.
+    pub id: i64,
+    pub email: String,
+    pub role: Role,
+    pub disabled: bool,
+}
+
 /// What `Debug` shows instead of a password, token or secret, so none reaches a log.
 const REDACTED: &str = "<redacted>";
 
@@ -312,6 +455,14 @@ impl std::fmt::Debug for SignIn {
         f.debug_struct("SignIn")
             .field("email", &self.email)
             .field("password", &REDACTED)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for DeleteMe {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeleteMe")
+            .field("password", &self.password.as_ref().map(|_| REDACTED))
             .finish()
     }
 }
@@ -337,6 +488,15 @@ impl std::fmt::Debug for NewApiKey {
 impl std::fmt::Debug for AcceptInvite {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AcceptInvite")
+            .field("token", &REDACTED)
+            .field("password", &REDACTED)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ResetPassword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResetPassword")
             .field("token", &REDACTED)
             .field("password", &REDACTED)
             .finish()
@@ -408,18 +568,33 @@ pub enum ErrorKind {
     InviteExpired,
     /// The invite has already been accepted.
     InviteUsed,
+    /// A password reset link that is unknown, expired, or used (using one of a User's
+    /// reset links uses them all): ask for a new link.
+    ResetLinkExpired,
+    /// An email verification link that is unknown, expired, or used: ask for a new one.
+    VerificationLinkExpired,
+    /// Creating a Link or an API Key as a User who signed up and hasn't verified
+    /// their email yet.
+    EmailNotVerified,
     /// No live Link has this Code.
     LinkNotFound,
     /// The Link's Expiry has passed, and only a live Link will do (e.g. its QR code).
     LinkExpired,
+    /// The Link is a Blocked Link: its Target, Tags and Expiry can't change, and it has
+    /// no QR code. Only deleting it is allowed.
+    LinkBlocked,
     /// Malformed body or query.
     BadRequest,
     /// A Target that isn't an absolute `http(s)` URL of at most 2048 characters, or
     /// that points at the service's own host; `error` says which.
     InvalidTarget,
+    /// A Target that Google Safe Browsing knows to be malicious (phishing, malware,
+    /// unwanted software), on an instance that checks Targets.
+    TargetUnsafe,
     /// A Custom Code that isn't `[A-Za-z0-9_-]{3,64}`.
     InvalidCode,
-    /// A Custom Code that would shadow one of the service's own routes.
+    /// A Custom Code that would shadow one of the service's own routes, or a
+    /// Reserved Code asked for on the Default Domain.
     CodeReserved,
     /// The Code is taken on its Domain, possibly by a Deleted Link.
     CodeTaken,
@@ -446,6 +621,25 @@ pub enum ErrorKind {
     /// A Link on a Domain that is neither the Default Domain nor an approved Domain of
     /// the Workspace.
     DomainNotApproved,
+    /// Over one of the instance's rate limits (sign-in attempts per visitor IP, Links
+    /// created per Workspace, …): status 429, and the `Retry-After` header says how
+    /// many seconds to wait.
+    RateLimited,
+    /// Signing in through an Identity Provider failed: the sign-in took too long or
+    /// was started in another browser, the Identity Provider refused it, or its ID
+    /// token didn't verify. Details are in the server's log.
+    IdentityProviderFailed,
+    /// Signing in through an Identity Provider that doesn't say it verified the
+    /// email, so it can't be matched to a User.
+    IdentityProviderEmailUnverified,
+    /// Signing in through an Identity Provider with an email no User has: an Instance
+    /// Admin must send an Invite first.
+    InviteNeeded,
+    /// Signing in through an Identity Provider as a disabled User.
+    UserDisabled,
+    /// A User without a password deleting themself more than 5 minutes after they
+    /// last signed in through an Identity Provider: sign in again first.
+    FreshSignInNeeded,
     /// The server failed; details are in its log, never in `error`. Includes running out
     /// of free Generated Codes, where retrying may help.
     Internal,
@@ -638,6 +832,12 @@ mod tests {
             ),
             format!(
                 "{:?}",
+                DeleteMe {
+                    password: Some(s())
+                }
+            ),
+            format!(
+                "{:?}",
                 AcceptInvite {
                     token: s(),
                     password: s()
@@ -693,6 +893,7 @@ mod tests {
             expires_at,
             click_count: 0,
             tags: Vec::new(),
+            blocked: false,
         };
         let second = chrono::TimeDelta::seconds(1);
         assert!(!link(None).is_expired(t));

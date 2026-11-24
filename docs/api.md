@@ -4,17 +4,18 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/{code}` | 按 `Host` 找 Domain 再 302 跳转；未知或未批准的 Domain、不存在的 Code 404；已删除或已过期 410 |
+| `GET` | `/{code}` | 按 `Host` 找 Domain 再 302 跳转；未知或未批准的 Domain、不存在的 Code 404；已删除或已过期 410；Blocked Link 403，返回按 `Accept-Language` 选语言（英文或简体中文）的封禁说明页，不跳转、不记 Click |
+| `GET` | `/report?short_url=` | 303 到 web UI 的举报页 `/app/report`，带上原查询串；无需登录 |
 | `GET` | `/internal/domain-allowed?domain=` | 无需凭据，供 Caddy 询问：Default Domain 和已批准的 Domain 200，其余 404 |
-| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain?, tags? }`；`domain` 不可用 400（`domain_not_approved`）；返回的 Link 带 `domain`、`short_url` 和 `tags` |
+| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain?, tags? }`；`domain` 不可用 400（`domain_not_approved`）；`code` 是路由用词（`api`、`admin`、`app`、`health`，不分大小写），或在 Default Domain 上是 `report`（不分大小写）或 Reserved Code（`CRABLINK_RESERVED_CODES`），400（`code_reserved`）；设了 Safe Browsing 时 Target 被认定为恶意 400（`target_unsafe`）；返回的 Link 带 `domain`、`short_url`、`tags` 和 `blocked`（是否为 Blocked Link） |
 | `GET` | `/api/workspaces/{ws}/links?tag=&q=` | 列表（所有 Domain），新的在前，游标分页；`tag` 按 Tag 过滤，`q` 搜 Code 或 Target（不区分大小写） |
 | `GET` | `/api/workspaces/{ws}/links.csv` | 导出 CSV：Code、Domain、Target、Expiry、Tags（逗号分隔）、Click Count |
 | `POST` | `/api/workspaces/{ws}/links.csv` | 导入同格式的 CSV，逐行建 Link（不改已有 Link，空 Code 用 Generated Code，忽略 Click Count）；返回每行的 `short_url` 或 `skipped: { kind, error }` |
 | `GET` | `/api/workspaces/{ws}/tags` | Workspace 里有 Link 在用的 Tag |
 | `GET` | `/api/workspaces/{ws}/links/{code}?domain=` | 查看单个 Link |
-| `PATCH` | `/api/workspaces/{ws}/links/{code}?domain=` | 修改 `target` / `expires_at` / `tags`（整体替换） |
-| `DELETE` | `/api/workspaces/{ws}/links/{code}?domain=` | 删除（不可恢复） |
-| `GET` | `/api/workspaces/{ws}/links/{code}/qr?format=svg\|png&domain=` | Short URL 的 QR 码，默认 SVG；已过期 410（`link_expired`） |
+| `PATCH` | `/api/workspaces/{ws}/links/{code}?domain=` | 修改 `target` / `expires_at` / `tags`（整体替换）；Blocked Link 403（`link_blocked`）；新 Target 同样过 Safe Browsing 检查（`target_unsafe`） |
+| `DELETE` | `/api/workspaces/{ws}/links/{code}?domain=` | 删除（不可恢复）；Blocked Link 也可删除，变为 Deleted Link |
+| `GET` | `/api/workspaces/{ws}/links/{code}/qr?format=svg\|png&domain=` | Short URL 的 QR 码，默认 SVG；已过期 410（`link_expired`），Blocked Link 403（`link_blocked`） |
 | `GET` | `/api/workspaces/{ws}/links/{code}/clicks?from=&to=&interval=hour\|day&domain=` | `[from, to)` 内的 Click：`series` 按 UTC 小时 / 天分桶（默认天，空桶也列出，最多 1000 个），`referrers` / `countries` / `devices` / `browsers` 为 `[{ value, count }]`，多的在前，未知为 `null` |
 | `GET` | `/api/workspaces/{ws}/clicks?from=&to=&interval=hour\|day` | 整个 Workspace 的 Click（含已删除 Link 的）按桶统计，以及区间内 Click 最多的 10 个 Link：`top_links: [{ code, domain, short_url, count }]` |
 | `GET` | `/api/workspaces/{ws}/domains` | 列出 Default Domain 和本 Workspace 的自定义 Domain：`[{ domain, status, default }]`，`status` 为 `pending` / `approved` / `rejected` |
@@ -26,8 +27,18 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `GET` | `/api/workspaces/{ws}/api-keys` | Owner 列出未吊销的 API Key：`name`、`prefix`、`created_at`、`last_used_at` |
 | `DELETE` | `/api/workspaces/{ws}/api-keys/{id}` | Owner 吊销 API Key，立即失效 |
 | `POST` / `DELETE` | `/api/session` | 用 `{ email, password }` 登录（设置 session cookie）/ 退出 |
-| `GET` | `/api/me` | session：`{ "user": … }`；API Key：`{ "workspace": … }` |
-| `POST` | `/api/me/password` | 修改密码 |
+| `GET` | `/api/me` | session：`{ "user": { email, instance_admin, has_password, email_verified } }`（`has_password` 为 false 的 User 由 Identity Provider 创建，没有密码；`email_verified` 为 false 的 User 自己注册后还没验证邮箱）；API Key：`{ "workspace": … }` |
+| `GET` | `/api/identity-providers` | 无需凭据：登录页列出的 Identity Provider，`[{ id, name }]` |
+| `GET` | `/auth/{id}` | 浏览器经 Identity Provider `id` 登录：跳到它那里（授权码流程 + PKCE），用一个 10 分钟的 cookie 把这次登录绑在这个浏览器上；未知 `id` 404 |
+| `GET` | `/auth/{id}/callback` | Identity Provider 跳回的地址：验证 ID token 后开 session 并跳到 `/app/`；被拒时跳到 `/app/?error=<kind>`：`identity_provider_failed`（超时、换了浏览器、Identity Provider 拒绝或 ID token 验证不过）、`identity_provider_email_unverified`（未声明 `email_verified`）、`invite_needed`（没有该 email 的 User，实例没开放注册，且其域名不在该 Identity Provider 的允许列表里）、`user_disabled` |
+| `POST` | `/api/me/password` | 修改密码；没有密码的 User 403（`wrong_password`） |
+| `DELETE` | `/api/me` | User 删除自己（仅 session），body `{ password }`，无法撤销：有密码的 User 密码错误 403（`wrong_password`）；没有密码的 User 省略 `password`，须在 5 分钟内经 Identity Provider 登录过，否则 403（`fresh_sign_in_needed`）。个人 Workspace 以及只有自己一人的 Workspace 一并删除（其 Link 变为 Deleted Link），其他 Workspace 只是退出。是某个有其他成员的 Workspace 唯一的 Owner 时 409（`last_owner`），是最后一位启用的 Instance Admin 时 409（`last_instance_admin`）。成功 204 并清除 session cookie |
+| `GET` | `/api/instance` | 无需凭据：登录前页面要知道的实例功能：`{ password_reset, sign_up, terms_url, privacy_url }`：`password_reset` 在实例能发邮件时为 `true`，`sign_up` 在开放注册时为 `true`，`terms_url` / `privacy_url` 是注册页链接的服务条款和隐私政策（没设为 `null`） |
+| `POST` | `/api/sign-ups` | 无需凭据，开放注册时：`{ email, password }` 建 User（邮箱未验证）和个人 Workspace、发验证邮件（24 小时内有效）并登录，返回 User；email 已注册 409（`email_taken`）；按访客 IP 限流；没开放注册 404（`not_found`） |
+| `POST` | `/api/email-verifications` | session：给邮箱未验证的自己重发验证邮件，204；邮箱已验证时什么也不发；和注册共用按访客 IP 的限额 |
+| `POST` | `/api/email-verifications/use` | 无需凭据：`{ token }` 验证该链接所属 User 的邮箱，204；链接未知、已过期或已用过 410（`verification_link_expired`） |
+| `POST` | `/api/password-resets` | 无需凭据：`{ email }` 给该 email 有密码的 User 发重置密码链接（1 小时内有效），有没有这个 User 都回 204；按访客 IP 限流；实例不发邮件时 404（`not_found`） |
+| `POST` | `/api/password-resets/use` | 无需凭据：`{ token, password }` 设新密码、结束该 User 所有 session 并登录；链接未知、已过期或已用过 410（`reset_link_expired`），用掉一个链接即用掉该 User 所有重置链接 |
 | `GET` | `/api/workspaces` | 当前 User 所在的 Workspace 及其角色：`[{ slug, name, role }]`，`role` 为 `owner` / `member` |
 | `POST` | `/api/workspaces` | 新建 Workspace：`{ name }`，slug 由名字生成，创建者成为 Owner |
 | `PATCH` | `/api/workspaces/{ws}` | Owner 改名：`{ name }`，slug 不变 |
@@ -36,12 +47,22 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `POST` | `/api/workspaces/{ws}/members` | Owner 按 email 把已有 User 加为 Member：`{ email }`；无此 User 404（`user_not_found`），已在其中 409（`already_member`） |
 | `PATCH` | `/api/workspaces/{ws}/members/{email}` | Owner 升降角色：`{ role }` |
 | `DELETE` | `/api/workspaces/{ws}/members/{email}` | Owner 移除成员；Member 只能移除自己（退出） |
-| `POST` | `/api/admin/invites` | Instance Admin 邀请：`{ email, workspace? }`，返回一次性 `url`（7 天有效）；email 已注册 409（`email_taken`） |
+| `POST` | `/api/admin/invites` | Instance Admin 邀请：`{ email, workspace? }`，返回一次性 `url`（7 天有效），实例能发邮件时同时发给对方；email 已注册 409（`email_taken`） |
 | `POST` | `/api/invites/accept` | 无需凭据：`{ token, password }` 建 User 并登录；`invite_not_found` / `invite_used` / `invite_expired` |
-| `GET` | `/api/admin/users` | Instance Admin 列出 User：`[{ id, email, instance_admin, disabled }]` |
+| `GET` | `/api/admin/users` | Instance Admin 列出 User：`[{ id, email, instance_admin, disabled, has_password, identity_providers }]`，`identity_providers` 是登录过的 Identity Provider 的名字（已不再设置的显示其 issuer URL） |
 | `PATCH` | `/api/admin/users/{id}` | Instance Admin 改 `disabled` / `instance_admin`；会让实例没有启用的 Instance Admin 时 409（`last_instance_admin`）；停用即结束其 session |
 | `POST` | `/api/admin/users/{id}/password` | Instance Admin 重置为随机密码：`{ password }` 只返回这一次，并结束其 session |
+| `POST` | `/api/reports` | 无需凭据，任何访客举报 Short URL：`{ short_url, reason }`，204；`reason` 去掉首尾空白后须为 1 到 1000 个字符，否则 400（`bad_request`）；不是本实例未删除的 Link 404（`link_not_found`）；按访客 IP 限流。不记录访客 IP |
+| `GET` | `/api/admin/reports` | Instance Admin 列出待处理的举报（Link 已删除的不列），先举报的在前：`[{ id, short_url, target, workspace_slug, reason, reported_at, workspace_users: [{ id, email, role, disabled }] }]`；`workspace_users` 是该 Link 所在 Workspace 的 Owner 和 Member，可用 `PATCH /api/admin/users/{id}` 停用 |
+| `DELETE` | `/api/admin/reports/{id}` | Instance Admin 忽略一条举报，Link 不变；没有该待处理举报 404（`not_found`） |
+| `GET` | `/api/admin/blocked-links` | Instance Admin 列出 Blocked Link（不含已删除的），最近封禁的在前：`[{ short_url, target, workspace_slug, blocked_at }]` |
+| `POST` | `/api/admin/blocked-links` | Instance Admin 按 Short URL 封禁 Link：`{ short_url }`（`https://crabl.ink/aZ3k9` 或 `crabl.ink/aZ3k9`），立即停止跳转，并关闭它所有待处理的举报（之后解除封禁也不会重新打开）；没有该 Link 或已删除 404（`link_not_found`） |
+| `DELETE` | `/api/admin/blocked-links?short_url=` | Instance Admin 解除封禁，立即恢复跳转；该 Short URL 没有 Blocked Link 404（`link_not_found`） |
+
+邮箱未验证的 User（自己注册、还没点验证链接）可以登录和浏览，但用 session 创建 Link（含 CSV 导入）和 API Key 得到 403（`email_not_verified`）。经邀请、由 Instance Admin 或经 Identity Provider 创建的 User 一开始就算已验证；经邮件重置密码也会验证邮箱。
 
 Member 只能管理 Link；成员、API Key 和 Workspace 设置只归 Owner，Member 或 API Key 去做得到 403（`forbidden`）。`/api/admin` 只接受 Instance Admin 的 session，其他凭据 403。最后一个 Owner 不能退出、被移除或降级，得到 409（`last_owner`）。
 
 程序用 `Authorization: Bearer <API Key>`；API Key 属于 Workspace，创建它的人离开后照样可用。带 session cookie 的写请求必须带与 Host 一致的 `Origin`。未知或已吊销的 Bearer 值（包括 0.2 / 0.3 的 token）得到 401，提示用 API Key 重新登录。
+
+实例开了限流（`CRABLINK_RATE_LIMIT_*`，见[自建部署](self-hosting.md#限流)）时，超出限额的请求得到 429（`rate_limited`），`Retry-After` 头给出要等的秒数。登录、注册（含重发验证邮件）、重置密码请求和举报按访客 IP 计数；建 Link 按 Workspace 计数，每个 Link 算一次，CSV 导入逐行计数，超出的行以 `rate_limited` 跳过。跳转从不限流。

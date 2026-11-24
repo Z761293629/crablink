@@ -1,8 +1,10 @@
 // Test fixtures: each test gets its own fresh Users, set up through the API the way
 // the web UI and an Instance Admin would. Import `test` and `expect` from here.
 
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { test as base, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { baseURL, instanceAdmin } from '../playwright.config';
+import { baseURL, instanceAdmin, mailDir } from '../playwright.config';
 
 /** A User with their personal Workspace, and a session for seeding data through the API. */
 export interface User {
@@ -99,6 +101,45 @@ export async function openWorkspacePage(page: Page, name: 'Domains' | 'Members &
 /** Chooses the action (not Cancel) in the in-app "Are you sure?" dialog. */
 export async function confirmDialog(page: Page) {
   await page.getByRole('dialog').getByRole('button').last().click();
+}
+
+/**
+ * The link starting with `prefix` in the newest email to `email`, waiting for the server to send it.
+ * The prefix skips an older email to the same address, such as the fixture User's Invite.
+ */
+export async function emailedLink(email: string, prefix: string): Promise<string> {
+  let link: string | undefined;
+  await expect
+    .poll(() => (link = newestEmailTo(email)?.match(/https?:\/\/\S+/)?.[0]), { message: `an email to ${email}` })
+    .toMatch(prefix);
+  return link!;
+}
+
+/** The newest email to `email` in the SMTP sink's directory, its body decoded. */
+function newestEmailTo(email: string): string | undefined {
+  const emails = readdirSync(mailDir)
+    .map((name) => join(mailDir, name))
+    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+    .map((path) => readFileSync(path, 'utf8'))
+    .filter((raw) => new RegExp(`^To: .*${email.replace(/[.+]/g, '\\$&')}`, 'mi').test(raw));
+  return emails[0] && body(emails[0]);
+}
+
+/** The text of a raw single-part email: lettre picks 7bit, quoted-printable or base64. */
+function body(raw: string): string {
+  const split = raw.indexOf('\n\n');
+  const [head, text] = [raw.slice(0, split), raw.slice(split + 2)];
+  if (/^Content-Transfer-Encoding: base64/im.test(head)) return Buffer.from(text, 'base64').toString('utf8');
+  if (!/^Content-Transfer-Encoding: quoted-printable/im.test(head)) return text;
+  const unwrapped = text.replace(/=\n/g, '');
+  const bytes: number[] = [];
+  for (let i = 0; i < unwrapped.length; i++) {
+    if (unwrapped[i] === '=') {
+      bytes.push(parseInt(unwrapped.slice(i + 1, i + 3), 16));
+      i += 2;
+    } else bytes.push(unwrapped.charCodeAt(i));
+  }
+  return Buffer.from(bytes).toString('utf8');
 }
 
 async function signInApi(request: APIRequestContext, email: string, password: string) {

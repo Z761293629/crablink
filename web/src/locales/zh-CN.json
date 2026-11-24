@@ -4,7 +4,36 @@
     "title": "登录",
     "email": "邮箱",
     "password": "密码",
-    "submit": "登录"
+    "submit": "登录",
+    "with": "通过 {{name}} 登录",
+    "or": "或使用密码登录",
+    "forgot": "忘记密码？",
+    "noUser": "第一次来？",
+    "signUp": "注册"
+  },
+  "forgotPassword": {
+    "title": "忘记密码",
+    "submit": "发送重置链接",
+    "sent": "如果有用户使用这个邮箱，重置密码的链接已发往该邮箱。链接只能使用一次，1 小时内有效。",
+    "back": "返回登录"
+  },
+  "resetPassword": {
+    "title": "重置密码",
+    "submit": "设置新密码"
+  },
+  "verifyEmail": {
+    "title": "验证邮箱",
+    "submit": "验证邮箱",
+    "banner": "验证邮箱后才能创建 Link 和 API Key：请打开我们发到 {{email}} 的链接。",
+    "resend": "重新发送验证邮件",
+    "resent": "已发送。链接只能使用一次，24 小时内有效。"
+  },
+  "signUp": {
+    "title": "注册",
+    "submit": "注册",
+    "agreeBoth": "注册即表示你同意<terms>服务条款</terms>和<privacy>隐私政策</privacy>。",
+    "agreeTerms": "注册即表示你同意<terms>服务条款</terms>。",
+    "agreePrivacy": "注册即表示你同意<privacy>隐私政策</privacy>。"
   },
   "signOut": "退出登录",
   "workspace": {
@@ -99,7 +128,10 @@
       "device": "主要设备",
       "empty": "还没有点击。分享短网址或贴出二维码后，点击会显示在这里。"
     },
-    "routeTo": "前往"
+    "routeTo": "前往",
+    "blocked": "已封禁",
+    "qrBlocked": "已封禁的链接没有二维码。",
+    "blockedHint": "实例管理员因滥用封禁了此链接：访问者会看到封禁说明，不会被跳转。它只能被删除。"
   },
   "nav": {
     "links": "链接",
@@ -200,6 +232,8 @@
       "enable": "启用",
       "makeAdmin": "设为实例管理员",
       "revokeAdmin": "取消实例管理员",
+      "noPassword": "无密码",
+      "signsInThrough": "通过 {{names}} 登录",
       "resetPassword": "重置密码",
       "newPassword": "新密码：",
       "active": "正常",
@@ -208,6 +242,22 @@
       "confirmRevoke": "取消 {{email}} 的实例管理员权限？",
       "confirmRevokeAction": "取消实例管理员",
       "you": "你"
+    },
+    "blocked": {
+      "title": "已封禁的链接",
+      "empty": "没有已封禁的链接。",
+      "unblock": "解除封禁",
+      "blockTitle": "封禁链接",
+      "block": "封禁链接",
+      "confirmBlock": "封禁 {{url}}？它会立即停止跳转，其工作区也无法再修改它。",
+      "confirmBlockAction": "封禁链接"
+    },
+    "reports": {
+      "title": "举报",
+      "empty": "没有待处理的举报。",
+      "reason": "原因",
+      "users": "所有者和成员",
+      "dismiss": "忽略"
     }
   },
   "members": {
@@ -249,7 +299,12 @@
     "currentPassword": "当前密码",
     "newPassword": "新密码",
     "change": "修改密码",
-    "changed": "密码已修改。"
+    "changed": "密码已修改。",
+    "password": "密码",
+    "delete": "删除账户",
+    "deleteLede": "你的个人工作区，以及只有你一人的工作区，会随之删除，其中的链接变为已删除链接。你会退出其他所有工作区。",
+    "deleteLedeNoPassword": "你的个人工作区，以及只有你一人的工作区，会随之删除，其中的链接变为已删除链接。你会退出其他所有工作区。为确认是你本人，你须在最近 5 分钟内通过你的登录服务登录过。",
+    "confirmDelete": "删除你的账户？此操作无法撤销。"
   },
   "errors": {
     "network": "无法连接服务器，请检查网络后重试。",
@@ -266,9 +321,11 @@
     "invite_not_found": "该邀请链接不存在。",
     "invite_expired": "该邀请链接已过期。",
     "invite_used": "该邀请链接已被使用。",
+    "reset_link_expired": "该重置链接已过期或已被使用，请重新申请。",
     "link_not_found": "该链接不存在。",
     "link_expired": "该链接已过期。",
     "invalid_target": "目标网址必须是完整的 http:// 或 https:// 网址，且不能指向本实例。",
+    "target_unsafe": "Google 安全浏览将该目标网址列为钓鱼或恶意软件网址。",
     "invalid_code": "短码须为 3-64 个字符，只能包含 A-Z、a-z、0-9、_ 或 -。",
     "code_reserved": "该短码为保留字。",
     "code_taken": "该短码已被占用。",
@@ -281,9 +338,27 @@
     "invalid_domain": "请输入形如 go.example.com 的主机名。",
     "domain_taken": "该域名是默认域名，或已属于其他工作区。",
     "domain_not_found": "该域名不存在。",
-    "domain_not_approved": "请使用默认域名或本工作区已批准的域名。"
+    "domain_not_approved": "请使用默认域名或本工作区已批准的域名。",
+    "rate_limited": "请求太多，请稍后再试。",
+    "rate_limited_for": "请求太多，请{{wait}}后再试。",
+    "link_blocked": "该链接已被实例管理员因滥用封禁，只能删除。",
+    "identity_provider_failed": "登录未成功，请重试。",
+    "identity_provider_email_unverified": "你的登录服务尚未验证你的邮箱，因此无法在此登录。",
+    "invite_needed": "这里还没有使用你邮箱的用户：请向实例管理员索取邀请。",
+    "user_disabled": "你的用户已被停用。",
+    "fresh_sign_in_needed": "请退出后通过你的登录服务重新登录，并在 5 分钟内删除账户。",
+    "verification_link_expired": "此验证链接已过期或已被使用，请重新获取。",
+    "email_not_verified": "请先验证邮箱：打开我们发给你的邮件里的链接。"
   },
   "cancel": "取消",
   "retry": "重试",
-  "close": "关闭"
+  "close": "关闭",
+  "report": {
+    "title": "举报短网址",
+    "intro": "发现有短网址被用于钓鱼、恶意软件或滥用？告诉实例管理员。",
+    "reason": "原因",
+    "reasonHint": "它有什么问题？",
+    "submit": "提交举报",
+    "sent": "谢谢。实例管理员会处理。"
+  }
 }

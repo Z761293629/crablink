@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 // End-to-end tests against the real crablink-server binary serving web/dist, on an
@@ -6,6 +8,8 @@ import { defineConfig, devices } from '@playwright/test';
 const port = Number(process.env.CRABLINK_E2E_PORT ?? 8787);
 export const baseURL = `http://localhost:${port}`;
 export const instanceAdmin = { email: 'admin@example.com', password: 'e2e admin password' };
+/** Where the e2e server's SMTP sink writes every email it sends, one `.eml` file each. */
+export const mailDir = join(tmpdir(), `crablink-e2e-mail-${port}`);
 
 export default defineConfig({
   testDir: 'e2e',
@@ -33,6 +37,10 @@ export default defineConfig({
       CRABLINK_LISTEN: `127.0.0.1:${port}`,
       CRABLINK_E2E_ADMIN_EMAIL: instanceAdmin.email,
       CRABLINK_E2E_ADMIN_PASSWORD: instanceAdmin.password,
+      CRABLINK_E2E_MAIL_DIR: mailDir,
+      CRABLINK_OPEN_SIGN_UP: 'true',
+      CRABLINK_TERMS_URL: `${baseURL}/terms`,
+      CRABLINK_PRIVACY_URL: `${baseURL}/privacy`,
     },
   },
 });

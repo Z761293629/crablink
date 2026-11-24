@@ -36,10 +36,55 @@ Web UI 在构建时打进 server 二进制（Docker 镜像和 Release 已包含�
 | `CRABLINK_BASE_URL` | 是 | — | 对外地址，如 `https://crabl.ink`；启动时用它的 host（和端口）建 Default Domain，Short URL 是 `scheme://host/{code}`，路径部分不计入；跳转按请求的 `Host` 找 Domain，用别的地址访问得到 404 |
 | `CRABLINK_DATABASE_URL` | 是 | compose 里已设好 | Postgres URL，如 `postgres://user:pass@host:5432/crablink`；启动时自动建表 |
 | `CRABLINK_LISTEN` | 否 | `0.0.0.0:8080` | 监听地址（改端口的话 `ports` 和健康检查端口要一起改） |
-| `CRABLINK_TRUST_PROXY` | 否 | `false` | `true` 时访客地址取 `X-Forwarded-For` 的第一项（只在反向代理之后这样设，`deploy/compose.yaml` 已设好），否则取 TCP 连接的对端地址 |
+| `CRABLINK_TRUST_PROXY` | 否 | `false` | `true` 时访客地址取 `X-Forwarded-For` 的第一项（最左边那个），否则取 TCP 连接的对端地址。只在反向代理之后这样设（`deploy/compose.yaml` 已设好），而且代理必须用访客地址**覆盖**这个头而不是追加到后面：否则访客自己带一个 `X-Forwarded-For` 就能冒充任意 IP、躲开限流。Caddy 默认就是覆盖（除非在 `trusted_proxies` 里信任了上游）；nginx 要写 `proxy_set_header X-Forwarded-For $remote_addr;`，不能用 `$proxy_add_x_forwarded_for` |
+| `CRABLINK_RESERVED_CODES` | 否 | 空 | 逗号分隔的 Reserved Code，如 `google,paypal`：在 Default Domain 上谁都不能用它们做 Custom Code（400 `code_reserved`），区分大小写，Generated Code 也不会生成它们；自定义 Domain 不受影响 |
 | `CRABLINK_COUNTRY_DB` | 否 | 镜像里已设好 | Click 查国家用的 DB-IP Lite country 数据库（`.mmdb`）；镜像构建时自带当月版本。不设则 Click 不记国家，设了却读不了就退出 |
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_NAME` 等 | 否 | — | 设置一个 Identity Provider，见下方 [Identity Provider](#identity-provider) |
+| `CRABLINK_OPEN_SIGN_UP` | 否 | `false` | `true` 时开放注册，见下方[开放注册](#开放注册)；需要[邮件](#邮件)，没设 SMTP 就拒绝启动 |
+| `CRABLINK_TERMS_URL`、`CRABLINK_PRIVACY_URL` | 否 | — | 服务条款和隐私政策的 `http(s)` 地址；设了的话注册页写上“注册即表示你同意……”并链接过去。不是 `http(s)` URL 就以退出码 2 退出 |
+| `CRABLINK_SAFE_BROWSING_KEY` | 否 | — | Google Safe Browsing API key；设了就在创建 Link（API、Web UI、CLI、CSV 导入）和修改 Target 时查 Target，已知的钓鱼、恶意软件网址以 400（`target_unsafe`）拒绝。Google 出错或 2 秒内没回应时照常放行。不设则不做任何检查 |
 
 Click 只记时间、Referrer 的 host、国家、设备类型和浏览器，从不存 IP 和完整 User-Agent（[ADR-0006](adr/0006-clicks-store-no-ip.md)）；爬虫和链接预览（Slack 等）照常跳转，但不算 Click。国家数据来自 [IP Geolocation by DB-IP](https://db-ip.com)（CC BY 4.0）。
+
+Safe Browsing 用的是 Lookup API v4，Google 只许非商业用途使用；收费的服务应改用 Web Risk API。Target 会发给 Google 查询。
+
+### 限流
+
+默认不限流。每项限额写成 `<次数>/<时间窗>`，时间窗是数字加 `s`、`m`、`h` 或 `d`，如 `10/1m`、`1000/1d`；格式不对就以退出码 2 退出。
+
+| 环境变量 | 计数对象 | 说明 |
+|---|---|---|
+| `CRABLINK_RATE_LIMIT_SIGN_IN` | 访客 IP | 密码登录的尝试次数，无论成败 |
+| `CRABLINK_RATE_LIMIT_SIGN_UP` | 访客 IP | 注册次数，加上重发验证邮件的次数 |
+| `CRABLINK_RATE_LIMIT_PASSWORD_RESET` | 访客 IP | “忘记密码”请求重置链接的次数，无论有没有这个 User |
+| `CRABLINK_RATE_LIMIT_LINKS` | Workspace | 新建的 Link 数，API、Web UI、CLI 和 CSV 导入（每行算一个）都算 |
+| `CRABLINK_RATE_LIMIT_REPORTS` | 访客 IP | 举报 Short URL 的次数（`/report` 页和 `POST /api/reports`） |
+
+超出限额得到 429（`rate_limited`）和 `Retry-After`；跳转从不限流。访客 IP 按 `CRABLINK_TRUST_PROXY` 取，所以反向代理之后务必设它，否则所有访客共用代理的地址。计数只在进程内存里，重启即清零，也从不写进数据库；跑多个 server 实例时每个实例各算各的。
+
+### 邮件
+
+设了 `CRABLINK_SMTP_URL` 和 `CRABLINK_SMTP_FROM`（两者要一起设，只设一个或格式不对就以退出码 2 退出），实例就通过这台 SMTP 服务器发邮件：
+
+- 新建的邀请会发到对方邮箱，Instance Admin 仍能看到并复制链接；
+- 登录页出现“忘记密码”：User 输入 email 收到重置链接（1 小时内有效、只能用一次），设新密码后其他 session 全部结束。无论有没有这个 User，页面回答都一样。
+
+邮件用触发它的 Web UI 当时的语言（英文或简体中文）。发送在后台进行，失败只记日志。不设则不发任何邮件：邀请链接和 Instance Admin 重置的密码照旧由 Instance Admin 自己转交，登录页没有“忘记密码”。
+
+| 环境变量 | 说明 |
+|---|---|
+| `CRABLINK_SMTP_URL` | SMTP 服务器，含账号密码：`smtps://user:password@smtp.example.com`（465 端口，直接 TLS）或 `smtp://user:password@smtp.example.com:587?tls=required`（STARTTLS）；账号密码里的特殊字符要百分号编码 |
+| `CRABLINK_SMTP_FROM` | 发件人，如 `crablink <links@example.com>` 或 `links@example.com` |
+
+### 开放注册
+
+默认只能经邀请（或 Identity Provider 的允许域名）成为 User。设 `CRABLINK_OPEN_SIGN_UP=true` 后：
+
+- 登录页出现“注册”：任何人用 email 和密码注册，立即得到 User 和个人 Workspace 并登录，同时收到验证邮件（24 小时内有效、只能用一次）。
+- 邮箱验证之前可以登录和浏览，但不能创建 Link 和 API Key；Web UI 顶部有一条提示，可以重发验证邮件。
+- 任何 Identity Provider 都能为还没有 User 的 email 建 User，不论域名。Identity Provider 验证过的 email 算已验证；有人先用这个 email 注册却没验证时，经 Identity Provider 登录会验证它，并删掉注册时设的密码、结束其所有 session，以免先注册的人占住别人的 email。
+
+经邀请、由 Instance Admin 或经 Identity Provider 创建的 User，以及开放注册之前就有的所有 User，都算已验证。用 `CRABLINK_RATE_LIMIT_SIGN_UP` 限制注册频率。
 
 ## 生产部署（HTTPS）
 
@@ -75,9 +120,60 @@ Workspace 可以用自己的 Domain，比如 `go.example.com`。Owner 在 Web UI
 
 Owner 移除 Domain 后，它上面的 Link 变为已删除；之后无论哪个 Workspace 再添加这个 Domain，这些 Code 都仍被占用。删除 Workspace 也会释放它的 Domain。
 
+## Identity Provider
+
+User 可以经 Identity Provider（任何 OpenID Connect 提供方，如 Google、Keycloak、Okta、Microsoft Entra）登录，不用密码。每个 Identity Provider 用四个必填、一个可选的环境变量设置，`<ID>` 由 A-Z、0-9 和 `_` 组成，可以同时设置多个：
+
+| 环境变量 | 说明 |
+|---|---|
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_NAME` | 登录页显示的名字：“Sign in with <NAME>” |
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_ISSUER` | issuer URL，如 `https://accounts.google.com` |
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_CLIENT_ID` | 在 Identity Provider 那里注册的 client id |
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_CLIENT_SECRET` | 对应的 client secret |
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_ALLOWED_EMAIL_DOMAINS` | 可选，逗号分隔的 email 域名，如 `example.com,example.org`：这些域名（不区分大小写，不含子域名）下的人第一次登录时自动创建 User |
+
+在 Identity Provider 那里登记的 redirect URI 是 `CRABLINK_BASE_URL` 加 `/auth/<id>/callback`，`<id>` 是 `<ID>` 转小写、`_` 换成 `-`：比如 `CRABLINK_IDENTITY_PROVIDER_GOOGLE_*` 就是 `https://crabl.ink/auth/google/callback`。server 启动时对每个 Identity Provider 做 OpenID Connect discovery；变量缺一个、拼错，或 discovery 失败，就打印出哪个 Identity Provider 出了什么问题并拒绝启动。
+
+登录用授权码流程加 PKCE，server 校验 ID token 的签名、issuer、audience、过期时间和 nonce。同一个 Identity Provider 的同一身份（issuer 加 subject）第一次登录时，按 email（不区分大小写）找到已有的 User 并把身份加给他，之后密码和 Identity Provider 两种方式都能登录；没有这个 email 的 User 时，email 的域名在该 Identity Provider 的 `ALLOWED_EMAIL_DOMAINS` 里就创建 User（连同个人 Workspace）并登录，否则拒绝，提示找 Instance Admin 要邀请。这样创建的 User 没有密码，只能经 Identity Provider 登录：用密码登录对他就像密码错误，web UI 也不显示修改密码；Instance Admin 在 User 列表里能看到谁没有密码、经过哪些 Identity Provider 登录过。被停用的 User 照样被拒。
+
+**只设置会验证 email 的 Identity Provider。** crablink 只在 ID token 声明 `email_verified` 时按 email 认人，没有声明就拒绝；但如果一个 Identity Provider 允许任何人填一个没验证过的 email、却仍声明已验证，那么在那里注册了别人 email 的人就能登录成那个 User。
+
+### 设置 Google
+
+1. 在 [Google Cloud Console](https://console.cloud.google.com/) 里选一个项目，先在“Google Auth Platform”（旧称 OAuth 同意屏幕）里填好应用名称和支持邮箱。只给自己公司的 Google Workspace 用时，受众选“内部”，别的 Google 账号就登录不了。
+2. 在“客户端”（Clients，旧称“凭据 → OAuth 客户端 ID”）里新建一个客户端，类型选“Web 应用”，“已获授权的重定向 URI”填 `https://crabl.ink/auth/google/callback`（换成你的 `CRABLINK_BASE_URL`）。
+3. 把得到的 client id 和 client secret 填进环境变量：
+
+```bash
+CRABLINK_IDENTITY_PROVIDER_GOOGLE_NAME=Google
+CRABLINK_IDENTITY_PROVIDER_GOOGLE_ISSUER=https://accounts.google.com
+CRABLINK_IDENTITY_PROVIDER_GOOGLE_CLIENT_ID=<client id>.apps.googleusercontent.com
+CRABLINK_IDENTITY_PROVIDER_GOOGLE_CLIENT_SECRET=<client secret>
+# 可选：公司 Google Workspace 的域名，这些人第一次登录就自动创建 User
+CRABLINK_IDENTITY_PROVIDER_GOOGLE_ALLOWED_EMAIL_DOMAINS=example.com
+```
+
+Google 只对它验证过的 email 声明 `email_verified`（Gmail 和 Google Workspace 账号都算），可以放心信任。
+
+### 设置 Keycloak
+
+1. 在要用的 realm 里打开 Clients → Create client：Client type 选 OpenID Connect，Client ID 填比如 `crablink`；下一步打开 Client authentication，只勾 Standard flow。
+2. Valid redirect URIs 填 `https://crabl.ink/auth/keycloak/callback`（换成你的 `CRABLINK_BASE_URL`），Web origins 留空即可。可以在 Advanced 里把 Proof Key for Code Exchange Code Challenge Method 设为 `S256`，强制 PKCE。
+3. 在该 client 的 Credentials 页复制 Client secret，填进环境变量。issuer 是 realm 的地址，Keycloak 17 起是 `https://<keycloak 主机>/realms/<realm>`（更早的版本中间还有 `/auth`），可以打开它后面加 `/.well-known/openid-configuration` 确认：
+
+```bash
+CRABLINK_IDENTITY_PROVIDER_KEYCLOAK_NAME=Keycloak
+CRABLINK_IDENTITY_PROVIDER_KEYCLOAK_ISSUER=https://sso.example.com/realms/example
+CRABLINK_IDENTITY_PROVIDER_KEYCLOAK_CLIENT_ID=crablink
+CRABLINK_IDENTITY_PROVIDER_KEYCLOAK_CLIENT_SECRET=<client secret>
+CRABLINK_IDENTITY_PROVIDER_KEYCLOAK_ALLOWED_EMAIL_DOMAINS=example.com
+```
+
+Keycloak 的 `email_verified` 就是 realm 里每个用户的 Email verified 开关，所以要保证它可信：realm 允许自助注册时，在 Realm settings → Login 里打开 Verify email；管理员手工建用户时，只给确实属于本人的 email 打开 Email verified。从 LDAP 或其他 Identity Provider 导入的用户同理。做不到的话就不要把这个 realm 接到 crablink 上。
+
 ## 邀请与管理 User
 
-没有公开注册：Instance Admin 在 Web UI 的实例管理页生成邀请链接，发给对方；对方打开链接、设好密码就注册并登录了。也可以用 API 生成，`workspace`（Workspace slug）可省略，给了就让对方以 Member 加入这个 Workspace：
+没开[开放注册](#开放注册)时，要成为 User 得经邀请（或 Identity Provider 的允许域名）：Instance Admin 在 Web UI 的实例管理页生成邀请链接，发给对方（实例配了[邮件](#邮件)时会自动发到对方邮箱）；对方打开链接、设好密码就注册并登录了。也可以用 API 生成，`workspace`（Workspace slug）可省略，给了就让对方以 Member 加入这个 Workspace：
 
 ```bash
 curl -c jar -H 'Origin: https://crabl.ink' -H 'Content-Type: application/json' \
@@ -94,7 +190,7 @@ curl -c jar -H 'Content-Type: application/json' \
   -d '{"token":"<token>","password":"…"}' https://crabl.ink/api/invites/accept
 ```
 
-Instance Admin 用 `/api/admin/users` 列出 User、停用 / 启用、设为 Instance Admin 或重置密码（见 [HTTP API](api.md)）；停用或重置密码会立即结束该 User 的所有 session。
+Instance Admin 用 `/api/admin/users` 列出 User、停用 / 启用、设为 Instance Admin 或重置密码（见 [HTTP API](api.md)）；停用或重置密码会立即结束该 User 的所有 session。实例配了邮件时，User 也可以在登录页用“忘记密码”自己重置。
 
 ## 备份与恢复
 

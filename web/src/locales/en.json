@@ -4,7 +4,36 @@
     "title": "Sign in",
     "email": "Email",
     "password": "Password",
-    "submit": "Sign in"
+    "submit": "Sign in",
+    "with": "Sign in with {{name}}",
+    "or": "or with your password",
+    "forgot": "Forgot password?",
+    "noUser": "New here?",
+    "signUp": "Sign up"
+  },
+  "forgotPassword": {
+    "title": "Forgot password",
+    "submit": "Email me a reset link",
+    "sent": "If a User has this email, a link to reset its password is on its way. It works once, within an hour.",
+    "back": "Back to sign in"
+  },
+  "resetPassword": {
+    "title": "Reset password",
+    "submit": "Set new password"
+  },
+  "verifyEmail": {
+    "title": "Verify your email",
+    "submit": "Verify email",
+    "banner": "Verify your email to create Links and API Keys: open the link we emailed to {{email}}.",
+    "resend": "Email me the link again",
+    "resent": "Sent. It works once, within 24 hours."
+  },
+  "signUp": {
+    "title": "Sign up",
+    "submit": "Sign up",
+    "agreeBoth": "By signing up you agree to the <terms>terms of service</terms> and the <privacy>privacy policy</privacy>.",
+    "agreeTerms": "By signing up you agree to the <terms>terms of service</terms>.",
+    "agreePrivacy": "By signing up you agree to the <privacy>privacy policy</privacy>."
   },
   "signOut": "Sign out",
   "workspace": {
@@ -99,7 +128,10 @@
       "device": "Top device",
       "empty": "No Clicks yet. Share the Short URL or put up its QR code, and Clicks show up here."
     },
-    "routeTo": "To"
+    "routeTo": "To",
+    "blocked": "Blocked",
+    "qrBlocked": "A Blocked Link has no QR code.",
+    "blockedHint": "An Instance Admin blocked this Link for abuse: visitors see why instead of being redirected. It can only be deleted."
   },
   "nav": {
     "links": "Links",
@@ -200,6 +232,8 @@
       "enable": "Enable",
       "makeAdmin": "Make Instance Admin",
       "revokeAdmin": "Revoke Instance Admin",
+      "noPassword": "No password",
+      "signsInThrough": "Signs in through {{names}}",
       "resetPassword": "Reset password",
       "newPassword": "New password:",
       "active": "Active",
@@ -208,6 +242,22 @@
       "confirmRevoke": "Revoke {{email}}'s Instance Admin rights?",
       "confirmRevokeAction": "Revoke Instance Admin",
       "you": "you"
+    },
+    "blocked": {
+      "title": "Blocked Links",
+      "empty": "No Blocked Links.",
+      "unblock": "Unblock",
+      "blockTitle": "Block a Link",
+      "block": "Block Link",
+      "confirmBlock": "Block {{url}}? It stops redirecting at once, and its Workspace can no longer change it.",
+      "confirmBlockAction": "Block Link"
+    },
+    "reports": {
+      "title": "Reports",
+      "empty": "No open reports.",
+      "reason": "Reason",
+      "users": "Owners and Members",
+      "dismiss": "Dismiss"
     }
   },
   "members": {
@@ -249,7 +299,12 @@
     "currentPassword": "Current password",
     "newPassword": "New password",
     "change": "Change password",
-    "changed": "Password changed."
+    "changed": "Password changed.",
+    "password": "Password",
+    "delete": "Delete account",
+    "deleteLede": "Your Personal Workspace, and every Workspace only you are in, is deleted with it, its Links becoming Deleted Links. You leave every other Workspace.",
+    "deleteLedeNoPassword": "Your Personal Workspace, and every Workspace only you are in, is deleted with it, its Links becoming Deleted Links. You leave every other Workspace. To confirm it's you, you must have signed in through your sign-in service in the last 5 minutes.",
+    "confirmDelete": "Delete your account? This cannot be undone."
   },
   "errors": {
     "network": "Can't reach the server. Check your connection and try again.",
@@ -266,9 +321,11 @@
     "invite_not_found": "This invite link doesn't exist.",
     "invite_expired": "This invite link has expired.",
     "invite_used": "This invite link has already been used.",
+    "reset_link_expired": "This reset link has expired or was already used. Ask for a new one.",
     "link_not_found": "That Link doesn't exist.",
     "link_expired": "That Link has expired.",
     "invalid_target": "The Target must be a full http:// or https:// URL that isn't on this instance.",
+    "target_unsafe": "Google Safe Browsing lists that Target as phishing or malware.",
     "invalid_code": "A Code must be 3-64 characters of A-Z, a-z, 0-9, _ or -.",
     "code_reserved": "That Code is reserved.",
     "code_taken": "That Code is already taken.",
@@ -281,9 +338,27 @@
     "invalid_domain": "Enter a host name such as go.example.com.",
     "domain_taken": "That Domain is the Default Domain or another Workspace’s.",
     "domain_not_found": "That Domain doesn’t exist.",
-    "domain_not_approved": "Use the Default Domain or one of this Workspace’s approved Domains."
+    "domain_not_approved": "Use the Default Domain or one of this Workspace’s approved Domains.",
+    "rate_limited": "Too many requests. Try again later.",
+    "rate_limited_for": "Too many requests. Try again in {{wait}}.",
+    "link_blocked": "That Link was blocked for abuse by an Instance Admin: it can only be deleted.",
+    "identity_provider_failed": "Signing in didn’t work. Try again.",
+    "identity_provider_email_unverified": "Your sign-in service hasn’t verified your email, so it can’t sign you in here.",
+    "invite_needed": "No one here has your email yet: ask an Instance Admin for an Invite.",
+    "user_disabled": "Your User is disabled.",
+    "fresh_sign_in_needed": "Sign out and sign in again through your sign-in service, then delete your account within 5 minutes.",
+    "verification_link_expired": "This verification link has expired or was already used. Ask for a new one.",
+    "email_not_verified": "Verify your email first: open the link we emailed you."
   },
   "cancel": "Cancel",
   "retry": "Try again",
-  "close": "Close"
+  "close": "Close",
+  "report": {
+    "title": "Report a Short URL",
+    "intro": "Seen a Short URL used for phishing, malware or abuse? Tell an Instance Admin.",
+    "reason": "Reason",
+    "reasonHint": "What is wrong with it?",
+    "submit": "Send report",
+    "sent": "Thank you. An Instance Admin will look at it."
+  }
 }
