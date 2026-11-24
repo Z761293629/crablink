@@ -1,11 +1,15 @@
 //! The server the web UI's Playwright tests run against (`web/playwright.config.ts`):
 //! starts an embedded Postgres, creates the Instance Admin named by
 //! `CRABLINK_E2E_ADMIN_EMAIL` and `CRABLINK_E2E_ADMIN_PASSWORD`, then runs the real
-//! `crablink-server` binary (built beforehand) on it with this process's environment.
+//! `crablink-server` binary (built beforehand) on it with this process's environment,
+//! plus the fake Identity Provider of the tests set up as Identity Provider `fake`.
 //! On SIGTERM or Ctrl-C it stops the server, then Postgres and its data.
 
 use postgresql_embedded::{PostgreSQL, SettingsBuilder, VersionReq};
 use tokio::signal::unix::{SignalKind, signal};
+
+#[path = "../tests/common/fake_identity_provider.rs"]
+mod fake_identity_provider;
 
 #[tokio::main]
 async fn main() {
@@ -37,8 +41,19 @@ async fn main() {
         .parent()
         .unwrap()
         .join("crablink-server");
+    let fake = fake_identity_provider::FakeIdentityProvider::start().await;
     let mut child = tokio::process::Command::new(&server)
         .env("CRABLINK_DATABASE_URL", &db_url)
+        .env("CRABLINK_IDENTITY_PROVIDER_FAKE_NAME", "Fake ID")
+        .env("CRABLINK_IDENTITY_PROVIDER_FAKE_ISSUER", &fake.issuer)
+        .env(
+            "CRABLINK_IDENTITY_PROVIDER_FAKE_CLIENT_ID",
+            fake_identity_provider::CLIENT_ID,
+        )
+        .env(
+            "CRABLINK_IDENTITY_PROVIDER_FAKE_CLIENT_SECRET",
+            fake_identity_provider::CLIENT_SECRET,
+        )
         .kill_on_drop(true)
         .spawn()
         .unwrap_or_else(|e| panic!("running {}: {e}", server.display()));

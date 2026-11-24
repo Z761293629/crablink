@@ -19,6 +19,7 @@ mod clicks;
 mod db;
 mod domains;
 mod error;
+mod identity_providers;
 mod links;
 mod members;
 mod rate_limit;
@@ -31,6 +32,7 @@ mod workspaces;
 pub use clicks::{ClickRecording, dbip_country_lookup};
 pub use db::connect;
 pub use error::ApiError;
+pub use identity_providers::IdentityProvider;
 pub use links::random_code;
 pub use rate_limit::{Limit, RateLimits};
 pub use safe_browsing::google_safe_browsing;
@@ -85,6 +87,8 @@ pub struct Settings {
     pub rate_limits: RateLimits,
     /// `CRABLINK_RESERVED_CODES`: the Reserved Codes, compared case-sensitively.
     pub reserved_codes: HashSet<String>,
+    /// The Identity Providers Users can sign in through; discovered when `app` starts.
+    pub identity_providers: Vec<IdentityProvider>,
     pub codes: CodeGenerator,
     pub clock: Clock,
     pub country: CountryLookup,
@@ -100,6 +104,7 @@ impl Settings {
             trust_proxy: false,
             rate_limits: RateLimits::default(),
             reserved_codes: HashSet::new(),
+            identity_providers: Vec::new(),
             codes: Arc::new(random_code),
             clock: Arc::new(Utc::now),
             country: Arc::new(|_| None),
@@ -126,6 +131,9 @@ struct AppState {
     default_domain: Arc<str>,
     /// The Default Domain's host alone: a Target there would loop.
     default_host: Arc<str>,
+    identity_providers: Arc<[identity_providers::Discovered]>,
+    /// For calls to Identity Providers.
+    http: reqwest::Client,
 }
 
 impl AppState {
@@ -145,32 +153,48 @@ fn request_host<'a>(headers: &'a HeaderMap, uri: &'a Uri) -> Option<&'a str> {
 }
 
 /// Builds the full HTTP app, first creating the Default Domain from
-/// `settings.base_url` (its host, and port if any) if missing. Serve it with
-/// `ConnectInfo<SocketAddr>` so Clicks can find the visitor's country.
-pub async fn app(
-    pool: PgPool,
-    settings: Settings,
-) -> Result<Router, Box<dyn std::error::Error + Send + Sync>> {
+/// `settings.base_url` (its host, and port if any) if missing, and running
+/// discovery for each Identity Provider. The error names what stopped it. Serve
+/// it with `ConnectInfo<SocketAddr>` so Clicks can find the visitor's country.
+pub async fn app(pool: PgPool, settings: Settings) -> Result<Router, String> {
     let Settings {
         base_url,
         trust_proxy,
         rate_limits,
         reserved_codes,
+        identity_providers,
         codes,
         clock,
         country,
         target_check,
     } = settings;
-    let url = url::Url::parse(&base_url)?;
+    let domain_problem = |e: &dyn std::fmt::Display| {
+        format!("cannot set up the Default Domain from {base_url}: {e}")
+    };
+    let url = url::Url::parse(&base_url).map_err(|e| domain_problem(&e))?;
     let Some(default_host) = url.host_str() else {
-        return Err(format!("{base_url} has no host").into());
+        return Err(domain_problem(&"it has no host"));
     };
     let default_domain = match url.port() {
         Some(port) => format!("{default_host}:{port}"),
         None => default_host.to_owned(),
     };
-    db::default_domain(&pool, &default_domain).await?;
+    db::default_domain(&pool, &default_domain)
+        .await
+        .map_err(|e| domain_problem(&e))?;
     std::sync::LazyLock::force(&users::DUMMY);
+    // reqwest's TLS needs a crypto provider; an error means one is installed already.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("cannot set up an HTTP client: {e}"))?;
+    let origin = format!("{}://{default_domain}", url.scheme());
+    let mut discovered = Vec::new();
+    for provider in identity_providers {
+        discovered.push(identity_providers::discover(&http, &origin, provider).await?);
+    }
     let state = AppState {
         pool,
         codes,
@@ -183,6 +207,8 @@ pub async fn app(
         scheme: url.scheme().into(),
         default_domain: default_domain.into(),
         default_host: default_host.into(),
+        identity_providers: discovered.into(),
+        http,
     };
     let workspace = Router::new()
         .route("/links", post(create_link).get(list_links))
@@ -227,6 +253,7 @@ pub async fn app(
             patch(rename_workspace).delete(delete_workspace),
         )
         .route("/session", post(sign_in).delete(sign_out))
+        .route("/identity-providers", get(identity_providers::list))
         .route("/me", get(me))
         .route("/me/password", post(change_password))
         .fallback(api_fallback);
@@ -234,6 +261,8 @@ pub async fn app(
         .nest("/api", api)
         .route("/health", get(|| async { "ok" }))
         .route("/internal/domain-allowed", get(domain_allowed))
+        .route("/auth/{id}", get(identity_providers::start))
+        .route("/auth/{id}/callback", get(identity_providers::callback))
         .nest_service("/app", get(web::serve))
         .route("/{code}", get(redirect))
         .fallback(|| async { (StatusCode::NOT_FOUND, "not found") })

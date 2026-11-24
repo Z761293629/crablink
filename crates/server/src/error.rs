@@ -82,6 +82,15 @@ pub enum ApiError {
     /// Over a rate limit; retry after this many seconds.
     #[error("too many requests: try again in {0} seconds")]
     RateLimited(u64),
+    /// Details are logged, never sent.
+    #[error("signing in through the Identity Provider failed")]
+    IdentityProviderFailed,
+    #[error("the Identity Provider hasn't verified this email")]
+    IdentityProviderEmailUnverified,
+    #[error("no User has this email: ask an Instance Admin for an Invite")]
+    InviteNeeded,
+    #[error("this User is disabled")]
+    UserDisabled,
     #[error("could not generate a free code, try again")]
     CodesExhausted,
     /// Details are logged, never sent.
@@ -90,7 +99,7 @@ pub enum ApiError {
 }
 
 impl ApiError {
-    fn kind(&self) -> ErrorKind {
+    pub(crate) fn kind(&self) -> ErrorKind {
         match self {
             Self::InvalidApiKey | Self::NotSignedIn => ErrorKind::Unauthorized,
             Self::Forbidden => ErrorKind::Forbidden,
@@ -123,18 +132,27 @@ impl ApiError {
             Self::DomainNotFound => ErrorKind::DomainNotFound,
             Self::DomainNotApproved => ErrorKind::DomainNotApproved,
             Self::RateLimited(_) => ErrorKind::RateLimited,
+            Self::IdentityProviderFailed => ErrorKind::IdentityProviderFailed,
+            Self::IdentityProviderEmailUnverified => ErrorKind::IdentityProviderEmailUnverified,
+            Self::InviteNeeded => ErrorKind::InviteNeeded,
+            Self::UserDisabled => ErrorKind::UserDisabled,
             Self::CodesExhausted | Self::Internal => ErrorKind::Internal,
         }
     }
 
     pub(crate) fn status(&self) -> StatusCode {
         match self {
-            Self::InvalidApiKey | Self::NotSignedIn | Self::InvalidCredentials => {
-                StatusCode::UNAUTHORIZED
-            }
-            Self::Forbidden | Self::OriginMismatch | Self::WrongPassword | Self::LinkBlocked => {
-                StatusCode::FORBIDDEN
-            }
+            Self::InvalidApiKey
+            | Self::NotSignedIn
+            | Self::InvalidCredentials
+            | Self::IdentityProviderFailed => StatusCode::UNAUTHORIZED,
+            Self::Forbidden
+            | Self::OriginMismatch
+            | Self::WrongPassword
+            | Self::LinkBlocked
+            | Self::IdentityProviderEmailUnverified
+            | Self::InviteNeeded
+            | Self::UserDisabled => StatusCode::FORBIDDEN,
             Self::NotFound
             | Self::LinkNotFound
             | Self::InviteNotFound

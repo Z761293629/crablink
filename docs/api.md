@@ -27,6 +27,9 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `DELETE` | `/api/workspaces/{ws}/api-keys/{id}` | Owner 吊销 API Key，立即失效 |
 | `POST` / `DELETE` | `/api/session` | 用 `{ email, password }` 登录（设置 session cookie）/ 退出 |
 | `GET` | `/api/me` | session：`{ "user": … }`；API Key：`{ "workspace": … }` |
+| `GET` | `/api/identity-providers` | 无需凭据：登录页列出的 Identity Provider，`[{ id, name }]` |
+| `GET` | `/auth/{id}` | 浏览器经 Identity Provider `id` 登录：跳到它那里（授权码流程 + PKCE），用一个 10 分钟的 cookie 把这次登录绑在这个浏览器上；未知 `id` 404 |
+| `GET` | `/auth/{id}/callback` | Identity Provider 跳回的地址：验证 ID token 后开 session 并跳到 `/app/`；被拒时跳到 `/app/?error=<kind>`：`identity_provider_failed`（超时、换了浏览器、Identity Provider 拒绝或 ID token 验证不过）、`identity_provider_email_unverified`（未声明 `email_verified`）、`invite_needed`（没有该 email 的 User）、`user_disabled` |
 | `POST` | `/api/me/password` | 修改密码 |
 | `GET` | `/api/workspaces` | 当前 User 所在的 Workspace 及其角色：`[{ slug, name, role }]`，`role` 为 `owner` / `member` |
 | `POST` | `/api/workspaces` | 新建 Workspace：`{ name }`，slug 由名字生成，创建者成为 Owner |
