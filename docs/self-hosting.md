@@ -36,7 +36,7 @@ Web UI 在构建时打进 server 二进制（Docker 镜像和 Release 已包含�
 | `CRABLINK_BASE_URL` | 是 | — | 对外地址，如 `https://crabl.ink`；启动时用它的 host（和端口）建 Default Domain，Short URL 是 `scheme://host/{code}`，路径部分不计入；跳转按请求的 `Host` 找 Domain，用别的地址访问得到 404 |
 | `CRABLINK_DATABASE_URL` | 是 | compose 里已设好 | Postgres URL，如 `postgres://user:pass@host:5432/crablink`；启动时自动建表 |
 | `CRABLINK_LISTEN` | 否 | `0.0.0.0:8080` | 监听地址（改端口的话 `ports` 和健康检查端口要一起改） |
-| `CRABLINK_TRUST_PROXY` | 否 | `false` | `true` 时访客地址取 `X-Forwarded-For` 的第一项（只在反向代理之后这样设，`deploy/compose.yaml` 已设好），否则取 TCP 连接的对端地址 |
+| `CRABLINK_TRUST_PROXY` | 否 | `false` | `true` 时访客地址取 `X-Forwarded-For` 的第一项（最左边那个），否则取 TCP 连接的对端地址。只在反向代理之后这样设（`deploy/compose.yaml` 已设好），而且代理必须用访客地址**覆盖**这个头而不是追加到后面：否则访客自己带一个 `X-Forwarded-For` 就能冒充任意 IP、躲开限流。Caddy 默认就是覆盖（除非在 `trusted_proxies` 里信任了上游）；nginx 要写 `proxy_set_header X-Forwarded-For $remote_addr;`，不能用 `$proxy_add_x_forwarded_for` |
 | `CRABLINK_RESERVED_CODES` | 否 | 空 | 逗号分隔的 Reserved Code，如 `google,paypal`：在 Default Domain 上谁都不能用它们做 Custom Code（400 `code_reserved`），区分大小写，Generated Code 也不会生成它们；自定义 Domain 不受影响 |
 | `CRABLINK_COUNTRY_DB` | 否 | 镜像里已设好 | Click 查国家用的 DB-IP Lite country 数据库（`.mmdb`）；镜像构建时自带当月版本。不设则 Click 不记国家，设了却读不了就退出 |
 | `CRABLINK_IDENTITY_PROVIDER_<ID>_NAME` 等 | 否 | — | 设置一个 Identity Provider，见下方 [Identity Provider](#identity-provider) |
@@ -138,9 +138,42 @@ User 可以经 Identity Provider（任何 OpenID Connect 提供方，如 Google�
 
 **只设置会验证 email 的 Identity Provider。** crablink 只在 ID token 声明 `email_verified` 时按 email 认人，没有声明就拒绝；但如果一个 Identity Provider 允许任何人填一个没验证过的 email、却仍声明已验证，那么在那里注册了别人 email 的人就能登录成那个 User。
 
+### 设置 Google
+
+1. 在 [Google Cloud Console](https://console.cloud.google.com/) 里选一个项目，先在“Google Auth Platform”（旧称 OAuth 同意屏幕）里填好应用名称和支持邮箱。只给自己公司的 Google Workspace 用时，受众选“内部”，别的 Google 账号就登录不了。
+2. 在“客户端”（Clients，旧称“凭据 → OAuth 客户端 ID”）里新建一个客户端，类型选“Web 应用”，“已获授权的重定向 URI”填 `https://crabl.ink/auth/google/callback`（换成你的 `CRABLINK_BASE_URL`）。
+3. 把得到的 client id 和 client secret 填进环境变量：
+
+```bash
+CRABLINK_IDENTITY_PROVIDER_GOOGLE_NAME=Google
+CRABLINK_IDENTITY_PROVIDER_GOOGLE_ISSUER=https://accounts.google.com
+CRABLINK_IDENTITY_PROVIDER_GOOGLE_CLIENT_ID=<client id>.apps.googleusercontent.com
+CRABLINK_IDENTITY_PROVIDER_GOOGLE_CLIENT_SECRET=<client secret>
+# 可选：公司 Google Workspace 的域名，这些人第一次登录就自动创建 User
+CRABLINK_IDENTITY_PROVIDER_GOOGLE_ALLOWED_EMAIL_DOMAINS=example.com
+```
+
+Google 只对它验证过的 email 声明 `email_verified`（Gmail 和 Google Workspace 账号都算），可以放心信任。
+
+### 设置 Keycloak
+
+1. 在要用的 realm 里打开 Clients → Create client：Client type 选 OpenID Connect，Client ID 填比如 `crablink`；下一步打开 Client authentication，只勾 Standard flow。
+2. Valid redirect URIs 填 `https://crabl.ink/auth/keycloak/callback`（换成你的 `CRABLINK_BASE_URL`），Web origins 留空即可。可以在 Advanced 里把 Proof Key for Code Exchange Code Challenge Method 设为 `S256`，强制 PKCE。
+3. 在该 client 的 Credentials 页复制 Client secret，填进环境变量。issuer 是 realm 的地址，Keycloak 17 起是 `https://<keycloak 主机>/realms/<realm>`（更早的版本中间还有 `/auth`），可以打开它后面加 `/.well-known/openid-configuration` 确认：
+
+```bash
+CRABLINK_IDENTITY_PROVIDER_KEYCLOAK_NAME=Keycloak
+CRABLINK_IDENTITY_PROVIDER_KEYCLOAK_ISSUER=https://sso.example.com/realms/example
+CRABLINK_IDENTITY_PROVIDER_KEYCLOAK_CLIENT_ID=crablink
+CRABLINK_IDENTITY_PROVIDER_KEYCLOAK_CLIENT_SECRET=<client secret>
+CRABLINK_IDENTITY_PROVIDER_KEYCLOAK_ALLOWED_EMAIL_DOMAINS=example.com
+```
+
+Keycloak 的 `email_verified` 就是 realm 里每个用户的 Email verified 开关，所以要保证它可信：realm 允许自助注册时，在 Realm settings → Login 里打开 Verify email；管理员手工建用户时，只给确实属于本人的 email 打开 Email verified。从 LDAP 或其他 Identity Provider 导入的用户同理。做不到的话就不要把这个 realm 接到 crablink 上。
+
 ## 邀请与管理 User
 
-没有公开注册：Instance Admin 在 Web UI 的实例管理页生成邀请链接，发给对方（实例配了[邮件](#邮件)时会自动发到对方邮箱）；对方打开链接、设好密码就注册并登录了。也可以用 API 生成，`workspace`（Workspace slug）可省略，给了就让对方以 Member 加入这个 Workspace：
+没开[开放注册](#开放注册)时，要成为 User 得经邀请（或 Identity Provider 的允许域名）：Instance Admin 在 Web UI 的实例管理页生成邀请链接，发给对方（实例配了[邮件](#邮件)时会自动发到对方邮箱）；对方打开链接、设好密码就注册并登录了。也可以用 API 生成，`workspace`（Workspace slug）可省略，给了就让对方以 Member 加入这个 Workspace：
 
 ```bash
 curl -c jar -H 'Origin: https://crabl.ink' -H 'Content-Type: application/json' \

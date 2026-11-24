@@ -40,6 +40,10 @@ _Avoid_: Removed, archived
 A Link an Instance Admin has stopped for abuse. Visitors see why instead of being redirected, and its Workspace still sees it but can no longer change it; only an Instance Admin can unblock it. Its Workspace can still delete it, which makes it a Deleted Link.
 _Avoid_: Disabled, suspended, banned
 
+**Report**:
+A visitor's note, with a reason, that a Short URL is used for abuse. It stays open until an Instance Admin blocks its Link or dismisses the Report.
+_Avoid_: Complaint, flag, abuse ticket
+
 **Click**:
 One redirect of a human visitor through a Link, with when it happened and where it came from (Referrer, country, device, browser). Bots and link-preview fetchers are redirected but never make a Click.
 _Avoid_: Hit, view, visit, event
@@ -72,6 +76,10 @@ _Avoid_: Default workspace, home workspace
 A person who signs in to manage Links, through one or more Workspaces they belong to.
 _Avoid_: Account, operator
 
+**Verified email**:
+A User's email once the instance knows it is theirs: through an emailed link, an Invite, an Instance Admin, or an Identity Provider that vouches for it. Until then the User can create neither Links nor API Keys.
+_Avoid_: Confirmed email, validated email
+
 **Owner**:
 A User who manages who is in a Workspace, and its Domains and API Keys, as well as its Links.
 _Avoid_: Admin, manager
@@ -88,6 +96,10 @@ _Avoid_: Admin, superuser, root, operator
 A one-time link an Instance Admin sends a new User to set their password, optionally joining a Workspace as a Member. It expires unused after a while.
 _Avoid_: Invitation, sign-up link, registration
 
+**Open sign-up**:
+An instance switch, off by default, that lets anyone become a User without an Invite: with an email and a password, or through any Identity Provider.
+_Avoid_: Registration, public sign-up, self-service sign-up
+
 **Session**:
 A User's sign-in in a browser, lasting until they sign out or it expires, unless a password change or their being disabled ends it first.
 _Avoid_: Login, cookie, token
@@ -95,6 +107,10 @@ _Avoid_: Login, cookie, token
 **Identity Provider**:
 A service outside the instance that Users can sign in through instead of a password, e.g. Google or a company's Keycloak. An Instance Admin sets up which ones the instance trusts.
 _Avoid_: IdP, SSO provider, OIDC provider, auth provider, connector
+
+**Identity**:
+A User as one Identity Provider knows them, by its issuer and subject. A User can have several; signing in through an Identity Provider finds the User by their Identity, or else by Verified email.
+_Avoid_: Linked account, external account, connection
 
 **API Key**:
 A secret that lets a program manage one Workspace's Links. Belongs to the Workspace, not to the User who made it.
