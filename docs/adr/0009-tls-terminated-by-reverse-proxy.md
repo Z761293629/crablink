@@ -4,4 +4,4 @@ crablink serves plain HTTP and never handles certificates, even for custom Domai
 
 ## Considered Options
 
-- **Built-in ACME (e.g. `rustls-acme`)**: a truly single binary, but we would own certificate storage, renewal, rate limits and coordination between instances. Reconsider for the public service.
+- **Built-in ACME (e.g. `rustls-acme`)**: a truly single binary, but we would own certificate storage, renewal, rate limits and coordination between instances. Reconsidered for the public service (ADR-0010): it runs as one instance, so Caddy stays.
