@@ -153,6 +153,15 @@ pub struct User {
     pub instance_admin: bool,
 }
 
+/// An Identity Provider the instance trusts, as `GET /api/identity-providers` lists
+/// it. A browser signs in through it at `/auth/{id}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IdentityProvider {
+    pub id: String,
+    /// What the sign-in page shows: "Sign in with {name}".
+    pub name: String,
+}
+
 /// A Workspace: the owner of Links.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Workspace {
@@ -515,6 +524,18 @@ pub enum ErrorKind {
     /// created per Workspace, …): status 429, and the `Retry-After` header says how
     /// many seconds to wait.
     RateLimited,
+    /// Signing in through an Identity Provider failed: the sign-in took too long or
+    /// was started in another browser, the Identity Provider refused it, or its ID
+    /// token didn't verify. Details are in the server's log.
+    IdentityProviderFailed,
+    /// Signing in through an Identity Provider that doesn't say it verified the
+    /// email, so it can't be matched to a User.
+    IdentityProviderEmailUnverified,
+    /// Signing in through an Identity Provider with an email no User has: an Instance
+    /// Admin must send an Invite first.
+    InviteNeeded,
+    /// Signing in through an Identity Provider as a disabled User.
+    UserDisabled,
     /// The server failed; details are in its log, never in `error`. Includes running out
     /// of free Generated Codes, where retrying may help.
     Internal,

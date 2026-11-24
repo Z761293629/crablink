@@ -5,6 +5,8 @@
     "email": "Email",
     "password": "Password",
     "submit": "Sign in",
+    "with": "Sign in with {{name}}",
+    "or": "or with your password",
     "forgot": "Forgot password?"
   },
   "forgotPassword": {
@@ -309,7 +311,11 @@
     "domain_not_approved": "Use the Default Domain or one of this Workspace’s approved Domains.",
     "rate_limited": "Too many requests. Try again later.",
     "rate_limited_for": "Too many requests. Try again in {{wait}}.",
-    "link_blocked": "That Link was blocked for abuse by an Instance Admin: it can only be deleted."
+    "link_blocked": "That Link was blocked for abuse by an Instance Admin: it can only be deleted.",
+    "identity_provider_failed": "Signing in didn’t work. Try again.",
+    "identity_provider_email_unverified": "Your sign-in service hasn’t verified your email, so it can’t sign you in here.",
+    "invite_needed": "No one here has your email yet: ask an Instance Admin for an Invite.",
+    "user_disabled": "Your User is disabled."
   },
   "cancel": "Cancel",
   "retry": "Try again",

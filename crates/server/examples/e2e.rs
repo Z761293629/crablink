@@ -1,7 +1,8 @@
 //! The server the web UI's Playwright tests run against (`web/playwright.config.ts`):
 //! starts an embedded Postgres, creates the Instance Admin named by
 //! `CRABLINK_E2E_ADMIN_EMAIL` and `CRABLINK_E2E_ADMIN_PASSWORD`, then runs the real
-//! `crablink-server` binary (built beforehand) on it with this process's environment.
+//! `crablink-server` binary (built beforehand) on it with this process's environment,
+//! plus the fake Identity Provider of the tests set up as Identity Provider `fake`.
 //! With `CRABLINK_E2E_MAIL_DIR` set, the server sends email to an SMTP sink here that
 //! writes each one, raw, into that directory, for tests to follow the links in them.
 //! On SIGTERM or Ctrl-C it stops the server, then Postgres and its data.
@@ -68,6 +69,9 @@ async fn smtp_session(
     Ok(())
 }
 
+#[path = "../tests/common/fake_identity_provider.rs"]
+mod fake_identity_provider;
+
 #[tokio::main]
 async fn main() {
     let email = std::env::var("CRABLINK_E2E_ADMIN_EMAIL").expect("CRABLINK_E2E_ADMIN_EMAIL");
@@ -111,8 +115,19 @@ async fn main() {
             .env("CRABLINK_SMTP_URL", format!("smtp://127.0.0.1:{port}"))
             .env("CRABLINK_SMTP_FROM", "crablink <links@example.com>");
     }
+    let fake = fake_identity_provider::FakeIdentityProvider::start().await;
     let mut child = command
         .env("CRABLINK_DATABASE_URL", &db_url)
+        .env("CRABLINK_IDENTITY_PROVIDER_FAKE_NAME", "Fake ID")
+        .env("CRABLINK_IDENTITY_PROVIDER_FAKE_ISSUER", &fake.issuer)
+        .env(
+            "CRABLINK_IDENTITY_PROVIDER_FAKE_CLIENT_ID",
+            fake_identity_provider::CLIENT_ID,
+        )
+        .env(
+            "CRABLINK_IDENTITY_PROVIDER_FAKE_CLIENT_SECRET",
+            fake_identity_provider::CLIENT_SECRET,
+        )
         .kill_on_drop(true)
         .spawn()
         .unwrap_or_else(|e| panic!("running {}: {e}", server.display()));

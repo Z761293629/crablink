@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AcceptInvite, ChangePassword, ForgotPassword, ResetPassword } from './Account';
-import { api, type Instance, type Membership, type User } from './api';
+import { api, ApiError, type IdentityProvider, type Instance, type Membership, type User } from './api';
 import { Clicks } from './Clicks';
 import { Domains } from './Domains';
 import { InstanceAdmin } from './InstanceAdmin';
@@ -370,12 +370,23 @@ function LanguageToggle() {
 // `pnpm server` creates (web/package.json); builds drop it, as import.meta.env.DEV is false.
 const devAdmin = import.meta.env.DEV ? { email: 'admin@example.com', password: 'e2e admin password' } : undefined;
 
+/** Why a sign-in through an Identity Provider was refused: its callback lands here with `?error={kind}`. */
+function refusal(): ApiError | undefined {
+  const kind = new URLSearchParams(location.search).get('error');
+  return kind ? new ApiError(0, kind, kind) : undefined;
+}
+
 function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
   const { t } = useTranslation();
-  const [error, setError] = useState<unknown>();
+  const [error, setError] = useState<unknown>(refusal);
+  const [providers, setProviders] = useState<IdentityProvider[]>([]);
   const [instance, setInstance] = useState<Instance>();
 
   useEffect(() => {
+    // Shown once: a reload or the next sign-in starts clean.
+    if (location.search) history.replaceState(null, '', location.pathname);
+    // Without the list, the password form still works.
+    api<IdentityProvider[]>('GET', '/identity-providers').then(setProviders, () => {});
     // Without it, the form still signs in; it just offers no "forgot password".
     api<Instance>('GET', '/instance').then(setInstance, () => {});
   }, []);
@@ -402,6 +413,18 @@ function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
       className="ticket" onSubmit={submit}>
       <div className="ticket-body">
         <h1>{t('signIn.title')}</h1>
+        {providers.length > 0 && (
+          <>
+            <div className="providers">
+              {providers.map((p) => (
+                <a key={p.id} className="button" href={`/auth/${encodeURIComponent(p.id)}`}>
+                  {t('signIn.with', { name: p.name })}
+                </a>
+              ))}
+            </div>
+            <p className="micro">{t('signIn.or')}</p>
+          </>
+        )}
         <label className="field">
           <span className="micro">{t('signIn.email')}</span>
           <input name="email" type="email" autoComplete="username" defaultValue={devAdmin?.email} required />

@@ -5,6 +5,12 @@ export interface User {
   instance_admin: boolean;
 }
 
+/** An Identity Provider the sign-in page offers; signing in through it starts at `/auth/{id}`. */
+export interface IdentityProvider {
+  id: string;
+  name: string;
+}
+
 export interface Membership {
   slug: string;
   name: string;
