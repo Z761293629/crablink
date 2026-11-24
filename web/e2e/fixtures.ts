@@ -103,12 +103,15 @@ export async function confirmDialog(page: Page) {
   await page.getByRole('dialog').getByRole('button').last().click();
 }
 
-/** The link in the newest email to `email`, waiting for the server to send it. */
-export async function emailedLink(email: string): Promise<string> {
+/**
+ * The link starting with `prefix` in the newest email to `email`, waiting for the server to send it.
+ * The prefix skips an older email to the same address, such as the fixture User's Invite.
+ */
+export async function emailedLink(email: string, prefix: string): Promise<string> {
   let link: string | undefined;
   await expect
     .poll(() => (link = newestEmailTo(email)?.match(/https?:\/\/\S+/)?.[0]), { message: `an email to ${email}` })
-    .toBeDefined();
+    .toMatch(prefix);
   return link!;
 }
 

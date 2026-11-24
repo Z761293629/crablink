@@ -8,8 +8,7 @@ test('a User who forgot their password resets it through the emailed link', asyn
   await page.getByRole('button', { name: 'Email me a reset link' }).click();
   await expect(page.getByRole('status')).toContainText('If a User has this email');
 
-  const link = await emailedLink(user.email);
-  expect(link).toMatch(`${baseURL}/app/reset-password#`);
+  const link = await emailedLink(user.email, `${baseURL}/app/reset-password#`);
   await page.goto(link);
   await page.getByLabel('New password').fill('my reset password');
   await page.getByRole('button', { name: 'Set new password' }).click();
