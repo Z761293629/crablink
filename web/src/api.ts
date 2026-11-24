@@ -3,6 +3,8 @@
 export interface User {
   email: string;
   instance_admin: boolean;
+  /** False for a User an Identity Provider created, who signs in only through one. */
+  has_password: boolean;
 }
 
 /** An Identity Provider the sign-in page offers; signing in through it starts at `/auth/{id}`. */
@@ -110,6 +112,9 @@ export interface ManagedUser {
   email: string;
   instance_admin: boolean;
   disabled: boolean;
+  has_password: boolean;
+  /** The names of the Identity Providers the User has signed in through. */
+  identity_providers: string[];
 }
 
 /**

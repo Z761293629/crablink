@@ -99,6 +99,7 @@ impl FakeIdentityProvider {
             issuer: self.issuer.clone(),
             client_id: CLIENT_ID.into(),
             client_secret: CLIENT_SECRET.into(),
+            allowed_email_domains: Vec::new(),
         }
     }
 

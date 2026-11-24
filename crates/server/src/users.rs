@@ -37,17 +37,23 @@ pub async fn create_user(
 ) -> Result<(), ApiError> {
     valid_email(email)?;
     let hash = hash_password(password).await?;
-    insert_user(&mut *pool.acquire().await?, email, &hash, instance_admin)
-        .await
-        .map(drop)
+    insert_user(
+        &mut *pool.acquire().await?,
+        email,
+        Some(&hash),
+        instance_admin,
+    )
+    .await
+    .map(drop)
 }
 
 /// Inserts a User whose password hashes to `password_hash` (from `hash_password`,
-/// done beforehand so no lock is held meanwhile); returns their id.
+/// done beforehand so no lock is held meanwhile), or with no password, who signs
+/// in only through Identity Providers; returns their id.
 pub(crate) async fn insert_user(
     conn: &mut PgConnection,
     email: &str,
-    password_hash: &str,
+    password_hash: Option<&str>,
     instance_admin: bool,
 ) -> Result<i64, ApiError> {
     let email = valid_email(email)?;
@@ -218,7 +224,7 @@ struct SignInRow {
     id: i64,
     email: String,
     instance_admin: bool,
-    password_hash: String,
+    password_hash: Option<String>,
 }
 
 /// `POST /api/session`: signs in, setting the session cookie; returns the User.
@@ -239,7 +245,8 @@ pub(crate) async fn sign_in(
     .bind(req.email.trim())
     .fetch_optional(&s.pool)
     .await?;
-    let hash = row.as_ref().map(|r| r.password_hash.clone());
+    // A User without a password fails here exactly like a wrong password.
+    let hash = row.as_ref().and_then(|r| r.password_hash.clone());
     let (Some(row), true) = (row, verify_password(req.password, hash).await?) else {
         return Err(ApiError::InvalidCredentials);
     };
@@ -247,6 +254,7 @@ pub(crate) async fn sign_in(
     let user = User {
         email: row.email,
         instance_admin: row.instance_admin,
+        has_password: true,
     };
     let res = start_session(&s, &mut tx, row.id, user).await?;
     tx.commit().await?;
@@ -322,18 +330,19 @@ pub(crate) async fn me(State(s): State<AppState>, caller: Caller) -> Result<Json
     }))
 }
 
-/// `POST /api/me/password`: needs the current password; ends the User's other sessions.
+/// `POST /api/me/password`: needs the current password, so a User without one
+/// can't; ends the User's other sessions.
 pub(crate) async fn change_password(
     State(s): State<AppState>,
     session: Session,
     body: Result<Json<ChangePassword>, JsonRejection>,
 ) -> Result<StatusCode, ApiError> {
     let Json(req) = body?;
-    let hash: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1")
+    let hash: Option<String> = sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1")
         .bind(session.user_id)
         .fetch_one(&s.pool)
         .await?;
-    if !verify_password(req.current_password, Some(hash)).await? {
+    if !verify_password(req.current_password, hash).await? {
         return Err(ApiError::WrongPassword);
     }
     let hash = hash_password(&req.new_password).await?;
@@ -361,8 +370,8 @@ impl FromRequestParts<AppState> for Session {
             return Err(ApiError::OriginMismatch);
         }
         let token_hash = token_hash(token);
-        let (user_id, email, instance_admin): (i64, String, bool) = sqlx::query_as(
-            "SELECT u.id, u.email, u.instance_admin FROM sessions s \
+        let (user_id, email, instance_admin, has_password) = sqlx::query_as(
+            "SELECT u.id, u.email, u.instance_admin, u.password_hash IS NOT NULL FROM sessions s \
              JOIN users u ON u.id = s.user_id \
              WHERE s.token_hash = $1 AND s.expires_at > $2 AND NOT u.disabled",
         )
@@ -377,6 +386,7 @@ impl FromRequestParts<AppState> for Session {
             user: User {
                 email,
                 instance_admin,
+                has_password,
             },
         })
     }

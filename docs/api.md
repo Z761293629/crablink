@@ -26,11 +26,11 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `GET` | `/api/workspaces/{ws}/api-keys` | Owner 列出未吊销的 API Key：`name`、`prefix`、`created_at`、`last_used_at` |
 | `DELETE` | `/api/workspaces/{ws}/api-keys/{id}` | Owner 吊销 API Key，立即失效 |
 | `POST` / `DELETE` | `/api/session` | 用 `{ email, password }` 登录（设置 session cookie）/ 退出 |
-| `GET` | `/api/me` | session：`{ "user": … }`；API Key：`{ "workspace": … }` |
+| `GET` | `/api/me` | session：`{ "user": { email, instance_admin, has_password } }`（`has_password` 为 false 的 User 由 Identity Provider 创建，没有密码）；API Key：`{ "workspace": … }` |
 | `GET` | `/api/identity-providers` | 无需凭据：登录页列出的 Identity Provider，`[{ id, name }]` |
 | `GET` | `/auth/{id}` | 浏览器经 Identity Provider `id` 登录：跳到它那里（授权码流程 + PKCE），用一个 10 分钟的 cookie 把这次登录绑在这个浏览器上；未知 `id` 404 |
-| `GET` | `/auth/{id}/callback` | Identity Provider 跳回的地址：验证 ID token 后开 session 并跳到 `/app/`；被拒时跳到 `/app/?error=<kind>`：`identity_provider_failed`（超时、换了浏览器、Identity Provider 拒绝或 ID token 验证不过）、`identity_provider_email_unverified`（未声明 `email_verified`）、`invite_needed`（没有该 email 的 User）、`user_disabled` |
-| `POST` | `/api/me/password` | 修改密码 |
+| `GET` | `/auth/{id}/callback` | Identity Provider 跳回的地址：验证 ID token 后开 session 并跳到 `/app/`；被拒时跳到 `/app/?error=<kind>`：`identity_provider_failed`（超时、换了浏览器、Identity Provider 拒绝或 ID token 验证不过）、`identity_provider_email_unverified`（未声明 `email_verified`）、`invite_needed`（没有该 email 的 User，且其域名不在该 Identity Provider 的允许列表里）、`user_disabled` |
+| `POST` | `/api/me/password` | 修改密码；没有密码的 User 403（`wrong_password`） |
 | `GET` | `/api/workspaces` | 当前 User 所在的 Workspace 及其角色：`[{ slug, name, role }]`，`role` 为 `owner` / `member` |
 | `POST` | `/api/workspaces` | 新建 Workspace：`{ name }`，slug 由名字生成，创建者成为 Owner |
 | `PATCH` | `/api/workspaces/{ws}` | Owner 改名：`{ name }`，slug 不变 |
@@ -41,7 +41,7 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `DELETE` | `/api/workspaces/{ws}/members/{email}` | Owner 移除成员；Member 只能移除自己（退出） |
 | `POST` | `/api/admin/invites` | Instance Admin 邀请：`{ email, workspace? }`，返回一次性 `url`（7 天有效）；email 已注册 409（`email_taken`） |
 | `POST` | `/api/invites/accept` | 无需凭据：`{ token, password }` 建 User 并登录；`invite_not_found` / `invite_used` / `invite_expired` |
-| `GET` | `/api/admin/users` | Instance Admin 列出 User：`[{ id, email, instance_admin, disabled }]` |
+| `GET` | `/api/admin/users` | Instance Admin 列出 User：`[{ id, email, instance_admin, disabled, has_password, identity_providers }]`，`identity_providers` 是登录过的 Identity Provider 的名字（已不再设置的显示其 issuer URL） |
 | `PATCH` | `/api/admin/users/{id}` | Instance Admin 改 `disabled` / `instance_admin`；会让实例没有启用的 Instance Admin 时 409（`last_instance_admin`）；停用即结束其 session |
 | `POST` | `/api/admin/users/{id}/password` | Instance Admin 重置为随机密码：`{ password }` 只返回这一次，并结束其 session |
 | `GET` | `/api/admin/blocked-links` | Instance Admin 列出 Blocked Link（不含已删除的），最近封禁的在前：`[{ short_url, target, workspace_slug, blocked_at }]` |

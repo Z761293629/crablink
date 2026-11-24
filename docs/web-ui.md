@@ -6,7 +6,7 @@ Web UI 由 server 自己在 `/app` 提供（如 `https://crabl.ink/app`），与
 - **CSV**：在 Link 页导出 `links.csv`，或选一个同格式的文件导入，逐行显示建好的 Short URL 或跳过的原因。
 - **Click**：每个 Link 的 Click 图表（最近 24 小时按小时，7 / 30 / 90 天按天）和 Referrer、国家、设备、浏览器分布；Workspace Clicks 页看整个 Workspace 的趋势和排名前 10 的 Link。已删除 Link 的 Click 仍计入 Workspace 的总数。
 - **Workspace**：切换、新建、改名、删除 Workspace；Owner 管理成员和 API Key（`secret` 只显示一次），添加自定义 Domain 并看到它的审批状态和 DNS 指向。
-- **实例管理**：Instance Admin 生成邀请链接、批准或拒绝自定义 Domain、停用 / 启用 User、设为或撤销 Instance Admin、重置密码、按 Short URL 封禁 Link 或解除封禁；最后一个启用的 Instance Admin 不能被停用或撤销。
+- **实例管理**：Instance Admin 生成邀请链接、批准或拒绝自定义 Domain、停用 / 启用 User、设为或撤销 Instance Admin、重置密码、看到哪些 User 没有密码、经过哪些 Identity Provider 登录过，按 Short URL 封禁 Link 或解除封禁；最后一个启用的 Instance Admin 不能被停用或撤销。
 
 ## 开发
 

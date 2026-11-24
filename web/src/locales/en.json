@@ -205,6 +205,8 @@
       "enable": "Enable",
       "makeAdmin": "Make Instance Admin",
       "revokeAdmin": "Revoke Instance Admin",
+      "noPassword": "No password",
+      "signsInThrough": "Signs in through {{names}}",
       "resetPassword": "Reset password",
       "newPassword": "New password:",
       "active": "Active",

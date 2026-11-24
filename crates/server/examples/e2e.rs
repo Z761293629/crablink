@@ -2,7 +2,8 @@
 //! starts an embedded Postgres, creates the Instance Admin named by
 //! `CRABLINK_E2E_ADMIN_EMAIL` and `CRABLINK_E2E_ADMIN_PASSWORD`, then runs the real
 //! `crablink-server` binary (built beforehand) on it with this process's environment,
-//! plus the fake Identity Provider of the tests set up as Identity Provider `fake`.
+//! plus the fake Identity Provider of the tests set up as Identity Provider `fake`,
+//! which creates Users on `idp.example.com`.
 //! On SIGTERM or Ctrl-C it stops the server, then Postgres and its data.
 
 use postgresql_embedded::{PostgreSQL, SettingsBuilder, VersionReq};
@@ -53,6 +54,10 @@ async fn main() {
         .env(
             "CRABLINK_IDENTITY_PROVIDER_FAKE_CLIENT_SECRET",
             fake_identity_provider::CLIENT_SECRET,
+        )
+        .env(
+            "CRABLINK_IDENTITY_PROVIDER_FAKE_ALLOWED_EMAIL_DOMAINS",
+            "idp.example.com",
         )
         .kill_on_drop(true)
         .spawn()

@@ -132,7 +132,14 @@ export function InstanceAdmin({ me }: { /** The signed-in User's email. */ me: s
                         {u.disabled && <span className="state rejected">{t('admin.users.disabled')}</span>}
                         {u.instance_admin && <span className="state default">{t('admin.users.instanceAdmin')}</span>}
                         {!u.disabled && !u.instance_admin && <span className="state">{t('admin.users.active')}</span>}
+                        {!u.has_password && <span className="state">{t('admin.users.noPassword')}</span>}
                       </span>
+                      {u.identity_providers.length > 0 && (
+                        <span className="micro">
+                          {' '}
+                          {t('admin.users.signsInThrough', { names: u.identity_providers.join(', ') })}
+                        </span>
+                      )}
                     </td>
                     <td className="actions">
                       {/* Never offered on one's own row: an Instance Admin can't lock themself out. */}
