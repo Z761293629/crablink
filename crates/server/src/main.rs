@@ -100,9 +100,18 @@ async fn serve() {
         links: rate_limit("CRABLINK_RATE_LIMIT_LINKS"),
     };
 
+    let reserved_codes = std::env::var("CRABLINK_RESERVED_CODES")
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(String::from)
+        .collect();
+
     let mut settings = crablink_server::Settings {
         trust_proxy,
         rate_limits,
+        reserved_codes,
         country,
         ..crablink_server::Settings::new(base_url)
     };

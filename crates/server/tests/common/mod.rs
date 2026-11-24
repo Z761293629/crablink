@@ -77,6 +77,15 @@ pub async fn app_with_codes(codes: &[&str]) -> TestApp {
     build(codes, false, |s| s).await
 }
 
+/// App whose Code generator yields `codes` in order, with `reserved` as its Reserved Codes.
+pub async fn app_with_reserved_codes(codes: &[&str], reserved: &[&str]) -> TestApp {
+    build(codes, false, |s| crablink_server::Settings {
+        reserved_codes: reserved.iter().map(|c| c.to_string()).collect(),
+        ..s
+    })
+    .await
+}
+
 /// App with random Generated Codes whose test settings are then changed by `change`,
 /// e.g. to inject a fake service.
 pub async fn app_with(
