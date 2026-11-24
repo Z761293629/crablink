@@ -4,7 +4,9 @@
     "title": "Sign in",
     "email": "Email",
     "password": "Password",
-    "submit": "Sign in"
+    "submit": "Sign in",
+    "with": "Sign in with {{name}}",
+    "or": "or with your password"
   },
   "signOut": "Sign out",
   "workspace": {
@@ -281,7 +283,11 @@
     "invalid_domain": "Enter a host name such as go.example.com.",
     "domain_taken": "That Domain is the Default Domain or another Workspace’s.",
     "domain_not_found": "That Domain doesn’t exist.",
-    "domain_not_approved": "Use the Default Domain or one of this Workspace’s approved Domains."
+    "domain_not_approved": "Use the Default Domain or one of this Workspace’s approved Domains.",
+    "identity_provider_failed": "Signing in didn’t work. Try again.",
+    "identity_provider_email_unverified": "Your sign-in service hasn’t verified your email, so it can’t sign you in here.",
+    "invite_needed": "No one here has your email yet: ask an Instance Admin for an Invite.",
+    "user_disabled": "Your User is disabled."
   },
   "cancel": "Cancel",
   "retry": "Try again",

@@ -4,7 +4,11 @@
 //! Use from a test file with `mod common;` then `use common::*;`.
 #![allow(dead_code)]
 
+mod fake_identity_provider;
 mod pg;
+
+#[allow(unused_imports)] // Only some test files sign in through an Identity Provider.
+pub use fake_identity_provider::{FakeIdentityProvider, Person, Token};
 
 use std::collections::VecDeque;
 use std::net::{IpAddr, SocketAddr};
@@ -77,7 +81,29 @@ pub async fn app_with_codes(codes: &[&str]) -> TestApp {
     build(codes, false).await
 }
 
+/// App with random Generated Codes and the test settings as `configure` changes them.
+pub async fn app_with(
+    configure: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> TestApp {
+    try_app_with(configure).await.unwrap()
+}
+
+/// `app_with`, or the error the app builder refuses to start with.
+pub async fn try_app_with(
+    configure: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> Result<TestApp, String> {
+    try_build(&[], false, configure).await
+}
+
 async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
+    try_build(codes, trust_proxy, |s| s).await.unwrap()
+}
+
+async fn try_build(
+    codes: &[&str],
+    trust_proxy: bool,
+    configure: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> Result<TestApp, String> {
     let pool = crablink_server::connect(&pg::database_url().await)
         .await
         .unwrap();
@@ -92,11 +118,13 @@ async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
     let now = Arc::new(Mutex::new(Utc::now()));
     let clock = now.clone();
     let clock: crablink_server::Clock = Arc::new(move || *clock.lock().unwrap());
-    let settings = crablink_server::Settings {
+    let settings = configure(crablink_server::Settings {
         codes: generator,
         ..settings(BASE_URL, clock, trust_proxy)
-    };
-    let router = crablink_server::app(pool.clone(), settings).await.unwrap();
+    });
+    let router = crablink_server::app(pool.clone(), settings)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut app = TestApp {
         router,
         pool,
@@ -105,7 +133,7 @@ async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
         owner: Account::default(),
     };
     app.owner = app.account(OWNER).await;
-    app
+    Ok(app)
 }
 
 /// A signed-in User with their personal Workspace and an API Key of it.
@@ -201,6 +229,25 @@ impl TestApp {
     pub async fn sign_in_res(&self, email: &str, password: &str) -> Res {
         let body = serde_json::json!({ "email": email, "password": password });
         self.request("POST", "/api/session", Some(body), &[("origin", ORIGIN)])
+            .await
+    }
+
+    /// Signs in through Identity Provider `id`, set up as `fake`, where `person`
+    /// approves: starts at `/auth/{id}`, then follows the fake's redirect back with
+    /// the cookie the start set. Returns the callback's response.
+    pub async fn sign_in_through(
+        &self,
+        fake: &FakeIdentityProvider,
+        id: &str,
+        person: Person,
+    ) -> Res {
+        let start = self.get(&format!("/auth/{id}")).await;
+        assert_eq!(start.status, StatusCode::SEE_OTHER, "{}", start.text);
+        let cookie = start.header("set-cookie").split(';').next().unwrap();
+        let back = url::Url::parse(&fake.approve(start.header("location"), person)).unwrap();
+        assert_eq!(back.host_str(), Some(HOST), "{back}");
+        let path = format!("{}?{}", back.path(), back.query().unwrap_or_default());
+        self.request("GET", &path, None, &[("cookie", cookie)])
             .await
     }
 
@@ -397,6 +444,21 @@ impl Res {
 
     pub fn json(&self) -> Value {
         serde_json::from_str(&self.text).unwrap_or_else(|e| panic!("{e}: {}", self.text))
+    }
+
+    /// The `name=value` pair of the cookie named `name` this response sets to a
+    /// non-empty value, if any.
+    pub fn cookie(&self, name: &str) -> Option<String> {
+        self.headers
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|v| v.to_str().ok()?.split(';').next())
+            .find(|pair| {
+                pair.strip_prefix(name)
+                    .and_then(|rest| rest.strip_prefix('='))
+                    .is_some_and(|value| !value.is_empty())
+            })
+            .map(str::to_owned)
     }
 
     pub fn header(&self, name: &str) -> &str {

@@ -11,7 +11,7 @@ use axum::Json;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
-use axum::http::{Method, StatusCode, header};
+use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use chrono::TimeDelta;
 use crablink_api::{ChangePassword, Me, SignIn, User, Workspace};
@@ -259,12 +259,24 @@ pub(crate) async fn start_session(
     id: i64,
     user: User,
 ) -> Result<Response, ApiError> {
+    let cookie = new_session(s, conn, id, &user.email).await?;
+    Ok(([(header::SET_COOKIE, cookie)], Json(user)).into_response())
+}
+
+/// `start_session` for User `id` with `email`, returning only the `Set-Cookie`
+/// value of the new session.
+pub(crate) async fn new_session(
+    s: &AppState,
+    conn: &mut PgConnection,
+    id: i64,
+    email: &str,
+) -> Result<String, ApiError> {
     let first = sqlx::query("UPDATE users SET signed_in = TRUE WHERE id = $1 AND NOT signed_in")
         .bind(id)
         .execute(&mut *conn)
         .await?;
     if first.rows_affected() == 1 {
-        workspaces::create_personal(conn, id, &user.email).await?;
+        workspaces::create_personal(conn, id, email).await?;
     }
     let token = random_token();
     // ponytail: expired sessions are never swept; add a cleanup if the table grows.
@@ -274,8 +286,7 @@ pub(crate) async fn start_session(
         .bind((s.clock)() + SESSION_TTL)
         .execute(conn)
         .await?;
-    let cookie = session_cookie(&token, SESSION_TTL.num_seconds());
-    Ok(([(header::SET_COOKIE, cookie)], Json(user)).into_response())
+    Ok(session_cookie(&token, SESSION_TTL.num_seconds()))
 }
 
 /// `DELETE /api/session`: signs out, ending the session and clearing the cookie.
@@ -341,15 +352,7 @@ impl FromRequestParts<AppState> for Session {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, s: &AppState) -> Result<Self, ApiError> {
-        let token = parts
-            .headers
-            .get_all(header::COOKIE)
-            .iter()
-            .filter_map(|v| v.to_str().ok())
-            .flat_map(|v| v.split(';'))
-            .find_map(|c| c.trim().strip_prefix(COOKIE)?.strip_prefix('='))
-            .filter(|t| !t.is_empty())
-            .ok_or(ApiError::NotSignedIn)?;
+        let token = cookie(&parts.headers, COOKIE).ok_or(ApiError::NotSignedIn)?;
         let safe = matches!(parts.method, Method::GET | Method::HEAD | Method::OPTIONS);
         if !safe && !same_origin(parts) {
             return Err(ApiError::OriginMismatch);
@@ -374,6 +377,17 @@ impl FromRequestParts<AppState> for Session {
             },
         })
     }
+}
+
+/// The non-empty value of the cookie named `name` that the request sends.
+pub(crate) fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(';'))
+        .find_map(|c| c.trim().strip_prefix(name)?.strip_prefix('='))
+        .filter(|v| !v.is_empty())
 }
 
 /// A request whose `Origin` header names the host it was sent to: what a request

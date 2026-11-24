@@ -11,3 +11,7 @@ opt-level = 3
 
 [profile.dev.package.blake2]
 opt-level = 3
+
+# Unoptimised, signing ID tokens makes the fake Identity Provider take seconds.
+[profile.dev.package.num-bigint-dig]
+opt-level = 3

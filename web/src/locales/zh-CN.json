@@ -4,7 +4,9 @@
     "title": "登录",
     "email": "邮箱",
     "password": "密码",
-    "submit": "登录"
+    "submit": "登录",
+    "with": "通过 {{name}} 登录",
+    "or": "或使用密码登录"
   },
   "signOut": "退出登录",
   "workspace": {
@@ -281,7 +283,11 @@
     "invalid_domain": "请输入形如 go.example.com 的主机名。",
     "domain_taken": "该域名是默认域名，或已属于其他工作区。",
     "domain_not_found": "该域名不存在。",
-    "domain_not_approved": "请使用默认域名或本工作区已批准的域名。"
+    "domain_not_approved": "请使用默认域名或本工作区已批准的域名。",
+    "identity_provider_failed": "登录未成功，请重试。",
+    "identity_provider_email_unverified": "你的登录服务尚未验证你的邮箱，因此无法在此登录。",
+    "invite_needed": "这里还没有使用你邮箱的用户：请向实例管理员索取邀请。",
+    "user_disabled": "你的用户已被停用。"
   },
   "cancel": "取消",
   "retry": "重试",

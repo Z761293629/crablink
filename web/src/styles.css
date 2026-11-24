@@ -2287,6 +2287,11 @@ table.entries tr:last-child td {
   width: 100%;
 }
 
+.ticket .providers {
+  display: grid;
+  gap: 0.5rem;
+}
+
 .ticket .tear {
   padding: 1.25rem 1.75rem 1.5rem;
   background-color: var(--surface-2);
