@@ -45,6 +45,7 @@ async fn a_forgotten_password_is_reset_through_the_emailed_link() {
     let res = reset(&app, &mailbox.link_to(ADA), NEW_PASSWORD).await;
     assert_eq!(res.status, StatusCode::OK, "{}", res.text);
     assert_eq!(res.json()["email"], ADA);
+    assert_eq!(res.json()["has_password"], true);
 
     // Signed in by the reset, and signed out everywhere else.
     let cookie = res.header("set-cookie").split(';').next().unwrap();
@@ -77,6 +78,22 @@ async fn a_disabled_user_gets_no_reset_link() {
     let (app, mailbox) = app_with_email().await;
     app.create_user(ADA).await;
     crablink_server::set_user_disabled(&app.pool, ADA, true)
+        .await
+        .unwrap();
+
+    let res = forgot(&app, ADA).await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.text);
+    assert!(mailbox.to(ADA).is_empty());
+}
+
+#[tokio::test]
+async fn a_user_without_a_password_gets_no_reset_link() {
+    let (app, mailbox) = app_with_email().await;
+    app.create_user(ADA).await;
+    // As if an Identity Provider had created Ada.
+    sqlx::query("UPDATE users SET password_hash = NULL WHERE email = $1")
+        .bind(ADA)
+        .execute(&app.pool)
         .await
         .unwrap();
 
