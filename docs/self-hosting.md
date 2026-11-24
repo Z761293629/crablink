@@ -38,8 +38,11 @@ Web UI 在构建时打进 server 二进制（Docker 镜像和 Release 已包含�
 | `CRABLINK_LISTEN` | 否 | `0.0.0.0:8080` | 监听地址（改端口的话 `ports` 和健康检查端口要一起改） |
 | `CRABLINK_TRUST_PROXY` | 否 | `false` | `true` 时访客地址取 `X-Forwarded-For` 的第一项（只在反向代理之后这样设，`deploy/compose.yaml` 已设好），否则取 TCP 连接的对端地址 |
 | `CRABLINK_COUNTRY_DB` | 否 | 镜像里已设好 | Click 查国家用的 DB-IP Lite country 数据库（`.mmdb`）；镜像构建时自带当月版本。不设则 Click 不记国家，设了却读不了就退出 |
+| `CRABLINK_SAFE_BROWSING_KEY` | 否 | — | Google Safe Browsing API key；设了就在创建 Link（API、Web UI、CLI、CSV 导入）和修改 Target 时查 Target，已知的钓鱼、恶意软件网址以 400（`target_unsafe`）拒绝。Google 出错或 2 秒内没回应时照常放行。不设则不做任何检查 |
 
 Click 只记时间、Referrer 的 host、国家、设备类型和浏览器，从不存 IP 和完整 User-Agent（[ADR-0006](adr/0006-clicks-store-no-ip.md)）；爬虫和链接预览（Slack 等）照常跳转，但不算 Click。国家数据来自 [IP Geolocation by DB-IP](https://db-ip.com)（CC BY 4.0）。
+
+Safe Browsing 用的是 Lookup API v4，Google 只许非商业用途使用；收费的服务应改用 Web Risk API。Target 会发给 Google 查询。
 
 ## 生产部署（HTTPS）
 
