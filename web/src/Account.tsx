@@ -1,5 +1,5 @@
-// A User's own account: signing up and verifying the email, changing their password,
-// deleting the account, resetting a forgotten password by email, and choosing one
+// A User managing themself: signing up and verifying the email, changing their password,
+// deleting themself, resetting a forgotten password by email, and choosing one
 // when accepting an invite.
 
 import { useEffect, useState, type FormEvent } from 'react';
@@ -8,7 +8,7 @@ import { api, type Instance } from './api';
 import { errorMessage } from './i18n';
 import { tearHalf, tearOff, useConfirm } from './ui';
 
-/** `/app/account`: changing the password, for Users who have one, and deleting the account. */
+/** `/app/account`: changing the password, for Users who have one, and deleting the User. */
 export function Account({ hasPassword, onDeleted }: { hasPassword: boolean; onDeleted: () => void }) {
   return (
     <>

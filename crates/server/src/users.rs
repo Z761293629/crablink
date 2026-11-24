@@ -14,7 +14,7 @@ use axum::http::request::Parts;
 use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, TimeDelta, Utc};
-use crablink_api::{ChangePassword, DeleteAccount, Me, Role, SignIn, User, Workspace};
+use crablink_api::{ChangePassword, DeleteMe, Me, Role, SignIn, User, Workspace};
 use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, PgPool};
 
@@ -27,7 +27,7 @@ const COOKIE: &str = "crablink_session";
 const SESSION_TTL: TimeDelta = TimeDelta::days(30);
 const MIN_PASSWORD_LEN: usize = 8;
 /// How recently a User without a password must have signed in through an Identity
-/// Provider to delete their account.
+/// Provider to delete themself.
 const FRESH_SIGN_IN: TimeDelta = TimeDelta::minutes(5);
 
 /// Creates a User who signs in with `email` and `password`, as an Instance Admin
@@ -368,10 +368,10 @@ pub(crate) async fn change_password(
 /// `FRESH_SIGN_IN`.
 /// Every Workspace they are the only member of goes with them, its Links becoming
 /// Deleted Links; they just leave the others.
-pub(crate) async fn delete_account(
+pub(crate) async fn delete_me(
     State(s): State<AppState>,
     session: Session,
-    body: Result<Json<DeleteAccount>, JsonRejection>,
+    body: Result<Json<DeleteMe>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let Json(req) = body?;
     let (hash, expires_at): (Option<String>, DateTime<Utc>) = sqlx::query_as(
@@ -388,8 +388,10 @@ pub(crate) async fn delete_account(
                 return Err(ApiError::WrongPassword);
             }
         }
-        // A User without a password has only sessions an Identity Provider started,
-        // each SESSION_TTL long, so this one's start says when they last signed in.
+        // When this Session started is its expiry less SESSION_TTL, which relies on
+        // two invariants: Sessions never slide (nothing extends `expires_at`), and a
+        // User without a password only gets Sessions through an Identity Provider.
+        // So that start is when they last signed in through one.
         None if expires_at - SESSION_TTL + FRESH_SIGN_IN < (s.clock)() => {
             return Err(ApiError::FreshSignInNeeded);
         }
@@ -397,7 +399,7 @@ pub(crate) async fn delete_account(
     }
     let mut tx = s.pool.begin().await?;
     // Locks every enabled Instance Admin as `admin::update_user` does, so two of
-    // them deleting their accounts at once can't both succeed.
+    // them deleting themselves at once can't both succeed.
     sqlx::query("SELECT id FROM users WHERE instance_admin AND NOT disabled FOR UPDATE")
         .execute(&mut *tx)
         .await?;

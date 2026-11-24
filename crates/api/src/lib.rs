@@ -145,9 +145,9 @@ pub struct ChangePassword {
     pub new_password: String,
 }
 
-/// Body of `DELETE /api/me`: deleting one's own account.
+/// Body of `DELETE /api/me`: a User deleting themself.
 #[derive(Clone, Default, Serialize, Deserialize)]
-pub struct DeleteAccount {
+pub struct DeleteMe {
     /// The User's password. A User without one leaves it out, and must have signed
     /// in through an Identity Provider within the last 5 minutes instead.
     #[serde(default)]
@@ -459,9 +459,9 @@ impl std::fmt::Debug for SignIn {
     }
 }
 
-impl std::fmt::Debug for DeleteAccount {
+impl std::fmt::Debug for DeleteMe {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DeleteAccount")
+        f.debug_struct("DeleteMe")
             .field("password", &self.password.as_ref().map(|_| REDACTED))
             .finish()
     }
@@ -637,8 +637,8 @@ pub enum ErrorKind {
     InviteNeeded,
     /// Signing in through an Identity Provider as a disabled User.
     UserDisabled,
-    /// Deleting the account of a User without a password who last signed in
-    /// through an Identity Provider more than 5 minutes ago: sign in again first.
+    /// A User without a password deleting themself more than 5 minutes after they
+    /// last signed in through an Identity Provider: sign in again first.
     FreshSignInNeeded,
     /// The server failed; details are in its log, never in `error`. Includes running out
     /// of free Generated Codes, where retrying may help.
@@ -832,7 +832,7 @@ mod tests {
             ),
             format!(
                 "{:?}",
-                DeleteAccount {
+                DeleteMe {
                     password: Some(s())
                 }
             ),

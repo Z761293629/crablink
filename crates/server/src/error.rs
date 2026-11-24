@@ -97,9 +97,7 @@ pub enum ApiError {
     InviteNeeded,
     #[error("this User is disabled")]
     UserDisabled,
-    #[error(
-        "sign in through your Identity Provider again, then delete your account within 5 minutes"
-    )]
+    #[error("sign in through your Identity Provider again, then delete your User within 5 minutes")]
     FreshSignInNeeded,
     #[error("could not generate a free code, try again")]
     CodesExhausted,

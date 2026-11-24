@@ -65,7 +65,7 @@ test('a User changes their password and signs in with the new one', async ({ pag
   await signInPage(page, user.email, 'a brand new password');
 });
 
-test('a User deletes their account, after which it cannot sign in', async ({ page, user }) => {
+test('a User deletes themself, after which they cannot sign in', async ({ page, user }) => {
   await signInPage(page, user.email, user.password);
   await openUserMenu(page);
   await page.getByRole('link', { name: 'Account' }).click();

@@ -61,7 +61,7 @@ use links::{
 use members::{add_member, list_workspace_users, remove_workspace_user, update_workspace_user};
 use redirect::redirect;
 use reports::{create_report, dismiss_report, list_reports};
-use users::{change_password, delete_account, me, sign_in, sign_out};
+use users::{change_password, delete_me, me, sign_in, sign_out};
 use workspaces::{
     api_fallback, create_workspace, delete_workspace, list_workspaces, rename_workspace,
 };
@@ -316,7 +316,7 @@ pub async fn app(pool: PgPool, settings: Settings) -> Result<Router, String> {
         )
         .route("/session", post(sign_in).delete(sign_out))
         .route("/identity-providers", get(identity_providers::list))
-        .route("/me", get(me).delete(delete_account))
+        .route("/me", get(me).delete(delete_me))
         .route("/me/password", post(change_password))
         .route("/instance", get(instance_info))
         .route("/password-resets", post(password_reset::forgot_password))

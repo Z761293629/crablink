@@ -1,4 +1,4 @@
-//! Users deleting their own account: `DELETE /api/me`.
+//! Users deleting themselves: `DELETE /api/me`.
 
 mod common;
 use common::*;
@@ -12,7 +12,7 @@ fn password(password: &str) -> Option<Value> {
 }
 
 #[tokio::test]
-async fn a_user_deletes_their_account_with_their_password() {
+async fn a_user_deletes_themself_with_their_password() {
     let app = app().await;
     app.create(json!({ "target": "https://example.com/", "code": "mine" }))
         .await;
@@ -38,7 +38,7 @@ async fn a_user_deletes_their_account_with_their_password() {
 }
 
 #[tokio::test]
-async fn deleting_an_account_needs_the_right_password() {
+async fn deleting_oneself_needs_the_right_password() {
     let app = app().await;
 
     let res = app
@@ -73,7 +73,7 @@ async fn join(app: &TestApp, email: &str, role: &str) {
 }
 
 #[tokio::test]
-async fn a_member_who_deletes_their_account_just_leaves_other_workspaces() {
+async fn a_member_who_deletes_themself_just_leaves_other_workspaces() {
     let app = app().await;
     app.create(json!({ "target": "https://example.com/", "code": "shared" }))
         .await;
@@ -109,7 +109,7 @@ async fn an_owner_beside_another_owner_just_leaves() {
 }
 
 #[tokio::test]
-async fn the_only_owner_of_a_workspace_with_other_members_cant_delete_their_account() {
+async fn the_only_owner_of_a_workspace_with_other_members_cant_delete_themself() {
     let app = app().await;
     app.create(json!({ "target": "https://example.com/", "code": "shared" }))
         .await;
@@ -127,7 +127,7 @@ async fn the_only_owner_of_a_workspace_with_other_members_cant_delete_their_acco
 }
 
 #[tokio::test]
-async fn the_last_instance_admin_cant_delete_their_account() {
+async fn the_last_instance_admin_cant_delete_themself() {
     let app = app().await;
     let admin = app.instance_admin().await;
 
@@ -148,7 +148,7 @@ async fn the_last_instance_admin_cant_delete_their_account() {
 }
 
 #[tokio::test]
-async fn a_user_without_a_password_deletes_their_account_right_after_signing_in_through_an_identity_provider()
+async fn a_user_without_a_password_deletes_themself_right_after_signing_in_through_an_identity_provider()
  {
     let fake = FakeIdentityProvider::start().await;
     let provider = crablink_server::IdentityProvider {

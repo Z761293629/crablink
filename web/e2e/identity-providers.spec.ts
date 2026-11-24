@@ -59,7 +59,7 @@ test('someone on an allowed email domain gets a User without a password', async 
   await expect(row).toContainText('Fake ID');
 });
 
-test('a User without a password deletes their account right after signing in', async ({ page }, testInfo) => {
+test('a User without a password deletes themself right after signing in', async ({ page }, testInfo) => {
   const email = `idp-${testInfo.workerIndex}-${Date.now()}@idp.example.com`;
   await page.goto('/app/');
   await page.getByRole('link', { name: 'Sign in with Fake ID' }).click();
