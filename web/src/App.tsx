@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AcceptInvite, ChangePassword } from './Account';
-import { api, type Membership, type User } from './api';
+import { AcceptInvite, ChangePassword, ForgotPassword, ResetPassword } from './Account';
+import { api, type Instance, type Membership, type User } from './api';
 import { Clicks } from './Clicks';
 import { Domains } from './Domains';
 import { InstanceAdmin } from './InstanceAdmin';
@@ -92,6 +92,8 @@ export function App() {
   let main;
   let board = false;
   if (page === 'invite') main = <AcceptInvite />;
+  else if (page === 'reset-password') main = <ResetPassword />;
+  else if (page === 'forgot-password') main = <ForgotPassword />;
   else if (user === undefined) main = null;
   else if (!user) main = <SignIn onSignedIn={signedInAs} />;
   else if (error !== undefined)
@@ -371,6 +373,12 @@ const devAdmin = import.meta.env.DEV ? { email: 'admin@example.com', password: '
 function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
   const { t } = useTranslation();
   const [error, setError] = useState<unknown>();
+  const [instance, setInstance] = useState<Instance>();
+
+  useEffect(() => {
+    // Without it, the form still signs in; it just offers no "forgot password".
+    api<Instance>('GET', '/instance').then(setInstance, () => {});
+  }, []);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -409,6 +417,11 @@ function SignIn({ onSignedIn }: { onSignedIn: (user: User) => void }) {
           />
         </label>
         {error !== undefined && <p role="alert">{errorMessage(t, error)}</p>}
+        {instance?.password_reset && (
+          <p>
+            <a href="/app/forgot-password">{t('signIn.forgot')}</a>
+          </p>
+        )}
       </div>
       <div className="tear">
         <button type="submit" className="primary">

@@ -1,6 +1,6 @@
 # Web UI
 
-Web UI 由 server 自己在 `/app` 提供（如 `https://crabl.ink/app`），与 API 同源，不用另外部署（[ADR-0008](adr/0008-spa-embedded-in-server.md)）；用 email 和密码登录，session cookie 30 天有效。界面有英文和简体中文，默认跟随浏览器语言，可以在右上角的菜单里切换并记在本浏览器里；跟随系统的浅色 / 深色主题，手机上也能用。
+Web UI 由 server 自己在 `/app` 提供（如 `https://crabl.ink/app`），与 API 同源，不用另外部署（[ADR-0008](adr/0008-spa-embedded-in-server.md)）；用 email 和密码登录，session cookie 30 天有效；实例能发邮件时，登录页的“忘记密码”会把重置链接发到邮箱。界面有英文和简体中文，默认跟随浏览器语言，可以在右上角的菜单里切换并记在本浏览器里；跟随系统的浅色 / 深色主题，手机上也能用。
 
 - **Link**：Link 页是一块航班信息屏，选中的 Link 显示为登机牌，下方是它最近 7 天的 Click 翻牌屏。创建（Generated 或 Custom Code、Domain、Expiry、Tag）、改 Target / Expiry / Tag、确认后删除、一键复制 Short URL、下载 SVG 或 PNG 二维码；按 Tag 过滤，按 Code 或 Target 搜索，分页加载。Blocked Link 标为“已封禁”，不能修改、没有二维码，只能删除。
 - **CSV**：在 Link 页导出 `links.csv`，或选一个同格式的文件导入，逐行显示建好的 Short URL 或跳过的原因。

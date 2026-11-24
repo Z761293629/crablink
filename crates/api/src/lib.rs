@@ -280,6 +280,30 @@ pub struct AcceptInvite {
     pub password: String,
 }
 
+/// Body of `POST /api/password-resets`: emails a password reset link to the User
+/// with this email, if any. The answer is the same either way.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForgotPassword {
+    pub email: String,
+}
+
+/// Body of `POST /api/password-resets/use`; the response is the signed-in `User`.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ResetPassword {
+    /// The reset link's fragment.
+    pub token: String,
+    /// The new password, at least 8 characters.
+    pub password: String,
+}
+
+/// What the instance offers, from `GET /api/instance`, for pages shown before sign-in.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Instance {
+    /// Whether Users can reset a forgotten password by email (the instance sends email).
+    #[serde(default)]
+    pub password_reset: bool,
+}
+
 /// A User as an Instance Admin sees them, from `GET /api/admin/users`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManagedUser {
@@ -365,6 +389,15 @@ impl std::fmt::Debug for AcceptInvite {
     }
 }
 
+impl std::fmt::Debug for ResetPassword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResetPassword")
+            .field("token", &REDACTED)
+            .field("password", &REDACTED)
+            .finish()
+    }
+}
+
 impl std::fmt::Debug for NewInvite {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let page = self
@@ -430,6 +463,9 @@ pub enum ErrorKind {
     InviteExpired,
     /// The invite has already been accepted.
     InviteUsed,
+    /// A password reset link that is unknown, expired, or used (using one of a User's
+    /// reset links uses them all): ask for a new link.
+    ResetLinkExpired,
     /// No live Link has this Code.
     LinkNotFound,
     /// The Link's Expiry has passed, and only a live Link will do (e.g. its QR code).

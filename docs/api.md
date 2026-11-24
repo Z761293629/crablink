@@ -28,6 +28,9 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `POST` / `DELETE` | `/api/session` | 用 `{ email, password }` 登录（设置 session cookie）/ 退出 |
 | `GET` | `/api/me` | session：`{ "user": … }`；API Key：`{ "workspace": … }` |
 | `POST` | `/api/me/password` | 修改密码 |
+| `GET` | `/api/instance` | 无需凭据：登录前页面要知道的实例功能：`{ password_reset }`，实例能发邮件时为 `true` |
+| `POST` | `/api/password-resets` | 无需凭据：`{ email }` 给该 email 的 User 发重置密码链接（1 小时内有效），有没有这个 User 都回 204；按访客 IP 限流；实例不发邮件时 404（`not_found`） |
+| `POST` | `/api/password-resets/use` | 无需凭据：`{ token, password }` 设新密码、结束该 User 所有 session 并登录；链接未知、已过期或已用过 410（`reset_link_expired`），用掉一个链接即用掉该 User 所有重置链接 |
 | `GET` | `/api/workspaces` | 当前 User 所在的 Workspace 及其角色：`[{ slug, name, role }]`，`role` 为 `owner` / `member` |
 | `POST` | `/api/workspaces` | 新建 Workspace：`{ name }`，slug 由名字生成，创建者成为 Owner |
 | `PATCH` | `/api/workspaces/{ws}` | Owner 改名：`{ name }`，slug 不变 |
@@ -36,7 +39,7 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 | `POST` | `/api/workspaces/{ws}/members` | Owner 按 email 把已有 User 加为 Member：`{ email }`；无此 User 404（`user_not_found`），已在其中 409（`already_member`） |
 | `PATCH` | `/api/workspaces/{ws}/members/{email}` | Owner 升降角色：`{ role }` |
 | `DELETE` | `/api/workspaces/{ws}/members/{email}` | Owner 移除成员；Member 只能移除自己（退出） |
-| `POST` | `/api/admin/invites` | Instance Admin 邀请：`{ email, workspace? }`，返回一次性 `url`（7 天有效）；email 已注册 409（`email_taken`） |
+| `POST` | `/api/admin/invites` | Instance Admin 邀请：`{ email, workspace? }`，返回一次性 `url`（7 天有效），实例能发邮件时同时发给对方；email 已注册 409（`email_taken`） |
 | `POST` | `/api/invites/accept` | 无需凭据：`{ token, password }` 建 User 并登录；`invite_not_found` / `invite_used` / `invite_expired` |
 | `GET` | `/api/admin/users` | Instance Admin 列出 User：`[{ id, email, instance_admin, disabled }]` |
 | `PATCH` | `/api/admin/users/{id}` | Instance Admin 改 `disabled` / `instance_admin`；会让实例没有启用的 Instance Admin 时 409（`last_instance_admin`）；停用即结束其 session |
@@ -49,4 +52,4 @@ Member 只能管理 Link；成员、API Key 和 Workspace 设置只归 Owner，M
 
 程序用 `Authorization: Bearer <API Key>`；API Key 属于 Workspace，创建它的人离开后照样可用。带 session cookie 的写请求必须带与 Host 一致的 `Origin`。未知或已吊销的 Bearer 值（包括 0.2 / 0.3 的 token）得到 401，提示用 API Key 重新登录。
 
-实例开了限流（`CRABLINK_RATE_LIMIT_*`，见[自建部署](self-hosting.md#限流)）时，超出限额的请求得到 429（`rate_limited`），`Retry-After` 头给出要等的秒数。登录按访客 IP 计数；建 Link 按 Workspace 计数，每个 Link 算一次，CSV 导入逐行计数，超出的行以 `rate_limited` 跳过。跳转从不限流。
+实例开了限流（`CRABLINK_RATE_LIMIT_*`，见[自建部署](self-hosting.md#限流)）时，超出限额的请求得到 429（`rate_limited`），`Retry-After` 头给出要等的秒数。登录和重置密码请求按访客 IP 计数；建 Link 按 Workspace 计数，每个 Link 算一次，CSV 导入逐行计数，超出的行以 `rate_limited` 跳过。跳转从不限流。

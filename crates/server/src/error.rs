@@ -41,6 +41,8 @@ pub enum ApiError {
     InviteExpired,
     #[error("invite has already been used")]
     InviteUsed,
+    #[error("password reset link has expired or was used: ask for a new one")]
+    ResetLinkExpired,
     /// A Code with no live Link (missing or deleted).
     #[error("link not found")]
     LinkNotFound,
@@ -104,6 +106,7 @@ impl ApiError {
             Self::InviteNotFound => ErrorKind::InviteNotFound,
             Self::InviteExpired => ErrorKind::InviteExpired,
             Self::InviteUsed => ErrorKind::InviteUsed,
+            Self::ResetLinkExpired => ErrorKind::ResetLinkExpired,
             Self::LinkNotFound => ErrorKind::LinkNotFound,
             Self::LinkExpired => ErrorKind::LinkExpired,
             Self::LinkBlocked => ErrorKind::LinkBlocked,
@@ -140,7 +143,9 @@ impl ApiError {
             | Self::InviteNotFound
             | Self::UserNotFound
             | Self::DomainNotFound => StatusCode::NOT_FOUND,
-            Self::LinkExpired | Self::InviteExpired | Self::InviteUsed => StatusCode::GONE,
+            Self::LinkExpired | Self::InviteExpired | Self::InviteUsed | Self::ResetLinkExpired => {
+                StatusCode::GONE
+            }
             Self::BadRequest(_)
             | Self::InvalidTarget(_)
             | Self::TargetUnsafe

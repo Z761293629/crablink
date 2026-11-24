@@ -4,7 +4,18 @@
     "title": "登录",
     "email": "邮箱",
     "password": "密码",
-    "submit": "登录"
+    "submit": "登录",
+    "forgot": "忘记密码？"
+  },
+  "forgotPassword": {
+    "title": "忘记密码",
+    "submit": "发送重置链接",
+    "sent": "如果有用户使用这个邮箱，重置密码的链接已发往该邮箱。链接只能使用一次，1 小时内有效。",
+    "back": "返回登录"
+  },
+  "resetPassword": {
+    "title": "重置密码",
+    "submit": "设置新密码"
   },
   "signOut": "退出登录",
   "workspace": {
@@ -278,6 +289,7 @@
     "invite_not_found": "该邀请链接不存在。",
     "invite_expired": "该邀请链接已过期。",
     "invite_used": "该邀请链接已被使用。",
+    "reset_link_expired": "该重置链接已过期或已被使用，请重新申请。",
     "link_not_found": "该链接不存在。",
     "link_expired": "该链接已过期。",
     "invalid_target": "目标网址必须是完整的 http:// 或 https:// 网址，且不能指向本实例。",

@@ -4,8 +4,8 @@
 use axum::Json;
 use axum::extract::rejection::{JsonRejection, QueryRejection};
 use axum::extract::{FromRequestParts, Path, Query, State};
-use axum::http::StatusCode;
 use axum::http::request::Parts;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use chrono::{DateTime, TimeDelta, Utc};
 use crablink_api::{
@@ -13,10 +13,10 @@ use crablink_api::{
     UpdateUser, User,
 };
 
-use crate::AppState;
 use crate::error::ApiError;
 use crate::users::{self, SameOrigin};
 use crate::workspaces::{Caller, stored_role};
+use crate::{AppState, email};
 
 const INVITE_TTL: TimeDelta = TimeDelta::days(7);
 
@@ -35,10 +35,12 @@ impl FromRequestParts<AppState> for InstanceAdmin {
 }
 
 /// `POST /api/admin/invites`: an invite link for a new User, optionally into a
-/// Workspace, that works once within `INVITE_TTL`.
+/// Workspace, that works once within `INVITE_TTL`. An instance that sends email
+/// also emails it to them, in the language the request asks for.
 pub(crate) async fn create_invite(
     State(s): State<AppState>,
     _: InstanceAdmin,
+    headers: HeaderMap,
     body: Result<Json<CreateInvite>, JsonRejection>,
 ) -> Result<(StatusCode, Json<NewInvite>), ApiError> {
     let Json(req) = body?;
@@ -74,6 +76,10 @@ pub(crate) async fn create_invite(
     .await?;
     // The token rides in the fragment, which browsers never send to a server.
     let url = format!("{}://{}/app/invite#{token}", s.scheme, s.default_domain);
+    if let Some(mailer) = &s.mailer {
+        let chinese = crate::prefers_chinese(&headers);
+        mailer(email::invite(chinese, &s.default_domain, email, &url));
+    }
     Ok((StatusCode::CREATED, Json(NewInvite { url, expires_at })))
 }
 

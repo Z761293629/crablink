@@ -7,9 +7,10 @@ use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use axum::Router;
+use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, Uri, header};
 use axum::routing::{delete, get, patch, post};
+use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
@@ -18,9 +19,11 @@ mod api_keys;
 mod clicks;
 mod db;
 mod domains;
+mod email;
 mod error;
 mod links;
 mod members;
+mod password_reset;
 mod rate_limit;
 mod redirect;
 mod safe_browsing;
@@ -30,6 +33,7 @@ mod workspaces;
 
 pub use clicks::{ClickRecording, dbip_country_lookup};
 pub use db::connect;
+pub use email::{Email, Mailer, smtp_mailer};
 pub use error::ApiError;
 pub use links::random_code;
 pub use rate_limit::{Limit, RateLimits};
@@ -89,6 +93,9 @@ pub struct Settings {
     pub clock: Clock,
     pub country: CountryLookup,
     pub target_check: TargetCheck,
+    /// `CRABLINK_SMTP_URL`: how the instance sends email, if it does. Without it,
+    /// Invites aren't emailed and Users can't reset a forgotten password themselves.
+    pub mailer: Option<Mailer>,
 }
 
 impl Settings {
@@ -104,6 +111,7 @@ impl Settings {
             clock: Arc::new(Utc::now),
             country: Arc::new(|_| None),
             target_check: Arc::new(|_| Box::pin(async { Ok(false) })),
+            mailer: None,
         }
     }
 }
@@ -115,6 +123,7 @@ struct AppState {
     clock: Clock,
     country: CountryLookup,
     target_check: TargetCheck,
+    mailer: Option<Mailer>,
     /// Whether the visitor's IP is the first `X-Forwarded-For` entry rather than the socket's.
     trust_proxy: bool,
     limiters: Arc<rate_limit::Limiters>,
@@ -144,6 +153,23 @@ fn request_host<'a>(headers: &'a HeaderMap, uri: &'a Uri) -> Option<&'a str> {
         .or_else(|| uri.authority().map(|a| a.as_str()))
 }
 
+/// Whether a request asks for Simplified Chinese rather than English: its
+/// `Accept-Language`, which the web UI sets to its own language.
+// ponytail: first listed language only, ignoring q-values; browsers list by preference.
+fn prefers_chinese(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::ACCEPT_LANGUAGE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.trim_start().to_ascii_lowercase().starts_with("zh"))
+}
+
+/// `GET /api/instance`: what the instance offers before sign-in.
+async fn instance(State(s): State<AppState>) -> Json<crablink_api::Instance> {
+    Json(crablink_api::Instance {
+        password_reset: s.mailer.is_some(),
+    })
+}
+
 /// Builds the full HTTP app, first creating the Default Domain from
 /// `settings.base_url` (its host, and port if any) if missing. Serve it with
 /// `ConnectInfo<SocketAddr>` so Clicks can find the visitor's country.
@@ -160,6 +186,7 @@ pub async fn app(
         clock,
         country,
         target_check,
+        mailer,
     } = settings;
     let url = url::Url::parse(&base_url)?;
     let Some(default_host) = url.host_str() else {
@@ -177,6 +204,7 @@ pub async fn app(
         clock,
         country,
         target_check,
+        mailer,
         trust_proxy,
         limiters: Arc::new(rate_limit::Limiters::new(rate_limits)),
         reserved_codes: Arc::new(reserved_codes),
@@ -229,6 +257,9 @@ pub async fn app(
         .route("/session", post(sign_in).delete(sign_out))
         .route("/me", get(me))
         .route("/me/password", post(change_password))
+        .route("/instance", get(instance))
+        .route("/password-resets", post(password_reset::forgot_password))
+        .route("/password-resets/use", post(password_reset::reset_password))
         .fallback(api_fallback);
     Ok(Router::new()
         .nest("/api", api)

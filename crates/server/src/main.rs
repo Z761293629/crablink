@@ -57,6 +57,26 @@ async fn admin_create(email: &str) {
     eprintln!("crablink-server: created Instance Admin {email}");
 }
 
+/// The SMTP mailer from `CRABLINK_SMTP_URL` and `CRABLINK_SMTP_FROM`, which go
+/// together; `None` when neither is set.
+fn mailer() -> Option<crablink_server::Mailer> {
+    let set = |name| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
+    let (url, from) = match (set("CRABLINK_SMTP_URL"), set("CRABLINK_SMTP_FROM")) {
+        (None, None) => return None,
+        (Some(url), Some(from)) => (url, from),
+        _ => {
+            eprintln!("crablink-server: CRABLINK_SMTP_URL and CRABLINK_SMTP_FROM go together");
+            exit(2);
+        }
+    };
+    Some(
+        crablink_server::smtp_mailer(&url, &from).unwrap_or_else(|e| {
+            eprintln!("crablink-server: CRABLINK_SMTP_*: {e}");
+            exit(2);
+        }),
+    )
+}
+
 async fn open_database(db_url: &str) -> sqlx::PgPool {
     crablink_server::connect(db_url).await.unwrap_or_else(|e| {
         // Not the URL itself: it usually carries the database password.
@@ -97,6 +117,7 @@ async fn serve() {
 
     let rate_limits = crablink_server::RateLimits {
         sign_in: rate_limit("CRABLINK_RATE_LIMIT_SIGN_IN"),
+        password_reset: rate_limit("CRABLINK_RATE_LIMIT_PASSWORD_RESET"),
         links: rate_limit("CRABLINK_RATE_LIMIT_LINKS"),
     };
 
@@ -125,6 +146,7 @@ async fn serve() {
         }
         _ => {}
     }
+    settings.mailer = mailer();
 
     let pool = open_database(&db_url).await;
     let app = crablink_server::app(pool.clone(), settings)
