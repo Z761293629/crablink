@@ -6,13 +6,13 @@ Link 属于 Workspace，建在 Default Domain 或该 Workspace 已批准的自�
 |---|---|---|
 | `GET` | `/{code}` | 按 `Host` 找 Domain 再 302 跳转；未知或未批准的 Domain、不存在的 Code 404；已删除或已过期 410；Blocked Link 403，返回按 `Accept-Language` 选语言（英文或简体中文）的封禁说明页，不跳转、不记 Click |
 | `GET` | `/internal/domain-allowed?domain=` | 无需凭据，供 Caddy 询问：Default Domain 和已批准的 Domain 200，其余 404 |
-| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain?, tags? }`；`domain` 不可用 400（`domain_not_approved`）；返回的 Link 带 `domain`、`short_url`、`tags` 和 `blocked`（是否为 Blocked Link） |
+| `POST` | `/api/workspaces/{ws}/links` | 创建 Link：`{ target, code?, expires_at?, domain?, tags? }`；`domain` 不可用 400（`domain_not_approved`）；设了 Safe Browsing 时 Target 被认定为恶意 400（`target_unsafe`）；返回的 Link 带 `domain`、`short_url`、`tags` 和 `blocked`（是否为 Blocked Link） |
 | `GET` | `/api/workspaces/{ws}/links?tag=&q=` | 列表（所有 Domain），新的在前，游标分页；`tag` 按 Tag 过滤，`q` 搜 Code 或 Target（不区分大小写） |
 | `GET` | `/api/workspaces/{ws}/links.csv` | 导出 CSV：Code、Domain、Target、Expiry、Tags（逗号分隔）、Click Count |
 | `POST` | `/api/workspaces/{ws}/links.csv` | 导入同格式的 CSV，逐行建 Link（不改已有 Link，空 Code 用 Generated Code，忽略 Click Count）；返回每行的 `short_url` 或 `skipped: { kind, error }` |
 | `GET` | `/api/workspaces/{ws}/tags` | Workspace 里有 Link 在用的 Tag |
 | `GET` | `/api/workspaces/{ws}/links/{code}?domain=` | 查看单个 Link |
-| `PATCH` | `/api/workspaces/{ws}/links/{code}?domain=` | 修改 `target` / `expires_at` / `tags`（整体替换）；Blocked Link 403（`link_blocked`） |
+| `PATCH` | `/api/workspaces/{ws}/links/{code}?domain=` | 修改 `target` / `expires_at` / `tags`（整体替换）；Blocked Link 403（`link_blocked`）；新 Target 同样过 Safe Browsing 检查（`target_unsafe`） |
 | `DELETE` | `/api/workspaces/{ws}/links/{code}?domain=` | 删除（不可恢复）；Blocked Link 也可删除，变为 Deleted Link |
 | `GET` | `/api/workspaces/{ws}/links/{code}/qr?format=svg\|png&domain=` | Short URL 的 QR 码，默认 SVG；已过期 410（`link_expired`），Blocked Link 403（`link_blocked`） |
 | `GET` | `/api/workspaces/{ws}/links/{code}/clicks?from=&to=&interval=hour\|day&domain=` | `[from, to)` 内的 Click：`series` 按 UTC 小时 / 天分桶（默认天，空桶也列出，最多 1000 个），`referrers` / `countries` / `devices` / `browsers` 为 `[{ value, count }]`，多的在前，未知为 `null` |

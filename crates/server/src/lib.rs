@@ -1,7 +1,9 @@
 //! crablink-server as a library: `app` builds the full HTTP app, and is the
 //! seam both `main` and the tests use.
 
+use std::future::Future;
 use std::net::IpAddr;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::Router;
@@ -19,6 +21,7 @@ mod error;
 mod links;
 mod members;
 mod redirect;
+mod safe_browsing;
 mod users;
 mod web;
 mod workspaces;
@@ -27,6 +30,7 @@ pub use clicks::{ClickRecording, dbip_country_lookup};
 pub use db::connect;
 pub use error::ApiError;
 pub use links::random_code;
+pub use safe_browsing::google_safe_browsing;
 pub use users::{create_user, set_user_disabled};
 
 use admin::{
@@ -59,6 +63,12 @@ pub type Clock = Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>;
 /// can place visitors; production reads the bundled DB-IP Lite database.
 pub type CountryLookup = Arc<dyn Fn(IpAddr) -> Option<String> + Send + Sync>;
 
+/// Whether a Target is known to be malicious: `Ok(true)` refuses it, and an `Err`
+/// (Safe Browsing down, a timeout) lets it through. Injected so tests can fake it;
+/// production asks Google Safe Browsing when `CRABLINK_SAFE_BROWSING_KEY` is set.
+pub type TargetCheck =
+    Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = Result<bool, String>> + Send>> + Send + Sync>;
+
 /// Everything `app` takes besides the database: the instance switches and the
 /// injected services. Start from `Settings::new` and override fields with struct
 /// update syntax, so a new field only touches the callers that set it.
@@ -71,11 +81,12 @@ pub struct Settings {
     pub codes: CodeGenerator,
     pub clock: Clock,
     pub country: CountryLookup,
+    pub target_check: TargetCheck,
 }
 
 impl Settings {
     /// An instance on `base_url` with every switch off, random Generated Codes,
-    /// the real clock and no country lookup.
+    /// the real clock, no country lookup and no Target check.
     pub fn new(base_url: impl Into<String>) -> Self {
         Settings {
             base_url: base_url.into(),
@@ -83,6 +94,7 @@ impl Settings {
             codes: Arc::new(random_code),
             clock: Arc::new(Utc::now),
             country: Arc::new(|_| None),
+            target_check: Arc::new(|_| Box::pin(async { Ok(false) })),
         }
     }
 }
@@ -93,6 +105,7 @@ struct AppState {
     codes: CodeGenerator,
     clock: Clock,
     country: CountryLookup,
+    target_check: TargetCheck,
     /// Whether the visitor's IP is the first `X-Forwarded-For` entry rather than the socket's.
     trust_proxy: bool,
     /// The scheme of Short URLs: `CRABLINK_BASE_URL`'s.
@@ -132,6 +145,7 @@ pub async fn app(
         codes,
         clock,
         country,
+        target_check,
     } = settings;
     let url = url::Url::parse(&base_url)?;
     let Some(default_host) = url.host_str() else {
@@ -148,6 +162,7 @@ pub async fn app(
         codes,
         clock,
         country,
+        target_check,
         trust_proxy,
         scheme: url.scheme().into(),
         default_domain: default_domain.into(),

@@ -53,6 +53,8 @@ pub enum ApiError {
     BadRequest(String),
     #[error("{0}")]
     InvalidTarget(&'static str),
+    #[error("target is known to be malicious (Google Safe Browsing)")]
+    TargetUnsafe,
     #[error("code must be 3-64 characters of A-Z, a-z, 0-9, _ or -")]
     InvalidCode,
     #[error("code {0:?} is reserved")]
@@ -104,6 +106,7 @@ impl ApiError {
             Self::LinkBlocked => ErrorKind::LinkBlocked,
             Self::BadRequest(_) => ErrorKind::BadRequest,
             Self::InvalidTarget(_) => ErrorKind::InvalidTarget,
+            Self::TargetUnsafe => ErrorKind::TargetUnsafe,
             Self::InvalidCode => ErrorKind::InvalidCode,
             Self::CodeReserved(_) => ErrorKind::CodeReserved,
             Self::CodeTaken => ErrorKind::CodeTaken,
@@ -136,6 +139,7 @@ impl ApiError {
             Self::LinkExpired | Self::InviteExpired | Self::InviteUsed => StatusCode::GONE,
             Self::BadRequest(_)
             | Self::InvalidTarget(_)
+            | Self::TargetUnsafe
             | Self::InvalidCode
             | Self::CodeReserved(_)
             | Self::InvalidTag
