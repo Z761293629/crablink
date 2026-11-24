@@ -69,32 +69,35 @@ pub async fn app() -> TestApp {
 
 /// App with random Generated Codes that trusts `X-Forwarded-For` from its proxy.
 pub async fn app_behind_proxy() -> TestApp {
-    build(&[], true).await
+    build(&[], true, |s| s).await
 }
 
 /// App whose Code generator yields `codes` in order, then random Codes.
 pub async fn app_with_codes(codes: &[&str]) -> TestApp {
-    build(codes, false).await
+    build(codes, false, |s| s).await
 }
 
 /// App whose Code generator yields `codes` in order, with `reserved` as its Reserved Codes.
 pub async fn app_with_reserved_codes(codes: &[&str], reserved: &[&str]) -> TestApp {
-    build_with(codes, false, |s| crablink_server::Settings {
+    build(codes, false, |s| crablink_server::Settings {
         reserved_codes: reserved.iter().map(|c| c.to_string()).collect(),
         ..s
     })
     .await
 }
 
-async fn build(codes: &[&str], trust_proxy: bool) -> TestApp {
-    build_with(codes, trust_proxy, |s| s).await
+/// App with random Generated Codes whose test settings are then changed by `change`,
+/// e.g. to inject a fake service.
+pub async fn app_with(
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+) -> TestApp {
+    build(&[], false, change).await
 }
 
-/// Builds the test app, letting `with` override its settings.
-async fn build_with(
+async fn build(
     codes: &[&str],
     trust_proxy: bool,
-    with: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
+    change: impl FnOnce(crablink_server::Settings) -> crablink_server::Settings,
 ) -> TestApp {
     let pool = crablink_server::connect(&pg::database_url().await)
         .await
@@ -110,11 +113,13 @@ async fn build_with(
     let now = Arc::new(Mutex::new(Utc::now()));
     let clock = now.clone();
     let clock: crablink_server::Clock = Arc::new(move || *clock.lock().unwrap());
-    let settings = with(crablink_server::Settings {
+    let settings = crablink_server::Settings {
         codes: generator,
         ..settings(BASE_URL, clock, trust_proxy)
-    });
-    let router = crablink_server::app(pool.clone(), settings).await.unwrap();
+    };
+    let router = crablink_server::app(pool.clone(), change(settings))
+        .await
+        .unwrap();
     let mut app = TestApp {
         router,
         pool,

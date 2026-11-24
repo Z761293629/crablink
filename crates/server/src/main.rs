@@ -94,13 +94,24 @@ async fn serve() {
         .map(String::from)
         .collect();
 
-    let pool = open_database(&db_url).await;
-    let settings = crablink_server::Settings {
+    let mut settings = crablink_server::Settings {
         trust_proxy,
         reserved_codes,
         country,
         ..crablink_server::Settings::new(base_url)
     };
+    match std::env::var("CRABLINK_SAFE_BROWSING_KEY") {
+        Ok(key) if !key.trim().is_empty() => {
+            settings.target_check =
+                crablink_server::google_safe_browsing(key).unwrap_or_else(|e| {
+                    eprintln!("crablink-server: cannot set up Safe Browsing checks: {e}");
+                    exit(1);
+                });
+        }
+        _ => {}
+    }
+
+    let pool = open_database(&db_url).await;
     let app = crablink_server::app(pool.clone(), settings)
         .await
         .unwrap_or_else(|e| {
