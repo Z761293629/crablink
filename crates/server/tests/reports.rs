@@ -124,6 +124,21 @@ async fn the_report_page_is_the_web_uis_report_form() {
     assert_eq!(app.get("/report").await.header("location"), "/app/report");
 }
 
+#[tokio::test]
+async fn a_link_with_code_report_on_a_custom_domain_keeps_redirecting() {
+    let app = app().await;
+    app.approved_domain("go.example.com").await;
+
+    let link = app
+        .create(json!({ "target": "https://example.com/", "code": "report", "domain": "go.example.com" }))
+        .await;
+
+    assert_eq!(link["short_url"], "https://go.example.com/report");
+    let res = app.visit_on("go.example.com", "/report", &[]).await;
+    assert_eq!(res.status, StatusCode::FOUND, "{}", res.text);
+    assert_eq!(res.header("location"), "https://example.com/");
+}
+
 /// Reports `short_url` and returns the open report's id.
 async fn reported(app: &TestApp, short_url: &str) -> i64 {
     let res = report(app, short_url, "phishing").await;

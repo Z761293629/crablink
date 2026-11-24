@@ -163,7 +163,10 @@ async fn check_target(s: &AppState, target: &str) -> Result<(), ApiError> {
 }
 
 /// Custom Codes that would shadow the service's own routes (compared case-insensitively).
-const RESERVED_CODES: &[&str] = &["api", "admin", "app", "health", "report"];
+const RESERVED_CODES: &[&str] = &["api", "admin", "app", "health"];
+/// A Custom Code that would shadow the report form, which only the Default Domain
+/// serves (compared case-insensitively).
+pub(crate) const REPORT_CODE: &str = "report";
 
 /// A Custom Code matches `[A-Za-z0-9_-]{3,64}` and is not reserved.
 fn validate_custom_code(code: &str) -> Result<(), ApiError> {
@@ -210,8 +213,8 @@ async fn insert_link(
     let tags = tag_names(&req.tags)?;
     let domain = s.domain_or_default(req.domain.as_deref());
     if let Some(code) = &req.code
-        && s.reserved_codes.contains(code)
         && domain.eq_ignore_ascii_case(&s.default_domain)
+        && (s.reserved_codes.contains(code) || code.eq_ignore_ascii_case(REPORT_CODE))
     {
         return Err(ApiError::CodeReserved(code.clone()));
     }

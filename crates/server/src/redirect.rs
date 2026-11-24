@@ -5,11 +5,12 @@ use std::net::{IpAddr, SocketAddr};
 use axum::Extension;
 use axum::extract::{ConnectInfo, Path, State};
 use axum::http::{HeaderMap, StatusCode, Uri, header};
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 
 use crate::AppState;
 use crate::clicks;
 use crate::error::ApiError;
+use crate::links::REPORT_CODE;
 
 /// `GET /{code}`: 302 to the Target. Never 301/308, which browsers cache forever.
 /// Only when no live Link matches does a lookup tell a Link that never existed (404)
@@ -23,6 +24,12 @@ pub(crate) async fn redirect(
 ) -> Response {
     let socket = socket.map(|Extension(ConnectInfo(addr))| addr.ip());
     let domain = crate::request_host(&headers, &uri).unwrap_or_default();
+    // `/report` on the Default Domain is the web UI's public report form, keeping
+    // `?short_url=`; on a custom Domain it is an ordinary Code.
+    if code == REPORT_CODE && domain.eq_ignore_ascii_case(&s.default_domain) {
+        let query = uri.query().map(|q| format!("?{q}")).unwrap_or_default();
+        return Redirect::to(&format!("/app/report{query}")).into_response();
+    }
     // Unlike the management API, redirect error bodies are plain text.
     follow(&s, domain, &code, &headers, socket)
         .await

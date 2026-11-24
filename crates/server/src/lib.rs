@@ -331,14 +331,6 @@ pub async fn app(pool: PgPool, settings: Settings) -> Result<Router, String> {
         .route("/auth/{id}", get(identity_providers::start))
         .route("/auth/{id}/callback", get(identity_providers::callback))
         .nest_service("/app", get(web::serve))
-        // The public report form lives in the web UI; keeps `?short_url=`.
-        .route(
-            "/report",
-            get(|uri: Uri| async move {
-                let query = uri.query().map(|q| format!("?{q}")).unwrap_or_default();
-                axum::response::Redirect::to(&format!("/app/report{query}"))
-            }),
-        )
         .route("/{code}", get(redirect))
         .fallback(|| async { (StatusCode::NOT_FOUND, "not found") })
         .with_state(state))
