@@ -39,6 +39,7 @@ Web UI 在构建时打进 server 二进制（Docker 镜像和 Release 已包含�
 | `CRABLINK_TRUST_PROXY` | 否 | `false` | `true` 时访客地址取 `X-Forwarded-For` 的第一项（只在反向代理之后这样设，`deploy/compose.yaml` 已设好），否则取 TCP 连接的对端地址 |
 | `CRABLINK_RESERVED_CODES` | 否 | 空 | 逗号分隔的 Reserved Code，如 `google,paypal`：在 Default Domain 上谁都不能用它们做 Custom Code（400 `code_reserved`），区分大小写，Generated Code 也不会生成它们；自定义 Domain 不受影响 |
 | `CRABLINK_COUNTRY_DB` | 否 | 镜像里已设好 | Click 查国家用的 DB-IP Lite country 数据库（`.mmdb`）；镜像构建时自带当月版本。不设则 Click 不记国家，设了却读不了就退出 |
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_NAME` 等 | 否 | — | 设置一个 Identity Provider，见下方 [Identity Provider](#identity-provider) |
 | `CRABLINK_SAFE_BROWSING_KEY` | 否 | — | Google Safe Browsing API key；设了就在创建 Link（API、Web UI、CLI、CSV 导入）和修改 Target 时查 Target，已知的钓鱼、恶意软件网址以 400（`target_unsafe`）拒绝。Google 出错或 2 秒内没回应时照常放行。不设则不做任何检查 |
 
 Click 只记时间、Referrer 的 host、国家、设备类型和浏览器，从不存 IP 和完整 User-Agent（[ADR-0006](adr/0006-clicks-store-no-ip.md)）；爬虫和链接预览（Slack 等）照常跳转，但不算 Click。国家数据来自 [IP Geolocation by DB-IP](https://db-ip.com)（CC BY 4.0）。
@@ -90,6 +91,23 @@ Workspace 可以用自己的 Domain，比如 `go.example.com`。Owner 在 Web UI
 `deploy/Caddyfile` 用 Caddy 的 on-demand TLS：某个 host 第一次有 HTTPS 请求时，Caddy 先问 crablink 的 `GET /internal/domain-allowed?domain=<host>`，只有 Default Domain 和已批准的 Domain 得到 200，其余 404，所以别人把任意域名指过来也无法让这台主机去申请证书。crablink 自己从不处理 TLS（[ADR-0009](adr/0009-tls-terminated-by-reverse-proxy.md)）。
 
 Owner 移除 Domain 后，它上面的 Link 变为已删除；之后无论哪个 Workspace 再添加这个 Domain，这些 Code 都仍被占用。删除 Workspace 也会释放它的 Domain。
+
+## Identity Provider
+
+User 可以经 Identity Provider（任何 OpenID Connect 提供方，如 Google、Keycloak、Okta、Microsoft Entra）登录，不用密码。每个 Identity Provider 用四个环境变量设置，`<ID>` 由 A-Z、0-9 和 `_` 组成，可以同时设置多个：
+
+| 环境变量 | 说明 |
+|---|---|
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_NAME` | 登录页显示的名字：“Sign in with <NAME>” |
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_ISSUER` | issuer URL，如 `https://accounts.google.com` |
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_CLIENT_ID` | 在 Identity Provider 那里注册的 client id |
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_CLIENT_SECRET` | 对应的 client secret |
+
+在 Identity Provider 那里登记的 redirect URI 是 `CRABLINK_BASE_URL` 加 `/auth/<id>/callback`，`<id>` 是 `<ID>` 转小写、`_` 换成 `-`：比如 `CRABLINK_IDENTITY_PROVIDER_GOOGLE_*` 就是 `https://crabl.ink/auth/google/callback`。server 启动时对每个 Identity Provider 做 OpenID Connect discovery；变量缺一个、拼错，或 discovery 失败，就打印出哪个 Identity Provider 出了什么问题并拒绝启动。
+
+登录用授权码流程加 PKCE，server 校验 ID token 的签名、issuer、audience、过期时间和 nonce。同一个 Identity Provider 的同一身份（issuer 加 subject）第一次登录时，按 email（不区分大小写）找到已有的 User 并把身份加给他，之后密码和 Identity Provider 两种方式都能登录；没有这个 email 的 User 时拒绝，提示找 Instance Admin 要邀请。被停用的 User 照样被拒。
+
+**只设置会验证 email 的 Identity Provider。** crablink 只在 ID token 声明 `email_verified` 时按 email 认人，没有声明就拒绝；但如果一个 Identity Provider 允许任何人填一个没验证过的 email、却仍声明已验证，那么在那里注册了别人 email 的人就能登录成那个 User。
 
 ## 邀请与管理 User
 

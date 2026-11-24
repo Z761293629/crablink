@@ -4,7 +4,9 @@
     "title": "登录",
     "email": "邮箱",
     "password": "密码",
-    "submit": "登录"
+    "submit": "登录",
+    "with": "通过 {{name}} 登录",
+    "or": "或使用密码登录"
   },
   "signOut": "退出登录",
   "workspace": {
@@ -304,7 +306,11 @@
     "domain_not_approved": "请使用默认域名或本工作区已批准的域名。",
     "rate_limited": "请求太多，请稍后再试。",
     "rate_limited_for": "请求太多，请{{wait}}后再试。",
-    "link_blocked": "该链接已被实例管理员因滥用封禁，只能删除。"
+    "link_blocked": "该链接已被实例管理员因滥用封禁，只能删除。",
+    "identity_provider_failed": "登录未成功，请重试。",
+    "identity_provider_email_unverified": "你的登录服务尚未验证你的邮箱，因此无法在此登录。",
+    "invite_needed": "这里还没有使用你邮箱的用户：请向实例管理员索取邀请。",
+    "user_disabled": "你的用户已被停用。"
   },
   "cancel": "取消",
   "retry": "重试",

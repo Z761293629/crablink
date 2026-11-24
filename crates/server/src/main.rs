@@ -1,6 +1,9 @@
+use std::collections::{BTreeMap, HashMap};
 use std::io::IsTerminal;
 use std::process::exit;
 use std::sync::Arc;
+
+use crablink_server::IdentityProvider;
 
 fn required(name: &str) -> String {
     match std::env::var(name) {
@@ -109,10 +112,19 @@ async fn serve() {
         .map(String::from)
         .collect();
 
+    // `vars()` would panic on any variable that isn't Unicode, even one not ours.
+    let vars = std::env::vars_os()
+        .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)));
+    let identity_providers = identity_providers(vars).unwrap_or_else(|e| {
+        eprintln!("crablink-server: {e}");
+        exit(2);
+    });
+
     let mut settings = crablink_server::Settings {
         trust_proxy,
         rate_limits,
         reserved_codes,
+        identity_providers,
         country,
         ..crablink_server::Settings::new(base_url)
     };
@@ -131,9 +143,7 @@ async fn serve() {
     let app = crablink_server::app(pool.clone(), settings)
         .await
         .unwrap_or_else(|e| {
-            eprintln!(
-                "crablink-server: cannot set up the Default Domain from CRABLINK_BASE_URL: {e}"
-            );
+            eprintln!("crablink-server: {e}");
             exit(1);
         });
     let listener = tokio::net::TcpListener::bind(&listen)
@@ -155,6 +165,60 @@ async fn serve() {
     eprintln!("crablink-server stopped");
 }
 
+const IDENTITY_PROVIDER: &str = "CRABLINK_IDENTITY_PROVIDER_";
+/// What each Identity Provider needs, as `CRABLINK_IDENTITY_PROVIDER_<ID>_<FIELD>`.
+const IDENTITY_PROVIDER_FIELDS: [&str; 4] = ["NAME", "ISSUER", "CLIENT_ID", "CLIENT_SECRET"];
+
+/// The Identity Providers that `CRABLINK_IDENTITY_PROVIDER_<ID>_<FIELD>` variables
+/// among `vars` set up, each with id `<ID>` lowercased, `_` as `-`. The error names
+/// an incomplete one, or a variable that isn't one of those.
+fn identity_providers(
+    vars: impl IntoIterator<Item = (String, String)>,
+) -> Result<Vec<IdentityProvider>, String> {
+    let mut found: BTreeMap<String, HashMap<&str, String>> = BTreeMap::new();
+    for (var, value) in vars {
+        let Some(rest) = var.strip_prefix(IDENTITY_PROVIDER) else {
+            continue;
+        };
+        let id_and_field = IDENTITY_PROVIDER_FIELDS
+            .iter()
+            .find_map(|f| Some((rest.strip_suffix(f)?.strip_suffix('_')?, *f)))
+            .filter(|(id, _)| {
+                !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            });
+        let Some((id, field)) = id_and_field else {
+            return Err(format!(
+                "{var} isn't {IDENTITY_PROVIDER}<ID>_NAME, _ISSUER, _CLIENT_ID or _CLIENT_SECRET \
+                 with an <ID> of A-Z, 0-9 and _"
+            ));
+        };
+        found.entry(id.into()).or_default().insert(field, value);
+    }
+    found
+        .into_iter()
+        .map(|(id, mut fields)| {
+            let mut take = |field| {
+                fields
+                    .remove(field)
+                    .filter(|v| !v.trim().is_empty())
+                    .ok_or_else(|| {
+                        format!(
+                            "Identity Provider {id} is incomplete: \
+                             {IDENTITY_PROVIDER}{id}_{field} must be set and non-empty"
+                        )
+                    })
+            };
+            Ok(IdentityProvider {
+                name: take("NAME")?,
+                issuer: take("ISSUER")?,
+                client_id: take("CLIENT_ID")?,
+                client_secret: take("CLIENT_SECRET")?,
+                id: id.to_ascii_lowercase().replace('_', "-"),
+            })
+        })
+        .collect()
+}
+
 /// Resolves on Ctrl-C, or on SIGTERM (what Docker and systemd send) on Unix.
 /// In-flight requests then finish before `serve` returns.
 async fn shutdown_signal() {
@@ -172,4 +236,75 @@ async fn shutdown_signal() {
     tokio::signal::ctrl_c()
         .await
         .expect("installing a Ctrl-C handler");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn vars(vars: &[(&str, &str)]) -> Vec<(String, String)> {
+        vars.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn identity_providers_come_from_their_variables() {
+        let set_up = identity_providers(vars(&[
+            ("CRABLINK_BASE_URL", "https://crabl.ink"),
+            ("CRABLINK_IDENTITY_PROVIDER_MY_KEYCLOAK_NAME", "Keycloak"),
+            (
+                "CRABLINK_IDENTITY_PROVIDER_MY_KEYCLOAK_ISSUER",
+                "https://id.example.com",
+            ),
+            (
+                "CRABLINK_IDENTITY_PROVIDER_MY_KEYCLOAK_CLIENT_ID",
+                "crablink",
+            ),
+            (
+                "CRABLINK_IDENTITY_PROVIDER_MY_KEYCLOAK_CLIENT_SECRET",
+                "s3cret",
+            ),
+        ]))
+        .unwrap();
+        let [p] = &set_up[..] else {
+            panic!("expected one Identity Provider, got {}", set_up.len());
+        };
+        assert_eq!(
+            [&p.id, &p.name, &p.issuer, &p.client_id, &p.client_secret],
+            [
+                "my-keycloak",
+                "Keycloak",
+                "https://id.example.com",
+                "crablink",
+                "s3cret"
+            ]
+        );
+        assert!(identity_providers(vars(&[])).unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_incomplete_identity_provider_is_named() {
+        let e = identity_providers(vars(&[
+            ("CRABLINK_IDENTITY_PROVIDER_GOOGLE_NAME", "Google"),
+            (
+                "CRABLINK_IDENTITY_PROVIDER_GOOGLE_ISSUER",
+                "https://accounts.google.com",
+            ),
+            ("CRABLINK_IDENTITY_PROVIDER_GOOGLE_CLIENT_ID", "crablink"),
+        ]))
+        .err()
+        .unwrap();
+        assert!(
+            e.contains("CRABLINK_IDENTITY_PROVIDER_GOOGLE_CLIENT_SECRET"),
+            "{e}"
+        );
+
+        let misspelt = vars(&[("CRABLINK_IDENTITY_PROVIDER_GOOGLE_SECRET", "s3cret")]);
+        let e = identity_providers(misspelt).err().unwrap();
+        assert!(
+            e.contains("CRABLINK_IDENTITY_PROVIDER_GOOGLE_SECRET"),
+            "{e}"
+        );
+    }
 }
