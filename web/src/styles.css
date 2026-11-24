@@ -936,11 +936,22 @@ main.flush {
   color: var(--text);
   background: var(--surface-2);
   border-bottom: 1px solid var(--line);
-  border-left: 4px solid var(--warn);
 }
 
 .verify-banner p {
   margin: 0;
+}
+
+/* The warn state lamp the gate boards use for Pending, before the message. */
+.verify-banner p:first-child::before {
+  content: '';
+  display: inline-block;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  margin-right: 0.5rem;
+  vertical-align: 0.1em;
+  background: var(--warn);
+  border-radius: 1px;
 }
 
 .page-head {
