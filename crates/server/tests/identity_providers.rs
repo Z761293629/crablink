@@ -181,6 +181,7 @@ async fn an_identity_provider_that_cant_be_discovered_stops_the_app() {
         issuer: "http://127.0.0.1:9/realms/crablink".into(),
         client_id: "crablink".into(),
         client_secret: "secret".into(),
+        allowed_email_domains: Vec::new(),
     };
     let e = try_app_with(|s| crablink_server::Settings {
         identity_providers: vec![provider],
@@ -191,4 +192,164 @@ async fn an_identity_provider_that_cant_be_discovered_stops_the_app() {
     .expect("the app refuses to start");
     assert!(e.contains("Identity Provider keycloak"), "{e}");
     assert!(e.contains("http://127.0.0.1:9/realms/crablink"), "{e}");
+}
+
+/// An app with the fake set up as Identity Provider `fake`, creating Users whose
+/// email is on `domains`.
+async fn app_and_fake_allowing(domains: &[&str]) -> (TestApp, FakeIdentityProvider) {
+    let fake = FakeIdentityProvider::start().await;
+    let provider = crablink_server::IdentityProvider {
+        allowed_email_domains: domains.iter().map(|d| d.to_string()).collect(),
+        ..fake.identity_provider("fake", "Fake ID")
+    };
+    let app = app_with(|s| crablink_server::Settings {
+        identity_providers: vec![provider],
+        ..s
+    })
+    .await;
+    (app, fake)
+}
+
+#[tokio::test]
+async fn a_first_sign_in_on_an_allowed_email_domain_creates_the_user() {
+    let (app, fake) = app_and_fake_allowing(&["Example.com"]).await;
+
+    let res = app
+        .sign_in_through(&fake, "fake", Person::verified("Ada@EXAMPLE.com"))
+        .await;
+
+    let cookie = signed_in(&res);
+    let me = me(&app, &cookie).await;
+    assert_eq!(me["user"]["email"], "Ada@EXAMPLE.com");
+    assert_eq!(me["user"]["has_password"], false);
+    let slug = app.workspace_of(&cookie).await;
+    let link = json!({ "target": "https://example.org/" });
+    let path = format!("/api/workspaces/{slug}/links");
+    let res = app.as_user("POST", &path, Some(link), &cookie).await;
+    assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
+
+    // Signing in again finds the same User.
+    let again = app
+        .sign_in_through(&fake, "fake", Person::verified("ada@example.com"))
+        .await;
+    assert_eq!(app.workspace_of(&signed_in(&again)).await, slug);
+}
+
+#[tokio::test]
+async fn an_unknown_email_off_the_allowed_domains_still_needs_an_invite() {
+    let (app, fake) = app_and_fake_allowing(&["example.com"]).await;
+    for email in [
+        "eve@example.org",
+        "eve@sub.example.com",
+        "eve@notexample.com",
+    ] {
+        let res = app
+            .sign_in_through(&fake, "fake", Person::verified(email))
+            .await;
+        refused(&res, "invite_needed");
+    }
+    let unverified = Person {
+        email_verified: None,
+        ..Person::verified("eve@example.com")
+    };
+    refused(
+        &app.sign_in_through(&fake, "fake", unverified).await,
+        "identity_provider_email_unverified",
+    );
+}
+
+/// Signs `email` in through the fake for the first time, creating their User;
+/// returns the session's cookie.
+async fn created_through(app: &TestApp, fake: &FakeIdentityProvider, email: &str) -> String {
+    signed_in(
+        &app.sign_in_through(fake, "fake", Person::verified(email))
+            .await,
+    )
+}
+
+#[tokio::test]
+async fn a_user_without_a_password_cant_sign_in_or_change_password_with_one() {
+    let (app, fake) = app_and_fake_allowing(&["example.com"]).await;
+    let cookie = created_through(&app, &fake, "ada@example.com").await;
+
+    for password in [PASSWORD, ""] {
+        let res = app.sign_in_res("ada@example.com", password).await;
+        assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{}", res.text);
+        assert_eq!(res.json()["kind"], "invalid_credentials");
+    }
+    let body = json!({ "current_password": "", "new_password": PASSWORD });
+    let res = app
+        .as_user("POST", "/api/me/password", Some(body), &cookie)
+        .await;
+    assert_eq!(res.status, StatusCode::FORBIDDEN, "{}", res.text);
+    assert_eq!(res.json()["kind"], "wrong_password");
+
+    // A User with a password still says so.
+    app.create_user("bob@example.com").await;
+    let bob = app.sign_in_res("bob@example.com", PASSWORD).await;
+    assert_eq!(bob.json()["has_password"], true);
+    let bob = app.sign_in("bob@example.com", PASSWORD).await;
+    assert_eq!(me(&app, &bob).await["user"]["has_password"], true);
+}
+
+#[tokio::test]
+async fn the_instance_admin_sees_who_has_no_password_and_their_identity_providers() {
+    let (app, fake) = app_and_fake_allowing(&["example.com"]).await;
+    created_through(&app, &fake, "ada@example.com").await;
+    app.create_user("bob@example.com").await;
+    signed_in(
+        &app.sign_in_through(&fake, "fake", Person::verified("bob@example.com"))
+            .await,
+    );
+    let admin = app.instance_admin().await;
+
+    let res = app.as_user("GET", "/api/admin/users", None, &admin).await;
+
+    assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+    let users = res.json();
+    let listed = |email: &str| {
+        let user = users
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|u| u["email"] == email);
+        let user = user.unwrap_or_else(|| panic!("{email} not listed: {users}"));
+        (
+            user["has_password"].clone(),
+            user["identity_providers"].clone(),
+        )
+    };
+    assert_eq!(
+        listed("ada@example.com"),
+        (json!(false), json!(["Fake ID"]))
+    );
+    assert_eq!(listed("bob@example.com"), (json!(true), json!(["Fake ID"])));
+    assert_eq!(listed(OWNER), (json!(true), json!([])));
+}
+
+#[tokio::test]
+async fn an_owner_adds_a_user_without_a_password_who_then_uses_api_keys() {
+    let (app, fake) = app_and_fake_allowing(&["example.com"]).await;
+    let ada = created_through(&app, &fake, "ada@example.com").await;
+    let personal = app.workspace_of(&ada).await;
+
+    let path = format!("/api/workspaces/{}/members", app.owner.slug);
+    let body = json!({ "email": "ADA@example.com" });
+    let res = app
+        .as_user("POST", &path, Some(body), &app.owner.cookie)
+        .await;
+    assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
+    let links = format!("/api/workspaces/{}/links", app.owner.slug);
+    let res = app.as_user("GET", &links, None, &ada).await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+
+    // What `crablink login` stores and the CLI sends.
+    let key = app.api_key(&ada, &personal).await;
+    let res = app.bearer("GET", "/api/me", None, Some(&key)).await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.text);
+    assert_eq!(res.json()["workspace"]["slug"], personal.as_str());
+    let link = json!({ "target": "https://example.org/" });
+    let links = format!("/api/workspaces/{personal}/links");
+    let res = app.bearer("POST", &links, Some(link), Some(&key)).await;
+    assert_eq!(res.status, StatusCode::CREATED, "{}", res.text);
 }

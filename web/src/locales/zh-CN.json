@@ -216,6 +216,8 @@
       "enable": "启用",
       "makeAdmin": "设为实例管理员",
       "revokeAdmin": "取消实例管理员",
+      "noPassword": "无密码",
+      "signsInThrough": "通过 {{names}} 登录",
       "resetPassword": "重置密码",
       "newPassword": "新密码：",
       "active": "正常",

@@ -151,6 +151,14 @@ pub struct User {
     /// As the User was created, case included.
     pub email: String,
     pub instance_admin: bool,
+    /// False for a User an Identity Provider created, who signs in only through one.
+    /// Servers before 0.7.0 don't say, and every User of theirs has one.
+    #[serde(default = "yes")]
+    pub has_password: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// An Identity Provider the instance trusts, as `GET /api/identity-providers` lists
@@ -322,6 +330,13 @@ pub struct ManagedUser {
     pub instance_admin: bool,
     /// A disabled User can't sign in and has no sessions.
     pub disabled: bool,
+    /// False for a User an Identity Provider created, who signs in only through one.
+    #[serde(default = "yes")]
+    pub has_password: bool,
+    /// The names of the Identity Providers the User has signed in through, or their
+    /// issuer URLs once no longer set up.
+    #[serde(default)]
+    pub identity_providers: Vec<String>,
 }
 
 /// Body of `PATCH /api/admin/users/{id}`. An absent field is left unchanged; an

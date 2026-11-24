@@ -109,7 +109,7 @@ Owner 移除 Domain 后，它上面的 Link 变为已删除；之后无论哪个
 
 ## Identity Provider
 
-User 可以经 Identity Provider（任何 OpenID Connect 提供方，如 Google、Keycloak、Okta、Microsoft Entra）登录，不用密码。每个 Identity Provider 用四个环境变量设置，`<ID>` 由 A-Z、0-9 和 `_` 组成，可以同时设置多个：
+User 可以经 Identity Provider（任何 OpenID Connect 提供方，如 Google、Keycloak、Okta、Microsoft Entra）登录，不用密码。每个 Identity Provider 用四个必填、一个可选的环境变量设置，`<ID>` 由 A-Z、0-9 和 `_` 组成，可以同时设置多个：
 
 | 环境变量 | 说明 |
 |---|---|
@@ -117,10 +117,11 @@ User 可以经 Identity Provider（任何 OpenID Connect 提供方，如 Google�
 | `CRABLINK_IDENTITY_PROVIDER_<ID>_ISSUER` | issuer URL，如 `https://accounts.google.com` |
 | `CRABLINK_IDENTITY_PROVIDER_<ID>_CLIENT_ID` | 在 Identity Provider 那里注册的 client id |
 | `CRABLINK_IDENTITY_PROVIDER_<ID>_CLIENT_SECRET` | 对应的 client secret |
+| `CRABLINK_IDENTITY_PROVIDER_<ID>_ALLOWED_EMAIL_DOMAINS` | 可选，逗号分隔的 email 域名，如 `example.com,example.org`：这些域名（不区分大小写，不含子域名）下的人第一次登录时自动创建 User |
 
 在 Identity Provider 那里登记的 redirect URI 是 `CRABLINK_BASE_URL` 加 `/auth/<id>/callback`，`<id>` 是 `<ID>` 转小写、`_` 换成 `-`：比如 `CRABLINK_IDENTITY_PROVIDER_GOOGLE_*` 就是 `https://crabl.ink/auth/google/callback`。server 启动时对每个 Identity Provider 做 OpenID Connect discovery；变量缺一个、拼错，或 discovery 失败，就打印出哪个 Identity Provider 出了什么问题并拒绝启动。
 
-登录用授权码流程加 PKCE，server 校验 ID token 的签名、issuer、audience、过期时间和 nonce。同一个 Identity Provider 的同一身份（issuer 加 subject）第一次登录时，按 email（不区分大小写）找到已有的 User 并把身份加给他，之后密码和 Identity Provider 两种方式都能登录；没有这个 email 的 User 时拒绝，提示找 Instance Admin 要邀请。被停用的 User 照样被拒。
+登录用授权码流程加 PKCE，server 校验 ID token 的签名、issuer、audience、过期时间和 nonce。同一个 Identity Provider 的同一身份（issuer 加 subject）第一次登录时，按 email（不区分大小写）找到已有的 User 并把身份加给他，之后密码和 Identity Provider 两种方式都能登录；没有这个 email 的 User 时，email 的域名在该 Identity Provider 的 `ALLOWED_EMAIL_DOMAINS` 里就创建 User（连同个人 Workspace）并登录，否则拒绝，提示找 Instance Admin 要邀请。这样创建的 User 没有密码，只能经 Identity Provider 登录：用密码登录对他就像密码错误，web UI 也不显示修改密码；Instance Admin 在 User 列表里能看到谁没有密码、经过哪些 Identity Provider 登录过。被停用的 User 照样被拒。
 
 **只设置会验证 email 的 Identity Provider。** crablink 只在 ID token 声明 `email_verified` 时按 email 认人，没有声明就拒绝；但如果一个 Identity Provider 允许任何人填一个没验证过的 email、却仍声明已验证，那么在那里注册了别人 email 的人就能登录成那个 User。
 

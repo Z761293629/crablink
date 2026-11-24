@@ -34,6 +34,9 @@ pub struct IdentityProvider {
     pub issuer: String,
     pub client_id: String,
     pub client_secret: String,
+    /// The email domains whose people get a User on their first sign-in, compared
+    /// ignoring case; anyone else needs a User already.
+    pub allowed_email_domains: Vec<String>,
 }
 
 /// An Identity Provider once discovery has found its endpoints.
@@ -44,6 +47,7 @@ pub(crate) struct Discovered {
     client_id: ClientId,
     client_secret: ClientSecret,
     redirect: RedirectUrl,
+    allowed_email_domains: Vec<String>,
 }
 
 type Client = CoreClient<
@@ -74,6 +78,7 @@ pub(crate) async fn discover(
         issuer,
         client_id,
         client_secret,
+        allowed_email_domains,
     } = provider;
     let problem = |e: String| format!("cannot discover Identity Provider {id} at {issuer}: {e}");
     let issuer_url = IssuerUrl::new(issuer.clone()).map_err(|e| problem(chain(&e)))?;
@@ -92,6 +97,7 @@ pub(crate) async fn discover(
         client_id: ClientId::new(client_id),
         client_secret: ClientSecret::new(client_secret),
         redirect,
+        allowed_email_domains,
     })
 }
 
@@ -129,6 +135,15 @@ pub(crate) async fn list(State(s): State<AppState>) -> Json<Vec<crablink_api::Id
             })
             .collect(),
     )
+}
+
+/// The name of the Identity Provider with `issuer`, or `issuer` itself if none is
+/// set up with it any more.
+pub(crate) fn name_of(s: &AppState, issuer: String) -> String {
+    s.identity_providers
+        .iter()
+        .find(|p| p.metadata.issuer().to_string() == issuer)
+        .map_or(issuer, |p| p.name.clone())
 }
 
 /// `GET /auth/{id}`: sends the browser to Identity Provider `id` to sign in,
@@ -240,6 +255,15 @@ struct Identity {
 }
 
 impl Discovered {
+    /// Whether `email`'s domain is one this Identity Provider's people get a User on.
+    fn allows(&self, email: &str) -> bool {
+        email.trim().rsplit_once('@').is_some_and(|(_, domain)| {
+            self.allowed_email_domains
+                .iter()
+                .any(|d| d.eq_ignore_ascii_case(domain))
+        })
+    }
+
     fn client(&self, metadata: CoreProviderMetadata) -> Client {
         CoreClient::from_provider_metadata(
             metadata,
@@ -289,7 +313,8 @@ impl Discovered {
 
 /// Starts a Session for the User `identity` at `provider` belongs to. An identity
 /// no User has yet is added to the User with its email, ignoring case, if the
-/// Identity Provider verified that email.
+/// Identity Provider verified that email; with no such User, one without a
+/// password is created if the email is on the allowed email domains.
 async fn start_session(
     s: &AppState,
     provider: &Discovered,
@@ -312,13 +337,20 @@ async fn start_session(
                 .email
                 .filter(|_| identity.email_verified)
                 .ok_or(ApiError::IdentityProviderEmailUnverified)?;
-            let user: (i64, String, bool) = sqlx::query_as(
+            let user: Option<(i64, String, bool)> = sqlx::query_as(
                 "SELECT id, email, disabled FROM users WHERE lower(email) = lower($1)",
             )
             .bind(email.trim())
             .fetch_optional(&mut *tx)
-            .await?
-            .ok_or(ApiError::InviteNeeded)?;
+            .await?;
+            let user = match user {
+                Some(user) => user,
+                None if provider.allows(&email) => {
+                    let id = users::insert_user(&mut tx, &email, None, false).await?;
+                    (id, email.trim().to_owned(), false)
+                }
+                None => return Err(ApiError::InviteNeeded),
+            };
             if !user.2 {
                 sqlx::query(
                     "INSERT INTO identities (issuer, subject, user_id) VALUES ($1, $2, $3) \

@@ -109,7 +109,7 @@ export function App() {
       />
     );
   else if (page === 'admin' && user.instance_admin) main = <InstanceAdmin me={user.email} />;
-  else if (page === 'account') main = <ChangePassword />;
+  else if (page === 'account' && user.has_password) main = <ChangePassword />;
   else if (page === 'settings') main = <Settings user={user} workspace={workspace} onSignOut={signOut} />;
   else if (!workspaces) main = null;
   else if (page === 'workspace')
@@ -282,11 +282,14 @@ function AccountItems({ user, onSignOut }: { user: User; onSignOut: () => void }
   return (
     <>
       <ul className="links-list">
-        <li>
-          <a className="item" href="/app/account">
-            {t('nav.account')}
-          </a>
-        </li>
+        {/* The account page only changes the password, which some Users don't have. */}
+        {user.has_password && (
+          <li>
+            <a className="item" href="/app/account">
+              {t('nav.account')}
+            </a>
+          </li>
+        )}
         {user.instance_admin && (
           <li>
             <a className="item" href="/app/admin">

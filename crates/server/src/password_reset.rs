@@ -114,6 +114,7 @@ pub(crate) async fn reset_password(
     let user = User {
         email,
         instance_admin,
+        has_password: true,
     };
     let res = users::start_session(&s, &mut tx, id, user).await?;
     tx.commit().await?;

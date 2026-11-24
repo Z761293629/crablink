@@ -14,6 +14,7 @@ use crablink_api::{
 };
 
 use crate::error::ApiError;
+use crate::identity_providers;
 use crate::users::{self, SameOrigin};
 use crate::workspaces::{Caller, stored_role};
 use crate::{AppState, email};
@@ -125,7 +126,7 @@ pub(crate) async fn accept_invite(
     if expired {
         return Err(ApiError::InviteExpired);
     }
-    let id = users::insert_user(&mut tx, &email, &hash, false).await?;
+    let id = users::insert_user(&mut tx, &email, Some(&hash), false).await?;
     if let Some(workspace_id) = workspace_id {
         sqlx::query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, $3)")
             .bind(id)
@@ -142,6 +143,7 @@ pub(crate) async fn accept_invite(
     let user = User {
         email,
         instance_admin: false,
+        has_password: true,
     };
     let res = users::start_session(&s, &mut tx, id, user).await?;
     tx.commit().await?;
@@ -154,20 +156,47 @@ pub(crate) async fn list_users(
     _: InstanceAdmin,
 ) -> Result<Json<Vec<ManagedUser>>, ApiError> {
     // ponytail: no pagination; add a cursor like Links' if instances grow past a few hundred Users.
-    let rows: Vec<(i64, String, bool, bool)> = sqlx::query_as(
-        "SELECT id, email, instance_admin, disabled FROM users ORDER BY lower(email)",
-    )
-    .fetch_all(&s.pool)
-    .await?;
-    Ok(Json(rows.into_iter().map(managed_user).collect()))
+    let rows: Vec<ManagedRow> =
+        sqlx::query_as(concat!(managed_user_select!(), " ORDER BY lower(email)"))
+            .fetch_all(&s.pool)
+            .await?;
+    Ok(Json(rows.into_iter().map(|r| r.into_dto(&s)).collect()))
 }
 
-fn managed_user((id, email, instance_admin, disabled): (i64, String, bool, bool)) -> ManagedUser {
-    ManagedUser {
-        id,
-        email,
-        instance_admin,
-        disabled,
+/// Selects `ManagedRow`s from `users`.
+macro_rules! managed_user_select {
+    () => {
+        "SELECT id, email, instance_admin, disabled, password_hash IS NOT NULL AS has_password, \
+         ARRAY(SELECT issuer FROM identities WHERE user_id = users.id ORDER BY issuer) AS issuers \
+         FROM users"
+    };
+}
+use managed_user_select;
+
+#[derive(sqlx::FromRow)]
+struct ManagedRow {
+    id: i64,
+    email: String,
+    instance_admin: bool,
+    disabled: bool,
+    has_password: bool,
+    issuers: Vec<String>,
+}
+
+impl ManagedRow {
+    fn into_dto(self, s: &AppState) -> ManagedUser {
+        ManagedUser {
+            id: self.id,
+            email: self.email,
+            instance_admin: self.instance_admin,
+            disabled: self.disabled,
+            has_password: self.has_password,
+            identity_providers: self
+                .issuers
+                .into_iter()
+                .map(|issuer| identity_providers::name_of(s, issuer))
+                .collect(),
+        }
     }
 }
 
@@ -197,7 +226,7 @@ pub(crate) async fn update_user(
             .execute(&mut *tx)
             .await?;
     }
-    let row = sqlx::query_as("SELECT id, email, instance_admin, disabled FROM users WHERE id = $1")
+    let row: ManagedRow = sqlx::query_as(concat!(managed_user_select!(), " WHERE id = $1"))
         .bind(id)
         .fetch_optional(&mut *tx)
         .await?
@@ -212,7 +241,7 @@ pub(crate) async fn update_user(
         return Err(ApiError::LastInstanceAdmin);
     }
     tx.commit().await?;
-    Ok(Json(managed_user(row)))
+    Ok(Json(row.into_dto(&s)))
 }
 
 /// `POST /api/admin/users/{id}/password`: gives a User a new random password,

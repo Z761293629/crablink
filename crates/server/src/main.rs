@@ -188,8 +188,15 @@ async fn serve() {
 }
 
 const IDENTITY_PROVIDER: &str = "CRABLINK_IDENTITY_PROVIDER_";
-/// What each Identity Provider needs, as `CRABLINK_IDENTITY_PROVIDER_<ID>_<FIELD>`.
-const IDENTITY_PROVIDER_FIELDS: [&str; 4] = ["NAME", "ISSUER", "CLIENT_ID", "CLIENT_SECRET"];
+/// What each Identity Provider is set up with, as
+/// `CRABLINK_IDENTITY_PROVIDER_<ID>_<FIELD>`; all but the last are needed.
+const IDENTITY_PROVIDER_FIELDS: [&str; 5] = [
+    "NAME",
+    "ISSUER",
+    "CLIENT_ID",
+    "CLIENT_SECRET",
+    "ALLOWED_EMAIL_DOMAINS",
+];
 
 /// The Identity Providers that `CRABLINK_IDENTITY_PROVIDER_<ID>_<FIELD>` variables
 /// among `vars` set up, each with id `<ID>` lowercased, `_` as `-`. The error names
@@ -210,8 +217,8 @@ fn identity_providers(
             });
         let Some((id, field)) = id_and_field else {
             return Err(format!(
-                "{var} isn't {IDENTITY_PROVIDER}<ID>_NAME, _ISSUER, _CLIENT_ID or _CLIENT_SECRET \
-                 with an <ID> of A-Z, 0-9 and _"
+                "{var} isn't {IDENTITY_PROVIDER}<ID>_NAME, _ISSUER, _CLIENT_ID, _CLIENT_SECRET \
+                 or _ALLOWED_EMAIL_DOMAINS with an <ID> of A-Z, 0-9 and _"
             ));
         };
         found.entry(id.into()).or_default().insert(field, value);
@@ -219,6 +226,14 @@ fn identity_providers(
     found
         .into_iter()
         .map(|(id, mut fields)| {
+            let allowed_email_domains = fields
+                .remove("ALLOWED_EMAIL_DOMAINS")
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|d| !d.is_empty())
+                .map(String::from)
+                .collect();
             let mut take = |field| {
                 fields
                     .remove(field)
@@ -231,6 +246,7 @@ fn identity_providers(
                     })
             };
             Ok(IdentityProvider {
+                allowed_email_domains,
                 name: take("NAME")?,
                 issuer: take("ISSUER")?,
                 client_id: take("CLIENT_ID")?,
@@ -287,6 +303,10 @@ mod tests {
                 "CRABLINK_IDENTITY_PROVIDER_MY_KEYCLOAK_CLIENT_SECRET",
                 "s3cret",
             ),
+            (
+                "CRABLINK_IDENTITY_PROVIDER_MY_KEYCLOAK_ALLOWED_EMAIL_DOMAINS",
+                " example.com, example.org ,",
+            ),
         ]))
         .unwrap();
         let [p] = &set_up[..] else {
@@ -302,6 +322,7 @@ mod tests {
                 "s3cret"
             ]
         );
+        assert_eq!(p.allowed_email_domains, ["example.com", "example.org"]);
         assert!(identity_providers(vars(&[])).unwrap().is_empty());
     }
 
