@@ -269,7 +269,7 @@ pub(crate) async fn workspace_clicks(
         top_links: top
             .into_iter()
             .map(|(code, domain, count)| TopLink {
-                short_url: format!("{}://{domain}/{code}", s.scheme),
+                short_url: crate::links::short_url(&s.scheme, &domain, &code),
                 code,
                 domain,
                 count,

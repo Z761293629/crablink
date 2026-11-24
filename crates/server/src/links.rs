@@ -26,6 +26,31 @@ pub fn random_code() -> String {
         .collect()
 }
 
+/// The Short URL of Code `code` on Domain `host`.
+pub(crate) fn short_url(scheme: &str, host: &str, code: &str) -> String {
+    format!("{scheme}://{host}/{code}")
+}
+
+/// The Domain host and Code of a Short URL such as `https://crabl.ink/aZ3k9` or
+/// `crabl.ink/aZ3k9`.
+pub(crate) fn parse_short_url(short_url: &str) -> Result<(&str, &str), ApiError> {
+    let s = short_url.trim();
+    let s = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+        .unwrap_or(s);
+    match s.split_once('/') {
+        Some((host, code))
+            if !host.is_empty() && !code.is_empty() && !code.contains(['/', '?', '#']) =>
+        {
+            Ok((host, code))
+        }
+        _ => Err(ApiError::BadRequest(
+            "short_url must look like https://crabl.ink/aZ3k9".into(),
+        )),
+    }
+}
+
 #[derive(sqlx::FromRow)]
 struct LinkRow {
     code: String,
@@ -43,7 +68,7 @@ impl LinkRow {
     /// The DTO, its Short URL built from the Link's Domain.
     fn into_dto(self, scheme: &str) -> crablink_api::Link {
         crablink_api::Link {
-            short_url: format!("{scheme}://{}/{}", self.domain, self.code),
+            short_url: short_url(scheme, &self.domain, &self.code),
             domain: self.domain,
             code: self.code,
             target: self.target,

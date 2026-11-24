@@ -13,8 +13,10 @@ use crablink_api::{
     UpdateUser, User,
 };
 
+use crate::email_tokens;
 use crate::error::ApiError;
 use crate::identity_providers;
+use crate::links::{parse_short_url, short_url};
 use crate::users::{self, SameOrigin};
 use crate::workspaces::{Caller, stored_role};
 use crate::{AppState, email};
@@ -75,8 +77,7 @@ pub(crate) async fn create_invite(
     .bind(expires_at)
     .execute(&s.pool)
     .await?;
-    // The token rides in the fragment, which browsers never send to a server.
-    let url = format!("{}://{}/app/invite#{token}", s.scheme, s.default_domain);
+    let url = email_tokens::link(&s, "invite", &token);
     if let Some(mailer) = &s.mailer {
         let chinese = crate::prefers_chinese(&headers);
         mailer(email::invite(chinese, &s.default_domain, email, &url));
@@ -261,41 +262,21 @@ pub(crate) async fn reset_password(
     Ok(Json(NewPassword { password }))
 }
 
-/// The Domain host and Code of a Short URL such as `https://crabl.ink/aZ3k9` or
-/// `crabl.ink/aZ3k9`.
-pub(crate) fn parse_short_url(short_url: &str) -> Result<(&str, &str), ApiError> {
-    let s = short_url.trim();
-    let s = s
-        .strip_prefix("https://")
-        .or_else(|| s.strip_prefix("http://"))
-        .unwrap_or(s);
-    match s.split_once('/') {
-        Some((host, code))
-            if !host.is_empty() && !code.is_empty() && !code.contains(['/', '?', '#']) =>
-        {
-            Ok((host, code))
-        }
-        _ => Err(ApiError::BadRequest(
-            "short_url must look like https://crabl.ink/aZ3k9".into(),
-        )),
-    }
-}
-
 #[derive(sqlx::FromRow)]
 struct BlockedRow {
     host: String,
     code: String,
     target: String,
-    slug: String,
+    workspace_slug: String,
     blocked_at: DateTime<Utc>,
 }
 
 impl BlockedRow {
     fn into_dto(self, scheme: &str) -> BlockedLink {
         BlockedLink {
-            short_url: format!("{scheme}://{}/{}", self.host, self.code),
+            short_url: short_url(scheme, &self.host, &self.code),
             target: self.target,
-            workspace_slug: self.slug,
+            workspace_slug: self.workspace_slug,
             blocked_at: self.blocked_at,
         }
     }
@@ -308,7 +289,7 @@ pub(crate) async fn list_blocked_links(
     _: InstanceAdmin,
 ) -> Result<Json<Vec<BlockedLink>>, ApiError> {
     let rows: Vec<BlockedRow> = sqlx::query_as(
-        "SELECT d.host, l.code, l.target, w.slug, l.blocked_at \
+        "SELECT d.host, l.code, l.target, w.slug AS workspace_slug, l.blocked_at \
          FROM links l JOIN domains d ON d.id = l.domain_id \
          JOIN workspaces w ON w.id = l.workspace_id \
          WHERE l.blocked_at IS NOT NULL AND l.deleted_at IS NULL \
@@ -337,11 +318,11 @@ pub(crate) async fn block_link(
            FROM domains d, workspaces w \
            WHERE d.id = l.domain_id AND w.id = l.workspace_id \
            AND d.host = lower($1) AND l.code = $2 AND l.deleted_at IS NULL \
-           RETURNING l.id, d.host, l.code, l.target, w.slug, l.blocked_at), \
+           RETURNING l.id, d.host, l.code, l.target, w.slug AS workspace_slug, l.blocked_at), \
          closed AS ( \
            UPDATE reports SET closed_at = $3 \
            WHERE link_id IN (SELECT id FROM blocked) AND closed_at IS NULL) \
-         SELECT host, code, target, slug, blocked_at FROM blocked",
+         SELECT host, code, target, workspace_slug, blocked_at FROM blocked",
     )
     .bind(host)
     .bind(code)

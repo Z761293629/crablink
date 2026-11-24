@@ -6,17 +6,13 @@ use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use chrono::TimeDelta;
 use crablink_api::{ForgotPassword, ResetPassword, User};
 
+use crate::email_tokens::{self, Purpose};
 use crate::error::ApiError;
 use crate::rate_limit::VisitorIp;
 use crate::users::{self, SameOrigin};
 use crate::{AppState, email};
-
-const RESET_TTL: TimeDelta = TimeDelta::hours(1);
-/// `email_tokens.purpose` of a password reset link.
-const PURPOSE: &str = "password_reset";
 
 /// `POST /api/password-resets`: emails a reset link to the enabled User with this
 /// email who has a password, if any, in the language the request asks for. Answers
@@ -42,22 +38,13 @@ pub(crate) async fn forgot_password(
     .fetch_optional(&s.pool)
     .await?;
     if let Some((id, address)) = user {
-        let token = users::random_token();
-        sqlx::query(
-            "INSERT INTO email_tokens (token_hash, user_id, purpose, expires_at) \
-             VALUES ($1, $2, $3, $4)",
+        let url = email_tokens::issue(
+            &s,
+            &mut *s.pool.acquire().await?,
+            id,
+            Purpose::PasswordReset,
         )
-        .bind(users::token_hash(&token))
-        .bind(id)
-        .bind(PURPOSE)
-        .bind((s.clock)() + RESET_TTL)
-        .execute(&s.pool)
         .await?;
-        // The token rides in the fragment, which browsers never send to a server.
-        let url = format!(
-            "{}://{}/app/reset-password#{token}",
-            s.scheme, s.default_domain
-        );
         let chinese = crate::prefers_chinese(&headers);
         mailer(email::password_reset(
             chinese,
@@ -67,13 +54,6 @@ pub(crate) async fn forgot_password(
         ));
     }
     Ok(StatusCode::NO_CONTENT)
-}
-
-#[derive(sqlx::FromRow)]
-struct ResetRow {
-    id: i64,
-    email: String,
-    instance_admin: bool,
 }
 
 /// `POST /api/password-resets/use`: gives the link's User the new password, ends
@@ -88,28 +68,17 @@ pub(crate) async fn reset_password(
     // Hashed before taking the link's row lock, which it would hold up otherwise.
     let hash = users::hash_password(&req.password).await?;
     let mut tx = s.pool.begin().await?;
-    // Deleting it locks the row: a second use of the same link waits, then finds nothing.
-    let row: Option<ResetRow> = sqlx::query_as(
-        "DELETE FROM email_tokens t USING users u \
-         WHERE t.token_hash = $1 AND t.purpose = $2 AND t.expires_at > $3 \
-           AND u.id = t.user_id AND NOT u.disabled \
-         RETURNING u.id, u.email, u.instance_admin",
-    )
-    .bind(users::token_hash(&req.token))
-    .bind(PURPOSE)
-    .bind((s.clock)())
-    .fetch_optional(&mut *tx)
-    .await?;
-    let ResetRow {
-        id,
-        email,
-        instance_admin,
-    } = row.ok_or(ApiError::ResetLinkExpired)?;
-    sqlx::query("DELETE FROM email_tokens WHERE user_id = $1 AND purpose = $2")
-        .bind(id)
-        .bind(PURPOSE)
-        .execute(&mut *tx)
-        .await?;
+    let id = email_tokens::redeem(&mut tx, Purpose::PasswordReset, &req.token, (s.clock)())
+        .await?
+        .ok_or(ApiError::ResetLinkExpired)?;
+    // A disabled User's link is refused; dropping `tx` puts it back.
+    let (email, instance_admin): (String, bool) =
+        sqlx::query_as("SELECT email, instance_admin FROM users WHERE id = $1 AND NOT disabled")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(ApiError::ResetLinkExpired)?;
+    email_tokens::redeem_all(&mut tx, id, Purpose::PasswordReset).await?;
     users::set_password(&mut tx, id, hash, None).await?;
     // The link reached them by email, so the email is theirs.
     sqlx::query(

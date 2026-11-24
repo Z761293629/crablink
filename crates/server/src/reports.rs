@@ -10,8 +10,9 @@ use chrono::{DateTime, Utc};
 use crablink_api::{CreateReport, Report, ReportedUser};
 
 use crate::AppState;
-use crate::admin::{InstanceAdmin, parse_short_url};
+use crate::admin::InstanceAdmin;
 use crate::error::ApiError;
+use crate::links::{parse_short_url, short_url};
 use crate::rate_limit::VisitorIp;
 use crate::workspaces::role;
 
@@ -58,7 +59,7 @@ struct ReportRow {
     code: String,
     target: String,
     workspace_id: i64,
-    slug: String,
+    workspace_slug: String,
     reason: String,
     reported_at: DateTime<Utc>,
 }
@@ -70,7 +71,7 @@ pub(crate) async fn list_reports(
     _: InstanceAdmin,
 ) -> Result<Json<Vec<Report>>, ApiError> {
     let rows: Vec<ReportRow> = sqlx::query_as(
-        "SELECT r.id, d.host, l.code, l.target, w.id AS workspace_id, w.slug, r.reason, \
+        "SELECT r.id, d.host, l.code, l.target, w.id AS workspace_id, w.slug AS workspace_slug, r.reason, \
          r.reported_at \
          FROM reports r JOIN links l ON l.id = r.link_id \
          JOIN domains d ON d.id = l.domain_id JOIN workspaces w ON w.id = l.workspace_id \
@@ -103,9 +104,9 @@ pub(crate) async fn list_reports(
             .collect::<Result<_, ApiError>>()?;
         Ok(Report {
             id: r.id,
-            short_url: format!("{}://{}/{}", s.scheme, r.host, r.code),
+            short_url: short_url(&s.scheme, &r.host, &r.code),
             target: r.target,
-            workspace_slug: r.slug,
+            workspace_slug: r.workspace_slug,
             reason: r.reason,
             reported_at: r.reported_at,
             workspace_users,

@@ -20,6 +20,7 @@ mod clicks;
 mod db;
 mod domains;
 mod email;
+mod email_tokens;
 mod error;
 mod identity_providers;
 mod links;

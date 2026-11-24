@@ -7,18 +7,13 @@ use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use chrono::TimeDelta;
 use crablink_api::{SignUp, User, VerifyEmail};
-use sqlx::PgConnection;
 
+use crate::email_tokens::{self, Purpose};
 use crate::error::ApiError;
 use crate::rate_limit::VisitorIp;
 use crate::users::{self, SameOrigin, Session};
 use crate::{AppState, email};
-
-const VERIFICATION_TTL: TimeDelta = TimeDelta::hours(24);
-/// `email_tokens.purpose` of an email verification link.
-const PURPOSE: &str = "email_verification";
 
 /// `POST /api/sign-ups`: creates a User with an unverified email, emails them a
 /// verification link in the language the request asks for, and signs them in. Not
@@ -40,7 +35,7 @@ pub(crate) async fn sign_up(
     let hash = users::hash_password(&req.password).await?;
     let mut tx = s.pool.begin().await?;
     let id = users::insert_user(&mut tx, &email, Some(&hash), false, false).await?;
-    let url = verification_link(&s, &mut tx, id).await?;
+    let url = email_tokens::issue(&s, &mut tx, id, Purpose::EmailVerification).await?;
     let user = User {
         email: email.clone(),
         instance_admin: false,
@@ -76,7 +71,13 @@ pub(crate) async fn resend(
     }
     // Counted like a sign-up, so nobody floods someone else's inbox with it.
     s.limiters.sign_up.hit(ip, (s.clock)())?;
-    let url = verification_link(&s, &mut *s.pool.acquire().await?, session.user_id).await?;
+    let url = email_tokens::issue(
+        &s,
+        &mut *s.pool.acquire().await?,
+        session.user_id,
+        Purpose::EmailVerification,
+    )
+    .await?;
     let chinese = crate::prefers_chinese(&headers);
     mailer(email::verification(
         chinese,
@@ -94,42 +95,17 @@ pub(crate) async fn verify(
     body: Result<Json<VerifyEmail>, JsonRejection>,
 ) -> Result<StatusCode, ApiError> {
     let Json(req) = body?;
-    // Deleting it locks the row: a second use of the same link waits, then finds nothing.
-    let verified: Option<i64> = sqlx::query_scalar(
-        "WITH used AS (DELETE FROM email_tokens \
-           WHERE token_hash = $1 AND purpose = $2 AND expires_at > $3 RETURNING user_id) \
-         UPDATE users u SET email_verified_at = COALESCE(u.email_verified_at, $3) \
-         FROM used WHERE u.id = used.user_id RETURNING u.id",
-    )
-    .bind(users::token_hash(&req.token))
-    .bind(PURPOSE)
-    .bind((s.clock)())
-    .fetch_optional(&s.pool)
-    .await?;
-    verified.ok_or(ApiError::VerificationLinkExpired)?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// A new verification link for User `id`.
-async fn verification_link(
-    s: &AppState,
-    conn: &mut PgConnection,
-    id: i64,
-) -> Result<String, ApiError> {
-    let token = users::random_token();
+    let mut tx = s.pool.begin().await?;
+    let id = email_tokens::redeem(&mut tx, Purpose::EmailVerification, &req.token, (s.clock)())
+        .await?
+        .ok_or(ApiError::VerificationLinkExpired)?;
     sqlx::query(
-        "INSERT INTO email_tokens (token_hash, user_id, purpose, expires_at) \
-         VALUES ($1, $2, $3, $4)",
+        "UPDATE users SET email_verified_at = COALESCE(email_verified_at, $2) WHERE id = $1",
     )
-    .bind(users::token_hash(&token))
     .bind(id)
-    .bind(PURPOSE)
-    .bind((s.clock)() + VERIFICATION_TTL)
-    .execute(conn)
+    .bind((s.clock)())
+    .execute(&mut *tx)
     .await?;
-    // The token rides in the fragment, which browsers never send to a server.
-    Ok(format!(
-        "{}://{}/app/verify-email#{token}",
-        s.scheme, s.default_domain
-    ))
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
